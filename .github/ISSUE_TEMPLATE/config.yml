@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Legacy Player Architecture
+    url: https://github.com/ScrappyHub/legacy-player/blob/main/docs/ARCHITECTURE.md
+    about: Review the architecture before opening design-related issues.
