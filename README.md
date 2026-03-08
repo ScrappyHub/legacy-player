@@ -196,3 +196,68 @@ legacy-player/
    ├─ memory_probe/
    ├─ replay_inspector/
    └─ pack_builder/
+Long-term significance
+
+Legacy Player is not only a retro multiplayer project.
+
+It is also:
+
+a multiplayer research platform
+
+a replay and diagnostics platform
+
+a self-hosted gaming infrastructure project
+
+a precursor to future multiplayer systems in CDE
+
+By solving multiplayer outside the engine first, Legacy Player helps establish stronger multiplayer foundations for future game development.
+
+Legal position
+
+Legacy Player is an interoperability project.
+
+It does not:
+
+distribute copyrighted game data
+
+include proprietary assets
+
+ship ROMs or ISOs
+
+claim ownership of game IP
+
+require redistribution of game binaries
+
+Users are expected to use their own legally obtained game data and emulator environments.
+
+See docs/LEGAL_POSITION.md.
+
+Status
+
+Fresh repo bootstrap.
+
+Initial work to lock:
+
+architecture
+
+runtime spec
+
+game pack spec
+
+legal position
+
+roadmap
+
+After spec lock, the first implementation target is a Dolphin adapter and a first party-game game pack.
+
+Venture Lab role
+
+Legacy Player is a Venture Lab project with both product and research value.
+
+It is intended to become:
+
+a real multiplayer instrument for classic games
+
+a self-hosted community infrastructure surface
+
+a multiplayer knowledge foundation for Clio Development Engine (CDE)
