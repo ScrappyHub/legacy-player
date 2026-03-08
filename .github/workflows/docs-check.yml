@@ -1,0 +1,55 @@
+name: docs-check
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+
+jobs:
+  docs-check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify required files exist
+        run: |
+          set -euo pipefail
+          test -f README.md
+          test -f LICENSE
+          test -f .gitignore
+          test -f docs/VENTURE_LAB_PITCH.md
+          test -f docs/ARCHITECTURE.md
+          test -f docs/RUNTIME_SPEC_v1.md
+          test -f docs/GAME_PACK_SPEC_v1.md
+          test -f docs/LEGAL_POSITION.md
+          test -f docs/ROADMAP.md
+          test -f docs/IMPLEMENTATION_PLAN_v1.md
+          test -f docs/ADAPTER_INTERFACE_v1.md
+          test -f docs/FIRST_TARGET_MARIO_PARTY_v1.md
+          test -f runtime/README.md
+          test -f adapters/dolphin/README.md
+          test -f game_packs/mario_party_4/README.md
+          test -f server/README.md
+          test -f tools/README.md
+
+      - name: Verify markdown files are non-empty
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' f; do
+            test -s "$f"
+          done < <(find . -type f \( -name "*.md" -o -name "*.yml" -o -name "*.yaml" \) -print0)
+
+      - name: Verify no obvious unfinished placeholders
+        run: |
+          set -euo pipefail
+          if grep -RInE "TODO|TBD|FIXME|<insert|placeholder" . \
+            --exclude-dir=.git \
+            --exclude-dir=node_modules
+          then
+            echo "Found unfinished placeholder text"
+            exit 1
+          fi
