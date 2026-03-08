@@ -1,0 +1,41 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# Runtime outputs
+out/
+build/
+dist/
+tmp/
+temp/
+
+# Node
+node_modules/
+
+# Python
+__pycache__/
+*.pyc
+
+# Rust
+target/
+
+# Go
+bin/
+
+# Local env
+.env
+.env.local
+
+# Replay / captures / generated artifacts
+replays/
+captures/
+artifacts/
+
+# Emulator-local or user-local directories
+local/
+user/
