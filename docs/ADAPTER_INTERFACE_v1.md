@@ -218,8 +218,3 @@ The interface should remain stable enough that future adapters can plug into the
 
 ---
 
-## Strategic rule
-
-Adapters are platform bridges, not multiplayer brains.
-
-If multiplayer logic starts migrating into adapters, the project is drifting in the wrong direction.
