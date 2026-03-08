@@ -158,44 +158,9 @@ Legacy Player may add:
 - stronger recovery/resync flows
 - specialized game pack hooks
 
+
 ---
 
-## Repository structure
-
-```text
-legacy-player/
-├─ README.md
-├─ LICENSE
-├─ .gitignore
-├─ docs/
-│  ├─ VENTURE_LAB_PITCH.md
-│  ├─ ARCHITECTURE.md
-│  ├─ RUNTIME_SPEC_v1.md
-│  ├─ GAME_PACK_SPEC_v1.md
-│  ├─ LEGAL_POSITION.md
-│  └─ ROADMAP.md
-├─ runtime/
-│  ├─ session/
-│  ├─ sync/
-│  ├─ state/
-│  ├─ patch/
-│  ├─ desync/
-│  └─ replay/
-├─ adapters/
-│  ├─ dolphin/
-│  ├─ mgba/
-│  └─ retroarch/
-├─ game_packs/
-│  ├─ mario_party_4/
-│  └─ mario_party_6/
-├─ server/
-│  ├─ lobby/
-│  ├─ relay/
-│  └─ api/
-└─ tools/
-   ├─ memory_probe/
-   ├─ replay_inspector/
-   └─ pack_builder/
 Long-term significance
 
 Legacy Player is not only a retro multiplayer project.
@@ -261,3 +226,45 @@ a real multiplayer instrument for classic games
 a self-hosted community infrastructure surface
 
 a multiplayer knowledge foundation for Clio Development Engine (CDE)
+
+
+---
+
+## Repository structure
+
+```text
+legacy-player/
+├─ README.md
+├─ LICENSE
+├─ .gitignore
+├─ docs/
+│  ├─ VENTURE_LAB_PITCH.md
+│  ├─ ARCHITECTURE.md
+│  ├─ RUNTIME_SPEC_v1.md
+│  ├─ GAME_PACK_SPEC_v1.md
+│  ├─ LEGAL_POSITION.md
+│  └─ ROADMAP.md
+├─ runtime/
+│  ├─ session/
+│  ├─ sync/
+│  ├─ state/
+│  ├─ patch/
+│  ├─ desync/
+│  └─ replay/
+├─ adapters/
+│  ├─ dolphin/
+│  ├─ mgba/
+│  └─ retroarch/
+├─ game_packs/
+│  ├─ mario_party_4/
+│  └─ mario_party_6/
+├─ server/
+│  ├─ lobby/
+│  ├─ relay/
+│  └─ api/
+└─ tools/
+   ├─ memory_probe/
+   ├─ replay_inspector/
+   └─ pack_builder/
+
+---
