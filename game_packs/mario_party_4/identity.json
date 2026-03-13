@@ -1,0 +1,12 @@
+{
+  "game": "Mario Party 4",
+  "platform": "GameCube",
+  "emulator": "Dolphin",
+  "supported_profiles": [
+    {
+      "game_id": "GMPE01",
+      "region": "USA",
+      "status": "supported-first-target"
+    }
+  ]
+}

@@ -1,0 +1,49 @@
+{
+  "game": "Mario Party 4",
+  "profile": {
+    "game_id": "GMPE01",
+    "region": "USA"
+  },
+  "candidate_fields": [
+    {
+      "name": "scene_phase",
+      "status": "discovery",
+      "source": "memory-region-diff"
+    },
+    {
+      "name": "active_player",
+      "status": "discovery",
+      "source": "memory-region-diff"
+    },
+    {
+      "name": "turn_number",
+      "status": "discovery",
+      "source": "memory-region-diff"
+    },
+    {
+      "name": "board_position",
+      "status": "discovery",
+      "source": "memory-region-diff"
+    },
+    {
+      "name": "coins",
+      "status": "discovery",
+      "source": "memory-region-diff"
+    },
+    {
+      "name": "stars",
+      "status": "discovery",
+      "source": "memory-region-diff"
+    },
+    {
+      "name": "cursor_state",
+      "status": "discovery",
+      "source": "memory-region-diff"
+    },
+    {
+      "name": "minigame_state",
+      "status": "discovery",
+      "source": "memory-region-diff"
+    }
+  ]
+}

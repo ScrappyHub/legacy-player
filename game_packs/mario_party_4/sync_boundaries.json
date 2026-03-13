@@ -1,0 +1,33 @@
+{
+  "game": "Mario Party 4",
+  "profile": {
+    "game_id": "GMPE01",
+    "region": "USA"
+  },
+  "boundaries": [
+    {
+      "name": "title_to_setup",
+      "status": "candidate"
+    },
+    {
+      "name": "setup_to_board",
+      "status": "candidate"
+    },
+    {
+      "name": "board_to_minigame_entry",
+      "status": "candidate"
+    },
+    {
+      "name": "minigame_entry_to_active",
+      "status": "candidate"
+    },
+    {
+      "name": "minigame_active_to_results",
+      "status": "candidate"
+    },
+    {
+      "name": "results_to_board",
+      "status": "candidate"
+    }
+  ]
+}

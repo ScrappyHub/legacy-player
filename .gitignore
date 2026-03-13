@@ -1,3 +1,4 @@
+
 # OS / editor
 .DS_Store
 Thumbs.db
@@ -39,3 +40,30 @@ artifacts/
 # Emulator-local or user-local directories
 local/
 user/
+=======
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual envs
+.venv/
+venv/
+env/
+
+# Local probe exports / evidence
+tools/memory_probe/exports/
+tools/memory_probe/_out/
+tools/memory_probe/_scratch/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# General temp
+tmp/
+temp/
+*.log

@@ -1,0 +1,15 @@
+{
+  "game": "Mario Party 4",
+  "profile": {
+    "game_id": "GMPE01",
+    "region": "USA"
+  },
+  "phases": [
+    "title",
+    "setup",
+    "board",
+    "minigame_entry",
+    "minigame_active",
+    "results"
+  ]
+}

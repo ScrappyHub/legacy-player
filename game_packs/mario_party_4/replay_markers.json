@@ -1,0 +1,18 @@
+{
+  "game": "Mario Party 4",
+  "profile": {
+    "game_id": "GMPE01",
+    "region": "USA"
+  },
+  "markers": [
+    "session_start",
+    "title",
+    "setup",
+    "board",
+    "minigame_entry",
+    "minigame_active",
+    "results",
+    "session_end",
+    "mismatch"
+  ]
+}

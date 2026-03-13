@@ -1,3 +1,4 @@
+
 # Legacy Player
 
 Self-hosted multiplayer infrastructure for legacy games.
@@ -268,3 +269,37 @@ legacy-player/
    └─ pack_builder/
 
 ---
+=======
+\## Current Legacy Player milestone
+
+
+
+Legacy Player now has a working emulator observation foundation for Mario Party 4 on Dolphin.
+
+
+
+Proven capabilities:
+
+
+
+\- Dolphin process attach
+
+\- game fingerprint detection
+
+\- GMPE01 / USA profile identification
+
+\- active window title selection
+
+\- readable host memory region inventory
+
+\- candidate dynamic region selection
+
+\- repeated region sampling with stable hashes
+
+\- mutation-capture tooling for controlled in-game state discovery
+
+
+
+This is the observation and modeling foundation required before full multiplayer synchronization and self-hosted session transport.
+
+(Add Dolphin probe, memory discovery, and mutation capture for Mario Party 4)
