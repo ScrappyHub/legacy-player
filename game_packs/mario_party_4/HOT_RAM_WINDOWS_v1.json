@@ -1,0 +1,106 @@
+{
+  "schema": "legacy_player.hot_ram_windows.v1",
+  "game_id": "GMPE01",
+  "region": "USA",
+  "ram_base": "0x1c6074f0000",
+  "notes": "Initial hot-page set derived from successful start_minigame_once detection. These are the first tracked hot pages to validate targeted action capture before broader RAM modeling.",
+  "sources": [
+    {
+      "action_label": "start_minigame_once",
+      "run_file": "tools/memory_probe/exports/mutation-61f9ae86_start_minigame_once.json",
+      "selection_basis": "Top changed pages by changed_byte_count from the successful targeted capture."
+    }
+  ],
+  "hot_pages": [
+    {
+      "rank": 1,
+      "page_offset": 1679360,
+      "absolute_address": "0x1c60654a000",
+      "source_actions": [
+        "start_minigame_once"
+      ],
+      "max_changed_byte_count": 4086
+    },
+    {
+      "rank": 2,
+      "page_offset": 1662976,
+      "absolute_address": "0x1c606546000",
+      "source_actions": [
+        "start_minigame_once"
+      ],
+      "max_changed_byte_count": 3912
+    },
+    {
+      "rank": 3,
+      "page_offset": 1515520,
+      "absolute_address": "0x1c606522000",
+      "source_actions": [
+        "start_minigame_once"
+      ],
+      "max_changed_byte_count": 3765
+    },
+    {
+      "rank": 4,
+      "page_offset": 1552384,
+      "absolute_address": "0x1c60652b000",
+      "source_actions": [
+        "start_minigame_once"
+      ],
+      "max_changed_byte_count": 3751
+    },
+    {
+      "rank": 5,
+      "page_offset": 1527808,
+      "absolute_address": "0x1c606525000",
+      "source_actions": [
+        "start_minigame_once"
+      ],
+      "max_changed_byte_count": 3736
+    },
+    {
+      "rank": 6,
+      "page_offset": 1560576,
+      "absolute_address": "0x1c60652d000",
+      "source_actions": [
+        "start_minigame_once"
+      ],
+      "max_changed_byte_count": 3734
+    },
+    {
+      "rank": 7,
+      "page_offset": 1466368,
+      "absolute_address": "0x1c606516000",
+      "source_actions": [
+        "start_minigame_once"
+      ],
+      "max_changed_byte_count": 3721
+    },
+    {
+      "rank": 8,
+      "page_offset": 1458176,
+      "absolute_address": "0x1c606514000",
+      "source_actions": [
+        "start_minigame_once"
+      ],
+      "max_changed_byte_count": 3651
+    },
+    {
+      "rank": 9,
+      "page_offset": 1556480,
+      "absolute_address": "0x1c60652c000",
+      "source_actions": [
+        "start_minigame_once"
+      ],
+      "max_changed_byte_count": 3624
+    },
+    {
+      "rank": 10,
+      "page_offset": 1437696,
+      "absolute_address": "0x1c60650f000",
+      "source_actions": [
+        "start_minigame_once"
+      ],
+      "max_changed_byte_count": 3621
+    }
+  ]
+}

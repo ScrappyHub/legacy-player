@@ -1,0 +1,48 @@
+{
+  "schema": "legacy_player.action_page_clusters.v1",
+  "game_id": "GMPE01",
+  "region": "USA",
+  "notes": "Cluster registry for targeted hot-page validation. Start_minigame_once is currently grounded in a successful targeted capture. Board_space_land_once and coin_total_change_once are placeholders until proven with positive hot/targeted capture evidence.",
+  "clusters": {
+    "inboard_event_transition_once": {
+      "confidence": "grounded",
+      "page_offsets": [
+        1679360,
+        1662976,
+        1515520,
+        1552384,
+        1527808,
+        1560576,
+        1466368,
+        1458176,
+        1556480,
+        1437696
+      ],
+      "absolute_addresses": [
+        "0x1c60654a000",
+        "0x1c606546000",
+        "0x1c606522000",
+        "0x1c60652b000",
+        "0x1c606525000",
+        "0x1c60652d000",
+        "0x1c606516000",
+        "0x1c606514000",
+        "0x1c60652c000",
+        "0x1c60650f000"
+      ],
+      "notes": "Derived from mutation-61f9ae86_inboard_event_transition_once.json top changed pages."
+    },
+    "board_space_land_once": {
+      "confidence": "placeholder",
+      "page_offsets": [],
+      "absolute_addresses": [],
+      "notes": "No grounded cluster yet. Populate only after a positive targeted or hot capture with non-zero changed pages."
+    },
+    "coin_total_change_once": {
+      "confidence": "placeholder",
+      "page_offsets": [],
+      "absolute_addresses": [],
+      "notes": "No grounded cluster yet. Populate only after a positive targeted or hot capture with non-zero changed pages."
+    }
+  }
+}
