@@ -45,6 +45,11 @@ SETTINGS_SCHEMA: dict[str, dict] = {
         "label": "Allow internet downloads",
         "help": "Off means Legacy Player never downloads anything. On lets Setup and the Engines page fetch emulators from their official sites, and only when you press a Get button. Playing with friends uses only the server address you set.",
     },
+    "allow_direct_connections": {
+        "type": "bool", "default": False, "group": "Privacy",
+        "label": "Allow direct connections (reveals your address)",
+        "help": "Off (recommended): matches always go through the server relay, so other players never learn your IP address. On: lets a host choose a direct connection, which hands the host's address to every guest. Only turn on for a home network or a VPN such as Tailscale.",
+    },
     "server_host": {
         "type": "text", "default": "127.0.0.1", "group": "Multiplayer",
         "label": "Server address",

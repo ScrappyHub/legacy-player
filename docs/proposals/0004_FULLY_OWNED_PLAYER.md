@@ -32,9 +32,15 @@ owner chose to offer Vimm's Lair as an optional mirror).
 - Tests: `tests/test_server_tls_and_control.py`; additions to `test_waitlist.py`,
   `test_launcher.py`, `test_engines.py`.
 
+## Done since the first slice
+
+- **Relay mode shipped and is the default.** `server/relay`, `adapters/retroarch/tunnel.RelayHost`, `lobby_client.open_relay`. Verified with real RetroArch: host + 2 guests through the relay. Direct connections and Dolphin need *Allow direct connections* plus a confirmation on both sides.
+- **libretro frontend groundwork**: `frontend/core.py` loads a core in-process with ctypes (Nestopia: boots, runs at thousands of fps headless, save states, RGB frames); `frontend/window.py` is a Tk viewer. Audio and pads need an SDL layer next.
+- **Waiting-room warm-up track** in the app; experimental RetroArch netplay for PS1/N64/DS; `docs/NETPLAY_BY_CONSOLE.md` says what each console can do.
+
 ## Planned next
 
-1. **Relay mode**: host connects *out* to the lobby server, guests connect to the server,
+1. ~~Relay mode~~ (done) **Relay mode**: host connects *out* to the lobby server, guests connect to the server,
    bytes are piped end-to-end inside the existing TLS-PSK tunnel so the server cannot read
    them and nobody learns anyone's address. One extra hop of latency; optional per room.
 2. libretro in-process frontend (0003) so the shell becomes the one window.

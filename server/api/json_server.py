@@ -12,6 +12,7 @@ from pathlib import Path
 from server.api.control import ServerControl
 from server.lobby import LobbyError, LobbyService
 from server.lobby.invites import InviteBook
+from server.relay import Relay
 from server.state_store import StateStore
 
 
@@ -26,6 +27,7 @@ async def handle_client(
     service: LobbyService,
     connection_limit: asyncio.Semaphore | None = None,
     control: ServerControl | None = None,
+    relay: Relay | None = None,
 ) -> None:
     if connection_limit is not None:
         await connection_limit.acquire()
@@ -55,6 +57,13 @@ async def handle_client(
                     request = json.loads(line)
                     if not isinstance(request, dict):
                         raise LobbyError("request must be a JSON object")
+                    if relay is not None and request.get("operation") == "relay" and request_count == 1:
+                        # This connection becomes a raw byte pipe; it is counted by the relay, not here.
+                        if connection_limit is not None:
+                            connection_limit.release()
+                            connection_limit = None
+                        await relay.handle(request, reader, writer)
+                        return
                     if control is not None and control.is_admin_operation(request.get("operation")):
                         peer = writer.get_extra_info("peername")
                         host = peer[0] if peer else ""
@@ -76,7 +85,10 @@ async def handle_client(
             await writer.drain()
     finally:
         writer.close()
-        await writer.wait_closed()
+        try:
+            await writer.wait_closed()
+        except (OSError, ConnectionError):
+            pass
         if connection_limit is not None:
             connection_limit.release()
 
@@ -116,6 +128,7 @@ async def serve(
         print(f"Resumed {len(service.sessions)} session(s) from the saved lobby state")
     shutdown = asyncio.Event()
     control = ServerControl(store.admin_token(), shutdown, service)
+    relay = Relay(service)
     ssl_context = None
     if tls_cert is not None:
         ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
@@ -123,7 +136,7 @@ async def serve(
         ssl_context.load_cert_chain(tls_cert, tls_key)
     connection_limit = asyncio.Semaphore(128)
     server = await asyncio.start_server(
-        lambda reader, writer: handle_client(reader, writer, service, connection_limit, control),
+        lambda reader, writer: handle_client(reader, writer, service, connection_limit, control, relay),
         host,
         port,
         limit=MAX_REQUEST_BYTES * 2,

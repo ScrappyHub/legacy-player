@@ -138,6 +138,7 @@ async function openGame(id){
   h("h3",{},whyInline("Playing with friends",
     "Online play works by sending each player's button presses to everyone and running the game in lockstep. How well that works depends on the console and on a per-game 'game pack'. Nothing is faked: the label below is the honest status.")),
   h("p",{},h("span",{class:"badge "+g.netplay},NETPLAY[g.netplay]||g.netplay)," ",h("span",{class:"small muted"},g.netplay_note)),
+  g.netplay_launch?h("p",{class:"small"},g.netplay_launch.ready?h("span",{class:"good"},"Play Together: ready"+(g.netplay_launch.experimental?" (experimental)":"")):h("span",{class:"muted"},"Play Together: "+g.netplay_launch.reason),g.netplay_launch.note?h("div",{class:"muted"},g.netplay_launch.note):null):null,
   h("div",{class:"row"},h("button",{class:"btn primary",onclick:async()=>{const r=await act(()=>api("mp_host",{id}));if(r){S.room=r.room;S.tab="together";close();go();poll()}}},"Host a room"),
     h("button",{class:"btn",onclick:()=>{close();S.tab="together";S.joinGame=id;go()}},"Join with a code")),
   h("h3",{},whyInline("Controller for this console",controllerWhy())),
@@ -210,7 +211,9 @@ function drawWaits(box){const w=S.waits||[];if(!w.length){box.replaceChildren();
  box.replaceChildren(h("div",{class:"panel"},h("h3",{},"You are in line for"),...w.map(x=>h("div",{class:"row"},h("b",{},x.game),
   x.ready?h("span",{class:"badge good"},"your spot is ready"):x.pending?h("span",{class:"badge"},"waiting for the host to approve"):h("span",{class:"badge"},"number "+(x.position||"?")+" in line"),
   x.ready?h("button",{class:"btn primary",onclick:async()=>{const r=await act(()=>api("mp_switch",{session_id:x.session_id}));if(r){S.room=r.room;S.waits=r.waits;go();poll()}}},"Switch to it"):null,
-  h("button",{class:"btn",onclick:async()=>{const r=await act(()=>api("mp_cancel_wait",{session_id:x.session_id}));if(r){S.waits=r.waits;go()}}},"Leave line")))));
+  h("button",{class:"btn",onclick:async()=>{const r=await act(()=>api("mp_cancel_wait",{session_id:x.session_id}));if(r){S.waits=r.waits;go()}}},"Leave line"))),
+  h("div",{class:"row",style:"margin-top:8px"},h("button",{class:"btn",onclick:()=>{const t=$("#warmup");if(t)warmupTrack(t)}},"Drive the warm-up track while you wait"),h("span",{class:"small muted"},"or keep playing anything in your library; your place in line is kept.")),
+  h("div",{id:"warmup"})));
 }
 function drawRoom(box){const r=S.room;if(!r){box.replaceChildren();return}
  const rm=r;const host=rm.role==="host";
@@ -249,20 +252,27 @@ function launchBox(rm,host){
  const addr=h("input",{type:"text",value:L.suggested_address||"",style:"width:180px","aria-label":"Your address"});
  const port=h("input",{type:"number",value:L.default_port||55435,min:1024,max:65535,style:"width:100px","aria-label":"Port"});
  const mode=h("select",{"aria-label":"Connection type",onchange:()=>{addrRow.hidden=mode.value!=="direct"}},h("option",{value:"traversal"},"Dolphin traversal server (easiest, no router setup)"),h("option",{value:"direct"},"Direct connection (address and port)"));
- const addrRow=h("div",{class:"row",hidden:dolphin},h("label",{class:"small"},"Your address ",addr),h("label",{class:"small"},"Port ",port));
+ const relay=h("input",{type:"checkbox",checked:true,disabled:!L.relay_available||!L.direct_allowed,title:L.direct_allowed?"":"Direct connections are off in Settings > Privacy, so the relay is always used."});
+ const addrRow=h("div",{class:"row",hidden:dolphin||!host},h("label",{class:"small"},"Your address ",addr),h("label",{class:"small"},"Port ",port));
+ const relayRow=h("div",{class:"row",hidden:dolphin||!host},h("label",{class:"small"},relay," ",whyInline("Relay through the server (hides your address)","Instead of guests connecting to your computer, you and they both connect out to the lobby server, which passes the encrypted bytes along. Nobody learns anyone's address and no router port needs opening. Costs one extra hop of delay. The server never sees the game traffic: it stays inside the match encryption.")));
+ relay.onchange=()=>{addrRow.hidden=relay.checked};if(!dolphin&&host&&relay.checked)addrRow.hidden=true;
+ const guestDirectRow=(!host&&!dolphin&&L.endpoint_kind==="direct"&&!L.direct_allowed)?h("p",{class:"warn small"},"The host chose a direct connection. Joining shares addresses both ways. Allow direct connections in Settings > Privacy, or ask the host to relaunch with the relay."):null;
  const steps=h("ol",{class:"small",hidden:true});const codeRow=h("div",{class:"row",hidden:true});
  const code=h("input",{type:"text",placeholder:"Dolphin host code",maxlength:16,style:"width:170px","aria-label":"Dolphin host code"});
  codeRow.append(code,h("button",{class:"btn primary",onclick:async()=>{const r=await act(()=>api("mp_share_code",{code:code.value}),"Code shared with the room");if(r)codeRow.hidden=true}},"Share Dolphin host code"));
  const label=dolphin?(host?"Open Dolphin (host)":"Open Dolphin"):(host?"Launch match (host)":"Join match");
  const go=h("button",{class:"btn good",disabled:!L.ready,title:L.reason||"",onclick:async()=>{
-   const body=host?(dolphin?{mode:mode.value,address:addr.value.trim(),port:+port.value}:{address:addr.value.trim(),port:+port.value}):{};
+   if(dolphin){if(!L.direct_allowed){toast("Dolphin NetPlay shares addresses between players. Allow direct connections in Settings > Privacy first (best over a VPN).","warn");return}
+     if(!confirm("Dolphin NetPlay connects players to each other, so the others will learn this computer's address. Continue?"))return}
+   const body=host?(dolphin?{mode:mode.value,address:addr.value.trim(),port:+port.value,expose_address:true}:{address:addr.value.trim(),port:+port.value,relay:relay.checked,expose_address:!relay.checked&&confirm("Direct connection: every guest will learn this computer's address ("+addr.value.trim()+"). Continue?")}):{expose_address:dolphin};
+   if(host&&!dolphin&&!relay.checked&&!body.expose_address)return;
    const r=await act(()=>api("mp_launch",body));if(!r)return;
-   toast((dolphin?"Opening Dolphin for ":"Starting ")+r.launched+"…");
+   toast((dolphin?"Opening Dolphin for ":"Starting ")+r.launched+(r.relay?" through the server relay":r.encrypted?" (encrypted)":"")+"…");
    if(r.steps){steps.replaceChildren(...r.steps.map(t=>h("li",{},t)));steps.hidden=false}
    if(r.needs_code)codeRow.hidden=false}},label);
  return h("div",{class:"card",style:"margin:8px 0"},
   dolphin&&host?h("div",{class:"row"},h("label",{class:"small"},"Connection ",mode)):null,
-  host?addrRow:null,
+  host?relayRow:null,host?addrRow:null,guestDirectRow,
   h("div",{class:"row",style:"margin-top:6px"},go,L.ready?null:h("span",{class:"small muted"},L.reason||"")),
   steps,codeRow,
   host?h("p",{class:"small muted"},dolphin?"Dolphin's NetPlay is started inside Dolphin; these steps are filled in for you. Everyone needs the same Dolphin version and the same game file. The traversal server is Dolphin's own, so game traffic is not run through Legacy Player.":"Same home network: use the address above. Over the internet, use a VPN such as Tailscale or ZeroTier, or forward the port. The match traffic itself is not encrypted, so a VPN is the safer choice."):null)}
@@ -538,6 +548,35 @@ async function viewCredits(m){
    h("td",{},d.mirror?h("a",{href:d.mirror.url,target:"_blank",rel:"noopener noreferrer",title:d.mirror.note},d.mirror.name):null)))))),
   h("p",{class:"small muted"},"Mirror note: "+(d.mirror?d.mirror.note:"")),
   h("div",{class:"card",style:"margin-top:12px"},h("h3",{},"Also used"),...d.also.map(x=>h("p",{class:"small"},h("b",{},x.name+": "),x.text))));
+}
+
+/* ---------- Warm-up track: something to drive while you wait ---------- */
+function warmupTrack(container){
+ const W=560,H=320;const cv=h("canvas",{width:W,height:H,style:"width:100%;max-width:560px;border-radius:12px;border:1px solid var(--line);background:#0b1020"});
+ const info=h("div",{class:"small muted"},"Warm-up track: steer with left/right (pad or arrows), accelerate with A / up. Laps count; best lap is kept on this computer.");
+ container.replaceChildren(h("div",{class:"card"},h("div",{class:"row"},h("h3",{class:"grow"},"While you wait"),h("button",{class:"btn",onclick:()=>{S.warm=false;container.replaceChildren()}},"Close")),cv,info));
+ const ctx=cv.getContext("2d");const cx=W/2,cy=H/2,Rx=220,Ry=120,Rw=46;
+ const car={a:0,v:0,lap:0,t:0,best:+(localStorage.getItem("lp_bestlap")||0),off:false,prog:0,lapStart:performance.now()};
+ const keys={};document.addEventListener("keydown",e=>{keys[e.key]=true});document.addEventListener("keyup",e=>{keys[e.key]=false});
+ let last=performance.now();S.warm=true;
+ const step=()=>{if(!S.warm||!cv.isConnected){S.warm=false;return}
+  const now=performance.now(),dt=Math.min(0.05,(now-last)/1000);last=now;
+  const p=livePads()[0];const prof=p&&S.P?S.P.profiles[padKey(p)]:null;const lit=p?litSlots(p,prof):new Set();
+  const left=keys.ArrowLeft||lit.has(14),right=keys.ArrowRight||lit.has(15),gas=keys.ArrowUp||keys.x||lit.has(0)||lit.has(7);
+  car.v+= (gas?240:-180)*dt; car.v=Math.max(0,Math.min(car.off?120:300,car.v));
+  const steer=(left?-1:0)+(right?1:0);car.a+=steer*2.4*dt*(car.v>20?1:0);
+  // car position on an ellipse-shaped road: progress angle; steering moves it across the road
+  car.prog+= (car.v/200)*dt; car.a=Math.max(-1,Math.min(1,car.a*(1-dt*1.5)));
+  const ang=car.prog;const rx=Rx+car.a*Rw*0.9,ry=Ry+car.a*Rw*0.9;const x=cx+Math.cos(ang)*rx,y=cy+Math.sin(ang)*ry;
+  car.off=Math.abs(car.a)>0.85;
+  if(car.prog>=Math.PI*2){car.prog-=Math.PI*2;car.lap++;const lapT=(now-car.lapStart)/1000;car.lapStart=now;if(!car.best||lapT<car.best){car.best=lapT;try{localStorage.setItem("lp_bestlap",String(lapT.toFixed(2)))}catch(e){}}}
+  ctx.clearRect(0,0,W,H);ctx.lineWidth=Rw*2;ctx.strokeStyle="#2a2f55";ctx.beginPath();ctx.ellipse(cx,cy,Rx,Ry,0,0,Math.PI*2);ctx.stroke();
+  ctx.lineWidth=2;ctx.strokeStyle="#6c8cff";ctx.setLineDash([10,10]);ctx.beginPath();ctx.ellipse(cx,cy,Rx,Ry,0,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);
+  ctx.strokeStyle="#fff";ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(cx+Rx-Rw,cy);ctx.lineTo(cx+Rx+Rw,cy);ctx.stroke();
+  ctx.save();ctx.translate(x,y);ctx.rotate(ang+Math.PI/2);ctx.fillStyle=car.off?"#ff6b7a":"#35d0a5";ctx.fillRect(-7,-12,14,24);ctx.fillStyle="#04251c";ctx.fillRect(-5,-8,10,6);ctx.restore();
+  ctx.fillStyle="#e8ebff";ctx.font="14px system-ui";ctx.fillText("Lap "+car.lap+"   "+((now-car.lapStart)/1000).toFixed(1)+"s   best "+(car.best?(+car.best).toFixed(2)+"s":"—")+"   "+Math.round(car.v)+" km/h"+(car.off?"   off track!":""),12,22);
+  requestAnimationFrame(step)};
+ requestAnimationFrame(step);
 }
 
 /* ---------- Emulators ---------- */

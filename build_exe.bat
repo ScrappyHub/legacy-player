@@ -9,7 +9,7 @@ python -m PyInstaller --noconfirm --clean --onefile --windowed --name LegacyPlay
   --paths . ^
   --add-data "launcher\ui;launcher\ui" ^
   --collect-submodules launcher --collect-submodules server ^
-  --collect-submodules adapters --collect-submodules runtime ^
+  --collect-submodules adapters --collect-submodules runtime --collect-submodules frontend ^
   legacy_player_app.py || exit /b 1
 echo.
 echo Built: %CD%\dist\LegacyPlayer.exe

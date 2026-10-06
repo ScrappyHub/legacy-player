@@ -281,6 +281,13 @@ class LobbyService:
             del self.pending[session.session_id][participant_id]
         return {"cancelled": True}
 
+    def relay_authorize(self, request: dict):
+        """A room member may use the room's relay while the room is live."""
+        session, participant_id = self._authorized(request)
+        if session.state in {SessionState.COMPLETED, SessionState.FAILED}:
+            raise LobbyError("that room has ended")
+        return session, participant_id
+
     def browse(self, request: dict) -> dict:
         """Public rooms on this server. Deliberately says nothing about who is inside:
         no names, no addresses, only the game and how full it is."""
@@ -487,12 +494,14 @@ class LobbyService:
         self._require_host(session, host)
         if session.state not in {SessionState.READY_BARRIER, SessionState.ACTIVE}:
             raise LobbyError("check that everyone has a matching game before launching")
-        address = self._required_text(request, "address")
         kind = request.get("kind", "direct")
+        address = "relay" if kind == "relay" else self._required_text(request, "address")
         if kind == "code":
             if not re.fullmatch(r"[A-Za-z0-9]{4,16}", address):
                 raise LobbyError("host code must be 4-16 letters or digits")
             endpoint = {"kind": "code", "address": address}
+        elif kind == "relay":
+            endpoint = {"kind": "relay", "address": "relay"}
         elif kind == "direct":
             if not self._HOST_RE.match(address):
                 raise LobbyError("address must be a hostname or IP address")
@@ -501,7 +510,7 @@ class LobbyService:
                 raise LobbyError("port must be 1-65535")
             endpoint = {"kind": "direct", "address": address, "port": port}
         else:
-            raise LobbyError("kind must be 'direct' or 'code'")
+            raise LobbyError("kind must be 'direct', 'code' or 'relay'")
         self.options[session.session_id]["endpoint"] = endpoint
         psk = request.get("psk")
         if psk is None:
@@ -771,7 +780,8 @@ class LobbyService:
 
     def status(self, request: dict) -> dict:
         session, _ = self._authorized(request)
-        return {"session": session.as_dict()}
+        endpoint = self.options.get(session.session_id, {}).get("endpoint")
+        return {"session": {**session.as_dict(), "endpoint_kind": endpoint["kind"] if endpoint else None}}
 
     def dispatch(self, request: dict) -> dict:
         operation = request.get("operation")

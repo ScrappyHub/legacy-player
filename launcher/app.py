@@ -5,12 +5,13 @@ import argparse
 import contextlib
 import io
 import json
+import os
 import random
 import time
 from pathlib import Path
 
 from adapters.retroarch import (
-    CORES, NetplayError, build_guest_command, build_host_command, build_solo_command, detect_lan_address, find_core,
+    CORES, EXPERIMENTAL, NETPLAY_NOTES, NetplayError, build_guest_command, build_host_command, build_solo_command, detect_lan_address, find_core,
 )
 
 from adapters.dolphin.netplay_guide import (
@@ -29,6 +30,17 @@ from .lobby_client import LobbyClient, LobbyClientError
 from .scanner import DEFAULT_EXCLUDES, scan
 
 ZIP_OK = {"nes", "snes", "gb", "gbc", "gba", "genesis", "atari"}
+
+# Consoles whose usual emulator has no netplay at all: say so plainly instead of "not yet".
+NO_NETPLAY = {
+    "ps2": "PCSX2 has no netplay and no deterministic core, so PlayStation 2 cannot be played together. Kaillera-style forks are unmaintained.",
+    "psp": "PSP games with multiplayer use PPSSPP's ad hoc mode (Settings > Networking, built-in PRO ad hoc server on the host). It is direct player-to-player; the app's relay cannot carry it.",
+    "xbox": "xemu has no netplay. System Link works only on one home network.",
+    "x360": "Xenia has no netplay.",
+    "ps3": "RPCS3 has no netplay. Some games' online modes work through RPCN, RPCS3's own service.",
+    "3ds": "Azahar has no netplay; local-wireless games can meet over its own room server.",
+    "gamecube": "GameCube uses Dolphin NetPlay (guided).", "wii": "Wii uses Dolphin NetPlay (guided).",
+}
 
 
 class AppError(ValueError):
@@ -253,7 +265,7 @@ class LauncherApp:
                 return {"ready": False, "engine": "dolphin", "reason": f"Extract this {game['extension']} archive first."}
             return {"ready": True, "engine": "dolphin", "reason": "", "exe": exe}
         if game["console"] not in CORES:
-            return {"ready": False, "reason": f"{BY_ID[game['console']].name} has no netplay launcher yet."}
+            return {"ready": False, "reason": NO_NETPLAY.get(game["console"], f"{BY_ID[game['console']].name} has no netplay launcher yet.")}
         if game["is_archive"] and not (game["extension"] == ".zip"):
             return {"ready": False, "reason": f"Extract this {game['extension']} archive first."}
         found = emulators.find_emulators(self._search_roots(), self.catalog.data["emulator_paths"])
@@ -264,7 +276,8 @@ class LauncherApp:
             core = find_core(exe, game["console"])
         except NetplayError as exc:
             return {"ready": False, "reason": str(exc)}
-        return {"ready": True, "engine": "retroarch", "reason": "", "exe": exe, "core": core}
+        return {"ready": True, "engine": "retroarch", "reason": "", "exe": exe, "core": core,
+                "experimental": game["console"] in EXPERIMENTAL, "note": NETPLAY_NOTES.get(game["console"], "")}
 
     def _retroarch_path(self) -> str | None:
         found = emulators.find_emulators(self._search_roots() + [self.setup.install_root], self.catalog.data["emulator_paths"])
@@ -298,7 +311,7 @@ class LauncherApp:
             **self._public(game),
             "console_name": console.name, "netplay": console.netplay, "netplay_note": console.netplay_note,
             "launch": self.launch_check(game), "compat_id": game["compat_id"],
-            "netplay_launch": {k: v for k, v in self.netplay_check(game).items() if k in {"ready", "reason"}},
+            "netplay_launch": {k: v for k, v in self.netplay_check(game).items() if k in {"ready", "reason", "experimental", "note"}},
             "controller": controllers.layout(console.controller, self.catalog.data["controller_overrides"].get(console.id)),
             "save_style": console.save_style, "save_source": save_dir, "save_files": save_files,
             "backups": saves.list_backups(self.data_dir, console.id, game["compat_id"]),
@@ -777,6 +790,9 @@ class LauncherApp:
             ok, reason = False, "Waiting for the host to check that everyone matches."
         engine = check.get("engine") or ("dolphin" if game["console"] in DOLPHIN_CONSOLES else "retroarch")
         return {"ready": ok, "reason": reason, "engine": engine, "suggested_address": detect_lan_address(),
+                "relay_available": netplay_tunnel.available() and engine == "retroarch",
+                "direct_allowed": self.catalog.settings()["allow_direct_connections"],
+                "endpoint_kind": (room.get("session") or {}).get("endpoint_kind"),
                 "default_port": DOLPHIN_PORT if engine == "dolphin" else 55435}
 
     @staticmethod
@@ -843,27 +859,63 @@ class LauncherApp:
                     raise AppError("Press 'Check everyone matches' first.")
                 key = None
                 ra_port = port
+                settings = self.catalog.settings()
+                relay = bool(body.get("relay", True))
+                if not relay:
+                    # Direct netplay hands the host's address to every guest. It is never the default
+                    # and needs both the privacy setting and an explicit confirmation for this launch.
+                    if not settings["allow_direct_connections"]:
+                        raise AppError("Direct connections are off (Settings > Privacy). They would reveal your address to every guest; the relay hides it.")
+                    if not body.get("expose_address"):
+                        raise AppError("Confirm that you accept revealing your address to the guests, or use the relay.")
+                if relay and not encrypt:
+                    raise AppError("Relay mode needs 'Encrypt match traffic' on (the relay only carries encrypted bytes).")
                 if encrypt:
                     if not netplay_tunnel.available():
                         raise AppError("Encrypted matches need the Legacy Player app (Python 3.13+). Turn off 'Encrypt match traffic' in Settings to play unencrypted on a trusted network.")
-                    ra_port = port + 1 if port < 65535 else port - 1
                     key = netplay_tunnel.new_key()
-                    self.tunnel = netplay_tunnel.Tunnel("host", key, "0.0.0.0", port, "127.0.0.1", ra_port).start()
+                    if relay:
+                        # RetroArch listens on loopback only; the relay through the server is the only way in.
+                        ra_port = port
+                        client, auth = self._client(), self._auth()
+                        self.tunnel = netplay_tunnel.RelayHost(
+                            key, lambda: client.open_relay("host", auth, wait_paired=True), "127.0.0.1", ra_port,
+                            slots=max(1, (room.get("max_players") or 4) - 1)).start()
+                    else:
+                        ra_port = port + 1 if port < 65535 else port - 1
+                        self.tunnel = netplay_tunnel.Tunnel("host", key, "0.0.0.0", port, "127.0.0.1", ra_port).start()
                     encrypted = True
                 command = build_host_command(check["exe"], check["core"], game["path"], ra_port, nick, extra)
             else:
                 endpoint = self._call({"operation": "get_endpoint", **self._auth()})["endpoint"]
                 if not endpoint:
                     raise AppError("The host has not launched yet. Wait for the notification.")
-                connect_address, connect_port = endpoint["address"], endpoint["port"]
-                if endpoint.get("psk"):
-                    self.tunnel = netplay_tunnel.Tunnel("guest", endpoint["psk"], "127.0.0.1", 0, connect_address, connect_port).start()
+                if endpoint.get("kind") == "relay":
+                    if not endpoint.get("psk"):
+                        raise AppError("The host's relay has no key; ask them to relaunch.")
+                    client, auth = self._client(), self._auth()
+                    self.tunnel = netplay_tunnel.Tunnel(
+                        "guest", endpoint["psk"], "127.0.0.1", 0, "", 0,
+                        dial=lambda: client.open_relay("guest", auth, wait_paired=True)).start()
                     connect_address, connect_port = "127.0.0.1", self.tunnel.port
                     encrypted = True
+                    relay = True
+                else:
+                    relay = False
+                    if not self.catalog.settings()["allow_direct_connections"] and not body.get("expose_address"):
+                        raise AppError("The host chose a direct connection, which shares their address with you and yours with them. "
+                                       "Allow direct connections in Settings > Privacy (or ask the host to use the relay).")
+                    connect_address, connect_port = endpoint["address"], endpoint["port"]
+                    if endpoint.get("psk"):
+                        self.tunnel = netplay_tunnel.Tunnel("guest", endpoint["psk"], "127.0.0.1", 0, connect_address, connect_port).start()
+                        connect_address, connect_port = "127.0.0.1", self.tunnel.port
+                        encrypted = True
                 command = build_guest_command(check["exe"], check["core"], game["path"], connect_address, connect_port, nick, extra)
             pid = emulators.launch_command(command)
             if room["role"] == "host":  # publish only once RetroArch is starting
                 request = {"operation": "set_endpoint", "address": address, "port": port, **self._auth()}
+                if relay:
+                    request = {"operation": "set_endpoint", "kind": "relay", **self._auth()}
                 if encrypted:
                     request["psk"] = key
                 try:
@@ -878,7 +930,7 @@ class LauncherApp:
             self._close_tunnel()
             raise AppError(f"Could not start RetroArch: {exc}") from exc
         self.catalog.record_play(game["id"])
-        return {"launched": game["title"], "role": room["role"], "pid": pid, "encrypted": encrypted}
+        return {"launched": game["title"], "role": room["role"], "pid": pid, "encrypted": encrypted, "relay": relay}
 
     def shutdown(self) -> None:
         """Called when the app window closes: leave rooms politely and drop the tunnel."""
@@ -901,6 +953,13 @@ class LauncherApp:
         mode = body.get("mode", "traversal")
         if mode not in {"traversal", "direct"}:
             raise AppError("mode must be traversal or direct")
+        # Dolphin NetPlay connects players to each other (even the traversal server only
+        # introduces them), so every player learns the others' addresses. No relay exists for it.
+        if not self.catalog.settings()["allow_direct_connections"]:
+            raise AppError("Dolphin NetPlay shares addresses between players and cannot use the relay. "
+                           "Allow direct connections in Settings > Privacy (best over a VPN such as Tailscale) to use it.")
+        if not body.get("expose_address"):
+            raise AppError("Confirm that you accept sharing your address with the other players.")
         try:
             if room["role"] == "host":
                 state = self._call({"operation": "status", **self._auth()})["session"]["state"]
@@ -986,7 +1045,7 @@ class LauncherApp:
         import threading
         from server.selfsigned import ensure_certificate
         folder = self.data_dir / "server" / "tls"
-        if (folder / "cert.pem").exists():
+        if (folder / "cert.pem").exists() or os.environ.get("LEGACY_PLAYER_NO_BACKGROUND"):
             return
         threading.Thread(target=lambda: ensure_certificate(folder), daemon=True).start()
 

@@ -25,6 +25,17 @@ CORES: dict[str, tuple[str, ...]] = {
     "gba": ("mgba_libretro", "vba_next_libretro"),
     "genesis": ("genesis_plus_gx_libretro", "picodrive_libretro"),
     "atari": ("stella_libretro",),
+    # Experimental: RetroArch netplay works with these cores but is less forgiving of lag and
+    # some games desync. Setup checks each core's info file for deterministic savestates.
+    "ps1": ("pcsx_rearmed_libretro", "swanstation_libretro", "mednafen_psx_libretro"),
+    "n64": ("mupen64plus_next_libretro", "parallel_n64_libretro"),
+    "ds": ("melondsds_libretro", "melonds_libretro", "desmume_libretro"),
+}
+EXPERIMENTAL = {"ps1", "n64", "ds"}
+NETPLAY_NOTES = {
+    "ps1": "PlayStation netplay needs the same BIOS file on every computer and a fast connection; save states are large.",
+    "n64": "N64 netplay is the least stable: expect occasional desyncs, keep the same core and settings everywhere.",
+    "ds": "DS netplay is new in these cores; local-wireless games will not see each other, only the same game in lockstep.",
 }
 CORE_SUFFIXES = {"win32": ".dll", "darwin": ".dylib"}
 

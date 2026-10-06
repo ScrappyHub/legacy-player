@@ -69,10 +69,13 @@ def _pipe(a: socket.socket, b: socket.socket) -> None:
 class Tunnel:
     """mode 'host': TLS in -> plain out to RetroArch. mode 'guest': plain in from RetroArch -> TLS out."""
 
-    def __init__(self, mode: str, key: str, listen_host: str, listen_port: int, target_host: str, target_port: int) -> None:
+    def __init__(self, mode: str, key: str, listen_host: str, listen_port: int, target_host: str, target_port: int,
+                 dial=None) -> None:
+        """dial: optional callable returning an already-connected socket to use instead of
+        target_host:target_port (relay mode: the lobby server pairs it with the host)."""
         if mode not in {"host", "guest"}:
             raise ValueError("mode must be host or guest")
-        self.mode, self.target = mode, (target_host, target_port)
+        self.mode, self.target, self.dial = mode, (target_host, target_port), dial
         self.context = _context(mode == "host", key)
         self.listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -109,7 +112,7 @@ class Tunnel:
                 conn = self.context.wrap_socket(conn, server_side=True)  # bad key -> handshake fails -> dropped
                 upstream = socket.create_connection(self.target, timeout=10)
             else:
-                raw = socket.create_connection(self.target, timeout=10)
+                raw = self.dial() if self.dial else socket.create_connection(self.target, timeout=10)
                 upstream = self.context.wrap_socket(raw, server_hostname=None)
             for s in (conn, upstream):
                 s.settimeout(None)
@@ -117,7 +120,7 @@ class Tunnel:
                     s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
                 except (OSError, AttributeError):
                     pass
-        except (OSError, ssl.SSLError):
+        except (OSError, ssl.SSLError, RuntimeError):
             for s in (conn, upstream):
                 if s:
                     try:
@@ -132,3 +135,58 @@ class Tunnel:
                 s.close()
             except OSError:
                 pass
+
+
+class RelayHost:
+    """Host side of relay mode: keep a few connections parked at the lobby server; when the
+    server pairs one with a guest, speak TLS-PSK over it and pipe to the local RetroArch."""
+
+    def __init__(self, key: str, dial, local_host: str, local_port: int, slots: int = 4) -> None:
+        self.context = _context(True, key)
+        self.dial, self.local, self.slots = dial, (local_host, local_port), slots
+        self.stopped = threading.Event()
+        self.threads: list[threading.Thread] = []
+        self.errors: list[str] = []
+
+    def start(self) -> "RelayHost":
+        for _ in range(self.slots):
+            t = threading.Thread(target=self._slot, daemon=True)
+            t.start()
+            self.threads.append(t)
+        return self
+
+    def stop(self) -> None:
+        self.stopped.set()
+
+    def _slot(self) -> None:
+        while not self.stopped.is_set():
+            try:
+                raw = self.dial()            # returns once a guest is paired with this connection
+            except Exception as exc:         # relay refused / server gone: back off, try again
+                self.errors.append(str(exc)[:120])
+                del self.errors[:-10]
+                if self.stopped.wait(2.0):
+                    return
+                continue
+            try:
+                conn = self.context.wrap_socket(raw, server_side=True)
+                upstream = socket.create_connection(self.local, timeout=10)
+                for s in (conn, upstream):
+                    s.settimeout(None)
+                    try:
+                        s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+                    except (OSError, AttributeError):
+                        pass
+            except (OSError, ssl.SSLError):
+                try:
+                    raw.close()
+                except OSError:
+                    pass
+                continue
+            threading.Thread(target=_pipe, args=(conn, upstream), daemon=True).start()
+            _pipe(upstream, conn)
+            for s in (conn, upstream):
+                try:
+                    s.close()
+                except OSError:
+                    pass
