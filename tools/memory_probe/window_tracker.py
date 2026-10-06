@@ -8,6 +8,7 @@ from pathlib import Path
 from tools.memory_probe.dolphin_attach.attach import find_dolphin_process
 from tools.memory_probe.dolphin_attach.ram_map import find_dolphin_ram_region
 from tools.memory_probe.game_fingerprint.fingerprint import detect_game
+from tools.memory_probe.game_fingerprint.compatibility import require_game_profile
 from tools.memory_probe.memory_reader.reader import read_region
 
 
@@ -123,8 +124,10 @@ def main() -> None:
         raise SystemExit(1)
 
     game = detect_game(proc)
-    if not game or game.get("game_id") == "unknown":
-        print("ERROR: game_fingerprint_unknown")
+    try:
+        require_game_profile(game)
+    except RuntimeError as exc:
+        print(f"ERROR: {exc}")
         raise SystemExit(1)
 
     ram_region = find_dolphin_ram_region(proc)

@@ -7,6 +7,8 @@ from pathlib import Path
 from tools.memory_probe.dolphin_attach.attach import find_dolphin_process
 from tools.memory_probe.dolphin_attach.ram_map import find_dolphin_ram_region
 from tools.memory_probe.dolphin_attach.ram_sampler import build_sample_offsets
+from tools.memory_probe.game_fingerprint.compatibility import require_game_profile
+from tools.memory_probe.game_fingerprint.fingerprint import detect_game
 from tools.memory_probe.memory_reader.reader import read_region
 
 
@@ -56,6 +58,12 @@ def main():
     proc = find_dolphin_process()
     if not proc:
         print("ERROR: dolphin_not_found")
+        return
+
+    try:
+        require_game_profile(detect_game(proc))
+    except RuntimeError as exc:
+        print(f"ERROR: {exc}")
         return
 
     ram = find_dolphin_ram_region(proc)

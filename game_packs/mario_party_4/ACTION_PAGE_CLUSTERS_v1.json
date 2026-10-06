@@ -2,47 +2,36 @@
   "schema": "legacy_player.action_page_clusters.v1",
   "game_id": "GMPE01",
   "region": "USA",
-  "notes": "Cluster registry for targeted hot-page validation. Start_minigame_once is currently grounded in a successful targeted capture. Board_space_land_once and coin_total_change_once are placeholders until proven with positive hot/targeted capture evidence.",
+  "notes": "Cluster registry for targeted hot-page validation. Canonical matching is based on page_offsets, not absolute addresses, because Dolphin RAM base addresses drift between runs. Current evidence shows a grounded coin_total_change_once hot cluster. Recent validator runs for inboard_event_transition_once and board_space_land_once collapsed onto the same coin_total_change_once cluster, so they remain unseparated and ungrounded as distinct action signatures.",
   "clusters": {
-    "inboard_event_transition_once": {
+    "coin_total_change_once": {
       "confidence": "grounded",
+      "token": "MATCH_COIN_TOTAL",
       "page_offsets": [
-        1679360,
         1662976,
-        1515520,
-        1552384,
-        1527808,
-        1560576,
         1466368,
-        1458176,
-        1556480,
-        1437696
+        1679360
       ],
-      "absolute_addresses": [
-        "0x1c60654a000",
-        "0x1c606546000",
-        "0x1c606522000",
-        "0x1c60652b000",
-        "0x1c606525000",
-        "0x1c60652d000",
-        "0x1c606516000",
-        "0x1c606514000",
-        "0x1c60652c000",
-        "0x1c60650f000"
+      "absolute_addresses_example": [
+        "0x1c605646000",
+        "0x1c605616000",
+        "0x1c60564a000"
       ],
-      "notes": "Derived from mutation-61f9ae86_inboard_event_transition_once.json top changed pages."
+      "notes": "Grounded from repeated validator matches. Recent runs continue to overlap this cluster for coin_total_change_once, and other attempted actions are currently collapsing onto the same hot pages. Treat page_offsets as canonical. absolute_addresses_example is informative only."
+    },
+    "inboard_event_transition_once": {
+      "confidence": "ungrounded",
+      "token": "MATCH_INBOARD_EVENT_TRANSITION",
+      "page_offsets": [],
+      "absolute_addresses_example": [],
+      "notes": "Do not treat prior offsets as a distinct cluster. Latest validator run matched coin_total_change_once with overlap=3/3 score=1.0, so the current transition signature is not separable from the coin_total cluster."
     },
     "board_space_land_once": {
-      "confidence": "placeholder",
+      "confidence": "ungrounded",
+      "token": "MATCH_BOARD_SPACE_LAND",
       "page_offsets": [],
-      "absolute_addresses": [],
-      "notes": "No grounded cluster yet. Populate only after a positive targeted or hot capture with non-zero changed pages."
-    },
-    "coin_total_change_once": {
-      "confidence": "placeholder",
-      "page_offsets": [],
-      "absolute_addresses": [],
-      "notes": "No grounded cluster yet. Populate only after a positive targeted or hot capture with non-zero changed pages."
+      "absolute_addresses_example": [],
+      "notes": "Still ungrounded. Latest validator run matched coin_total_change_once rather than a distinct board-space cluster. Leave empty until repeated captures produce a stable separable signature."
     }
   }
 }

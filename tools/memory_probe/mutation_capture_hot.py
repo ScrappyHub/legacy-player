@@ -5,6 +5,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from tools.memory_probe.dolphin_attach.attach import find_dolphin_process
+from tools.memory_probe.dolphin_attach.ram_map import find_dolphin_ram_region
+from tools.memory_probe.game_fingerprint.compatibility import require_game_profile
+from tools.memory_probe.game_fingerprint.fingerprint import detect_game
 from tools.memory_probe.memory_reader.reader import read_region
 
 
@@ -28,22 +31,25 @@ def load_hot_config() -> dict:
     return json.loads(HOT_CONFIG_PATH.read_text(encoding="utf-8"))
 
 
-def read_hot_pages(proc, hot_pages: list[dict]) -> dict:
+def read_hot_pages(proc, ram_base: int, hot_pages: list[dict]) -> dict:
     pages = []
 
     for item in hot_pages:
-        absolute_address_text = item["absolute_address"]
-        absolute_address = int(absolute_address_text, 16)
+        page_offset = int(item["page_offset"])
+        absolute_address = ram_base + page_offset
+        absolute_address_text = hex(absolute_address)
 
         data = read_region(proc, absolute_address, PAGE_SIZE)
         if data is None:
             page = {
+                "page_offset": page_offset,
                 "absolute_address": absolute_address_text,
                 "page_size": PAGE_SIZE,
                 "data_hex": None,
             }
         else:
             page = {
+                "page_offset": page_offset,
                 "absolute_address": absolute_address_text,
                 "page_size": len(data),
                 "data_hex": data.hex(),
@@ -128,6 +134,17 @@ def main() -> None:
         print("ERROR: dolphin_not_found")
         raise SystemExit(1)
 
+    try:
+        require_game_profile(detect_game(proc))
+    except RuntimeError as exc:
+        print(f"ERROR: {exc}")
+        raise SystemExit(1)
+
+    ram_region = find_dolphin_ram_region(proc)
+    if not ram_region:
+        print("ERROR: dolphin_ram_region_not_found")
+        raise SystemExit(1)
+
     run_id = "hot-" + str(uuid.uuid4())[:8]
     out_path = EXPORT_DIR / f"{run_id}_{action_label}.json"
 
@@ -139,7 +156,7 @@ def main() -> None:
     print(f"post_delay_seconds: {POST_DELAY_SECONDS}")
 
     input("Press Enter for BASELINE...")
-    baseline = read_hot_pages(proc, hot_pages)
+    baseline = read_hot_pages(proc, ram_region["base_address"], hot_pages)
 
     print("")
     print("Perform action NOW...")
@@ -147,7 +164,7 @@ def main() -> None:
 
     post_snapshots = []
     for i in range(POST_SNAPSHOT_COUNT):
-        snap = read_hot_pages(proc, hot_pages)
+        snap = read_hot_pages(proc, ram_region["base_address"], hot_pages)
         post_snapshots.append({
             "snapshot_name": f"snapshot_{chr(ord('b') + i)}",
             "snapshot": snap,

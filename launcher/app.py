@@ -1,0 +1,1030 @@
+"""Application logic behind the local UI. Independent of HTTP so it can be tested directly."""
+from __future__ import annotations
+
+import argparse
+import contextlib
+import io
+import json
+import random
+import time
+from pathlib import Path
+
+from adapters.retroarch import (
+    CORES, NetplayError, build_guest_command, build_host_command, build_solo_command, detect_lan_address, find_core,
+)
+
+from adapters.dolphin.netplay_guide import (
+    DEFAULT_PORT as DOLPHIN_PORT, SUPPORTED_CONSOLES as DOLPHIN_CONSOLES, DolphinNetplayError,
+    build_open_command as dolphin_open_command, steps as dolphin_steps,
+)
+
+from adapters.retroarch import tunnel as netplay_tunnel
+
+from . import controllers, emulators, engines, pads, savefolders, saves
+from .installer import EngineInstaller, InstallError
+from .setup import Setup, SetupError
+from .catalog import SETTINGS_SCHEMA, Catalog, CatalogError
+from .consoles import BY_ID, CONSOLES
+from .lobby_client import LobbyClient, LobbyClientError
+from .scanner import DEFAULT_EXCLUDES, scan
+
+ZIP_OK = {"nes", "snes", "gb", "gbc", "gba", "genesis", "atari"}
+
+
+class AppError(ValueError):
+    """An error whose message is safe and useful to show the user."""
+
+
+EVENT_TEXT = {
+    "participant_joined": "{participant_id} joined the room.",
+    "participant_left": "{participant_id} left the room.",
+    "participant_kicked": "{participant_id} was removed by the host ({reason}).",
+    "participant_disconnected": "{participant_id} lost connection.",
+    "participant_reconnected": "{participant_id} is back.",
+    "join_requested": "{participant_id} wants to join. Approve or deny below.",
+    "join_denied": "You denied {participant_id}.",
+    "session_resumed": "The server restarted. Everyone needs to press Ready again.",
+    "endpoint_published": "The host has launched. Press Join match.",
+    "waitlist_joined": "{participant_id} is waiting for a spot (number {position} in line).",
+    "waitlist_priority": "{participant_id}'s place in line was changed by the host.",
+    "waitlist_dropped": "{participant_id} stopped waiting.",
+    "slot_opened": "A spot opened. {waiting} waiting; the next in line will be let in.",
+    "capacity_changed": "The room now holds up to {max_players} players.",
+    "server_stopping": "The server is shutting down. Your room is saved and will return when it restarts.",
+    "session_created": "Room created.",
+    "invite_created": "A new invite code was made.",
+    "invites_revoked": "All invite codes were cancelled.",
+}
+
+
+def describe_event(event: dict) -> dict:
+    template = EVENT_TEXT.get(event["kind"], event["kind"])
+    try:
+        text = template.format(**event["data"])
+    except (KeyError, IndexError):
+        text = template
+    warn = event["kind"] in {"participant_kicked", "participant_disconnected", "server_stopping", "join_requested"}
+    return {"seq": event["seq"], "kind": event["kind"], "text": text, "level": "warn" if warn else "info",
+            "at": event["at_utc"], "who": event["data"].get("participant_id")}
+
+
+class LauncherApp:
+    def __init__(self, data_dir: Path, roots: list[str] | None = None) -> None:
+        self.data_dir = Path(data_dir)
+        self.catalog = Catalog(self.data_dir)
+        if roots:
+            self.catalog.set_roots(roots)
+        self.games: dict[str, dict] = {}
+        self.skipped = {"unrecognized": 0, "duplicates": 0}
+        self.room: dict | None = None
+        self.waits: dict[str, dict] = {}   # rooms you are queued for while doing something else
+        self.tunnel = None
+        self.last_ping = 0.0
+        self.bye_at = 0.0
+        self.setup = Setup(self.data_dir, self._retroarch_path,
+                           lambda path: self.catalog.set_mapping("emulator_paths", "retroarch", path))
+        self.installer = EngineInstaller(self.data_dir / "emulators")
+        self._prepare_certificate()
+        self._load_cache()
+        if not self.games and self.catalog.data["roots"]:
+            self.rescan()
+
+    # library ------------------------------------------------------------
+    def _cache_path(self) -> Path:
+        return self.data_dir / "library_cache.json"
+
+    def _load_cache(self) -> None:
+        try:
+            cached = json.loads(self._cache_path().read_text(encoding="utf-8"))
+            self.games = {g["id"]: g for g in cached["games"]}
+            self.skipped = cached["skipped"]
+        except (OSError, json.JSONDecodeError, KeyError):
+            pass
+
+    def rescan(self, body: dict | None = None) -> dict:
+        roots = [Path(r) for r in self.catalog.data["roots"]]
+        if not roots:
+            raise AppError("Add a games folder first (Library folders).")
+        started = time.time()
+        result = scan(roots, DEFAULT_EXCLUDES)
+        self.games = {g.id: g.as_dict() for g in result["games"]}
+        self.skipped = result["skipped"]
+        self._cache_path().write_text(json.dumps({"games": list(self.games.values()), "skipped": self.skipped}), encoding="utf-8")
+        return {"games": len(self.games), "skipped": self.skipped, "seconds": round(time.time() - started, 2)}
+
+    def api_roots(self, body: dict) -> dict:
+        if "roots" in body:
+            try:
+                self.catalog.set_roots(body["roots"])
+            except CatalogError as exc:
+                raise AppError(str(exc)) from exc
+        return {"roots": self.catalog.data["roots"], "excluded_folders": list(DEFAULT_EXCLUDES)}
+
+    def api_rescan(self, body: dict) -> dict:
+        return self.rescan(body)
+
+    def _public(self, game: dict) -> dict:
+        history = self.catalog.data["history"].get(game["id"], {})
+        return {
+            "id": game["id"], "title": game["title"], "console": game["console"], "region": game["region"],
+            "tags": game["tags"], "size_mb": round(game["size"] / 1048576, 1),
+            "favorite": game["id"] in self.catalog.data["favorites"],
+            "plays": history.get("plays", 0), "last_played": history.get("last_played", 0),
+            "is_archive": game["is_archive"], "extension": game["extension"],
+        }
+
+    def api_library(self, body: dict) -> dict:
+        query = str(body.get("q", "")).strip().lower()
+        console = body.get("console")
+        favorites_only = bool(body.get("favorites"))
+        favorites = set(self.catalog.data["favorites"])
+        counts: dict[str, int] = {}
+        selected = []
+        for game in self.games.values():
+            counts[game["console"]] = counts.get(game["console"], 0) + 1
+            if console and game["console"] != console:
+                continue
+            if favorites_only and game["id"] not in favorites:
+                continue
+            if query and query not in game["title"].lower():
+                continue
+            selected.append(game)
+        sort = body.get("sort", "title")
+        if sort == "recent":
+            history = self.catalog.data["history"]
+            selected.sort(key=lambda g: -history.get(g["id"], {}).get("last_played", 0))
+        elif sort == "size":
+            selected.sort(key=lambda g: -g["size"])
+        else:
+            selected.sort(key=lambda g: (g["console"] and BY_ID[g["console"]].order, g["sort_title"]))
+        consoles = [
+            {"id": c.id, "name": c.name, "maker": c.maker, "count": counts.get(c.id, 0),
+             "netplay": c.netplay, "netplay_note": c.netplay_note}
+            for c in CONSOLES if counts.get(c.id)
+        ]
+        return {
+            "consoles": consoles, "total": len(self.games), "shown": len(selected),
+            "favorites_total": len(favorites & set(self.games)),
+            "games": [self._public(g) for g in selected[:1000]],
+            "truncated": len(selected) > 1000, "skipped": self.skipped,
+            "roots": self.catalog.data["roots"],
+        }
+
+    def api_favorite(self, body: dict) -> dict:
+        game = self._game(body)
+        self.catalog.set_favorite(game["id"], bool(body.get("favorite", True)))
+        return {"favorite": game["id"] in self.catalog.data["favorites"]}
+
+    def _game(self, body: dict) -> dict:
+        game = self.games.get(body.get("id"))
+        if game is None:
+            raise AppError("That game is no longer in the library. Try Rescan.")
+        return game
+
+    # emulators / launching --------------------------------------------------
+    def _search_roots(self) -> list[Path]:
+        roots = []
+        for root in self.catalog.data["roots"]:
+            roots.append(Path(root))
+            if (Path(root) / "Emulators").is_dir():
+                roots.append(Path(root) / "Emulators")
+        roots += [Path(folder) for folder in self.catalog.data.get("emulator_folders", []) if Path(folder).is_dir()]
+        if (self.data_dir / "emulators").is_dir():
+            roots.append(self.data_dir / "emulators")
+        return roots
+
+    def _emulator_for(self, console_id: str, found: dict | None = None):
+        found = found or emulators.find_emulators(self._search_roots(), self.catalog.data["emulator_paths"])
+        preferred = self.catalog.data["console_emulator"].get(console_id)
+        order = ([preferred] if preferred else []) + list(BY_ID[console_id].emulators)
+        for emulator_id in order:
+            if emulator_id in found and found[emulator_id]["path"]:
+                return emulator_id, found[emulator_id]
+        return None, None
+
+    def launch_check(self, game: dict) -> dict:
+        emulator_id, info = self._emulator_for(game["console"])
+        if game["is_archive"] and not (game["console"] in ZIP_OK and game["extension"] == ".zip"):
+            return {"ready": False, "reason": f"This game is a {game['extension']} archive. Extract it first; the launcher never changes your files."}
+        if emulator_id is None:
+            names = ", ".join(emulators.EMULATORS[e]["name"] for e in BY_ID[game["console"]].emulators if e in emulators.EMULATORS)
+            return {"ready": False, "reason": f"No emulator set for {BY_ID[game['console']].name}. Supported: {names}. Set its path in Emulators."}
+        return {"ready": True, "emulator": info["name"], "emulator_id": emulator_id, "reason": ""}
+
+    def _save_dir(self, game: dict) -> str | None:
+        """Configured save folder, else (cartridge consoles) the game's own folder,
+        where emulators such as mGBA write .sav files by default."""
+        console = BY_ID[game["console"]]
+        configured = self.catalog.data["save_sources"].get(console.id)
+        if configured:
+            return configured
+        if console.id in CORES and self._emulator_for(console.id)[0] == "retroarch":
+            return str(savefolders.console_dir(self._save_root(), console.id))
+        if console.save_style == "cartridge":
+            return str(Path(game["path"]).parent)
+        return None
+
+    def _save_root(self) -> Path:
+        configured = self.catalog.data.get("save_root")
+        return Path(configured) if configured else savefolders.default_root(self.data_dir)
+
+    def _retroarch_extra(self, console_id: str, exe: str, netplay: bool = False) -> list[str]:
+        """Extra RetroArch arguments: managed save folders and any custom pad bindings."""
+        lines: list[str] = ["netplay_public_announce = \"false\""] if netplay else []  # private rooms stay private
+        for player in range(1, pads.MAX_PLAYERS + 1):
+            key = self.catalog.data["player_pads"].get(str(player))
+            profile = self.catalog.data["pad_profiles"].get(key) if key else None
+            if profile:
+                lines += pads.retroarch_pad_config(profile, player)[0]
+        try:
+            cfg = savefolders.retroarch_append_config(self.data_dir, self._save_root(), console_id, exe, lines)
+        except (OSError, ValueError) as exc:
+            raise AppError(f"Could not prepare the save folders: {exc}") from exc
+        return ["--appendconfig", str(cfg)]
+
+    def netplay_check(self, game: dict) -> dict:
+        """Can this game be launched into emulator-native netplay (RetroArch)?"""
+        if game["console"] in DOLPHIN_CONSOLES:
+            found = emulators.find_emulators(self._search_roots(), self.catalog.data["emulator_paths"])
+            exe = found.get("dolphin", {}).get("path")
+            if not exe:
+                return {"ready": False, "engine": "dolphin", "reason": "Dolphin is not set up. Set its path in Emulators or use Setup."}
+            if game["is_archive"]:
+                return {"ready": False, "engine": "dolphin", "reason": f"Extract this {game['extension']} archive first."}
+            return {"ready": True, "engine": "dolphin", "reason": "", "exe": exe}
+        if game["console"] not in CORES:
+            return {"ready": False, "reason": f"{BY_ID[game['console']].name} has no netplay launcher yet."}
+        if game["is_archive"] and not (game["extension"] == ".zip"):
+            return {"ready": False, "reason": f"Extract this {game['extension']} archive first."}
+        found = emulators.find_emulators(self._search_roots(), self.catalog.data["emulator_paths"])
+        exe = found.get("retroarch", {}).get("path")
+        if not exe:
+            return {"ready": False, "reason": "RetroArch is not set up. Set its path in Emulators."}
+        try:
+            core = find_core(exe, game["console"])
+        except NetplayError as exc:
+            return {"ready": False, "reason": str(exc)}
+        return {"ready": True, "engine": "retroarch", "reason": "", "exe": exe, "core": core}
+
+    def _retroarch_path(self) -> str | None:
+        found = emulators.find_emulators(self._search_roots() + [self.setup.install_root], self.catalog.data["emulator_paths"])
+        return found.get("retroarch", {}).get("path")
+
+    def api_setup_status(self, body: dict) -> dict:
+        found = emulators.find_emulators(self._search_roots(), self.catalog.data["emulator_paths"])
+        return self.setup.check(found.get("dolphin", {}).get("path"))
+
+    def _internet_ok(self, body: dict) -> None:
+        if not self.catalog.settings()["allow_internet"]:
+            raise AppError("Internet downloads are off. Turn on 'Allow internet downloads' in Settings first.")
+        if not body.get("confirm"):
+            raise AppError("Please confirm the download.")
+
+    def api_setup_install(self, body: dict) -> dict:
+        self._internet_ok(body)
+        try:
+            return {"job": self.setup.start(str(body.get("what", "all")))}
+        except SetupError as exc:
+            raise AppError(str(exc)) from exc
+
+    def api_game(self, body: dict) -> dict:
+        game = self._game(body)
+        console = BY_ID[game["console"]]
+        save_dir = self._save_dir(game)
+        save_files = []
+        if save_dir:
+            save_files = [str(p.name) for p in saves.find_save_files(Path(save_dir), Path(game["path"]).stem)]
+        return {
+            **self._public(game),
+            "console_name": console.name, "netplay": console.netplay, "netplay_note": console.netplay_note,
+            "launch": self.launch_check(game), "compat_id": game["compat_id"],
+            "netplay_launch": {k: v for k, v in self.netplay_check(game).items() if k in {"ready", "reason"}},
+            "controller": controllers.layout(console.controller, self.catalog.data["controller_overrides"].get(console.id)),
+            "save_style": console.save_style, "save_source": save_dir, "save_files": save_files,
+            "backups": saves.list_backups(self.data_dir, console.id, game["compat_id"]),
+        }
+
+    def api_launch(self, body: dict) -> dict:
+        game = self._game(body)
+        check = self.launch_check(game)
+        if not check["ready"]:
+            raise AppError(check["reason"])
+        _, info = self._emulator_for(game["console"])
+        try:
+            if check["emulator_id"] == "retroarch":
+                if game["console"] not in CORES:
+                    raise AppError("RetroArch has no core set up for this console.")
+                core = find_core(info["path"], game["console"])
+                command = build_solo_command(info["path"], core, game["path"], self._retroarch_extra(game["console"], info["path"]))
+                pid = emulators.launch_command(command)
+            else:
+                pid = emulators.launch(check["emulator_id"], info["path"], game["path"])
+        except NetplayError as exc:
+            raise AppError(str(exc)) from exc
+        except (OSError, FileNotFoundError) as exc:
+            raise AppError(f"Could not start {check['emulator']}: {exc}") from exc
+        self.catalog.record_play(game["id"])
+        return {"launched": game["title"], "emulator": check["emulator"], "pid": pid}
+
+    def api_emulators(self, body: dict) -> dict:
+        if "folder" in body:
+            folders = list(self.catalog.data.get("emulator_folders", []))
+            folder = str(body["folder"] or "").strip().strip('"')
+            if body.get("remove"):
+                folders = [f for f in folders if f != folder]
+            elif folder and folder not in folders:
+                folders.append(folder)
+            try:
+                self.catalog.set_emulator_folders(folders)
+            except CatalogError as exc:
+                raise AppError(f"I can't find that folder: {exc}") from exc
+        if "emulator" in body:
+            emulator_id, path = body["emulator"], body.get("path")
+            if emulator_id not in emulators.EMULATORS:
+                raise AppError("Unknown emulator.")
+            if path is not None and not Path(path).is_file():
+                raise AppError("That file does not exist. Paste the full path to the emulator program.")
+            self.catalog.set_mapping("emulator_paths", emulator_id, path or None)
+        found = emulators.find_emulators(self._search_roots(), self.catalog.data["emulator_paths"])
+        return {
+            "folders": self.catalog.data.get("emulator_folders", []),
+            "emulators": [{"id": k, **v} for k, v in found.items()],
+            "consoles": [
+                {"id": c.id, "name": c.name, "emulator": (self._emulator_for(c.id, found)[1] or {}).get("name")}
+                for c in CONSOLES
+            ],
+        }
+
+    # engines (the owned shell's view of emulators) -----------------------------------
+    def _engines_payload(self) -> dict:
+        found = emulators.find_emulators(self._search_roots(), self.catalog.data["emulator_paths"])
+        rows = []
+        for engine_id, spec in engines.ENGINES.items():
+            info = found.get(engine_id, {})
+            rows.append({
+                "id": engine_id, "name": spec["name"], "consoles": spec["consoles"], "license": spec["license"],
+                "path": info.get("path"), "source": info.get("source"), "official": spec["source"],
+                "can_download": spec["source"]["kind"] == "github", "bios": spec.get("bios"),
+            })
+        bios = []
+        for kind, spec in engines.BIOS.items():
+            cached = self.catalog.data.get("bios_found", {}).get(kind, [])
+            bios.append({"kind": kind, "name": spec["name"], "for": spec["for"], "how": spec["how"], "found": cached})
+        return {"engines": rows, "bios": bios, "allow_internet": self.catalog.settings()["allow_internet"],
+                "install_folder": str(self.data_dir / "emulators"), "job": self.installer.snapshot(),
+                "last_scan": self.catalog.data.get("last_scan")}
+
+    def api_engines(self, body: dict) -> dict:
+        return self._engines_payload()
+
+    def api_credits(self, body: dict) -> dict:
+        found = emulators.find_emulators(self._search_roots(), self.catalog.data["emulator_paths"])
+        rows = [{"id": eid, "name": spec["name"], "consoles": spec["consoles"], "license": spec["license"],
+                 "homepage": engines.HOMEPAGES.get(eid, spec["source"].get("url", "")),
+                 "redistributable": eid not in engines.NOT_REDISTRIBUTABLE, "path": found.get(eid, {}).get("path")}
+                for eid, spec in engines.ENGINES.items()]
+        return {"engines": rows, "mirror": engines.MIRROR, "also": [
+            {"name": "libretro cores", "text": "Per-console emulation plug-ins for RetroArch, each under its own license (listed in RetroArch > Information > Core Information)."},
+            {"name": "Legacy Player", "text": "Shell, server, encryption and installer: this project, MIT licensed (see LICENSE). Uses only the Python standard library."},
+        ]}
+
+    def api_engines_install_all(self, body: dict) -> dict:
+        """One click: fetch every missing engine that has an official GitHub release, one after another."""
+        self._internet_ok(body)
+        found = emulators.find_emulators(self._search_roots(), self.catalog.data["emulator_paths"])
+        wanted = [eid for eid, spec in engines.ENGINES.items()
+                  if spec["source"]["kind"] == "github" and not found.get(eid, {}).get("path") and eid not in engines.NOT_REDISTRIBUTABLE]
+        try:
+            return {"job": self.installer.start_many(wanted, consent=True), "queued": wanted}
+        except InstallError as exc:
+            raise AppError(str(exc)) from exc
+
+    def api_engines_scan(self, body: dict) -> dict:
+        """User-directed read-only sweep of the usual program folders for emulators and BIOS."""
+        if not body.get("confirm"):
+            raise AppError("Please confirm the scan.")
+        wanted = {eid: spec["exes"] for eid, spec in emulators.EMULATORS.items()}
+        hits = engines.scan_computer(wanted, self._search_roots())
+        for engine_id, path in hits.items():
+            if not self.catalog.data["emulator_paths"].get(engine_id):
+                self.catalog.set_mapping("emulator_paths", engine_id, path)
+        extra = [Path(p).parent for p in self.catalog.data["emulator_paths"].values() if p]
+        bios_found = {kind: engines.find_bios(kind, self._search_roots(), extra) for kind in engines.BIOS}
+        self.catalog.data["bios_found"] = bios_found
+        self.catalog.data["last_scan"] = time.time()
+        self.catalog.save()
+        return {**self._engines_payload(), "new": hits}
+
+    def api_engines_install(self, body: dict) -> dict:
+        self._internet_ok(body)
+        try:
+            return {"job": self.installer.start(str(body.get("engine", "")), consent=True)}
+        except InstallError as exc:
+            raise AppError(str(exc)) from exc
+
+    # controllers ------------------------------------------------------------
+    def api_controllers(self, body: dict) -> dict:
+        console = BY_ID.get(body.get("console"))
+        if console is None:
+            raise AppError("Unknown console.")
+        if "buttons" in body:
+            try:
+                clean = controllers.validate_override(console.controller, body["buttons"]) if body["buttons"] else None
+            except ValueError as exc:
+                raise AppError(str(exc)) from exc
+            self.catalog.set_mapping("controller_overrides", console.id, clean)
+        return {
+            "console": console.name,
+            "layout": controllers.layout(console.controller, self.catalog.data["controller_overrides"].get(console.id)),
+            "all": [{"id": c.id, "name": c.name} for c in CONSOLES],
+        }
+
+    # physical pads ------------------------------------------------------------
+    def _pads_payload(self) -> dict:
+        data = self.catalog.data
+        return {"profiles": data["pad_profiles"], "players": data["player_pads"],
+                "standard_names": {str(k): v for k, v in controllers.STANDARD_NAMES.items()},
+                "max_players": pads.MAX_PLAYERS}
+
+    def api_pads(self, body: dict) -> dict:
+        return self._pads_payload()
+
+    def api_pad_save(self, body: dict) -> dict:
+        try:
+            profile = pads.validate_profile(str(body.get("id", "")), body)
+        except ValueError as exc:
+            raise AppError(str(exc)) from exc
+        self.catalog.set_mapping("pad_profiles", profile["key"], profile)
+        return self._pads_payload()
+
+    def api_pad_delete(self, body: dict) -> dict:
+        try:
+            key = pads.pad_key(str(body.get("id", "")))
+        except ValueError as exc:
+            raise AppError(str(exc)) from exc
+        self.catalog.set_mapping("pad_profiles", key, None)
+        for slot, assigned in list(self.catalog.data["player_pads"].items()):
+            if assigned == key:
+                self.catalog.set_mapping("player_pads", slot, None)
+        return self._pads_payload()
+
+    def api_pad_assign(self, body: dict) -> dict:
+        player = body.get("player")
+        if isinstance(player, bool) or not isinstance(player, int) or not 1 <= player <= pads.MAX_PLAYERS:
+            raise AppError(f"Player must be 1 to {pads.MAX_PLAYERS}.")
+        key = body.get("id")
+        if key:
+            try:
+                key = pads.pad_key(str(key))
+            except ValueError as exc:
+                raise AppError(str(exc)) from exc
+            if key not in self.catalog.data["pad_profiles"]:
+                # a pad with no custom mapping still gets a (default) profile so it can be assigned
+                self.catalog.set_mapping("pad_profiles", key, pads.validate_profile(key, {
+                    "name": body.get("name") or "Controller", "standard": bool(body.get("standard")), "bindings": {}}))
+        self.catalog.set_mapping("player_pads", str(player), key or None)
+        return self._pads_payload()
+
+    # settings ---------------------------------------------------------------
+    def api_settings(self, body: dict) -> dict:
+        if "key" in body:
+            try:
+                self.catalog.set_setting(body["key"], body.get("value"))
+            except CatalogError as exc:
+                raise AppError(str(exc)) from exc
+        return {"values": self.catalog.settings(), "schema": SETTINGS_SCHEMA}
+
+    # saves ------------------------------------------------------------------
+    def api_save_source(self, body: dict) -> dict:
+        console = BY_ID.get(body.get("console"))
+        if console is None:
+            raise AppError("Unknown console.")
+        path = body.get("path")
+        if path and not Path(path).is_dir():
+            raise AppError("That folder does not exist.")
+        self.catalog.set_mapping("save_sources", console.id, path or None)
+        return {"save_source": path or None}
+
+    def api_save_folders(self, body: dict) -> dict:
+        if "root" in body:
+            root = body["root"]
+            if root:
+                if not isinstance(root, str) or not Path(root).is_absolute():
+                    raise AppError("Use a full folder path, for example D:\\LegacyPlayer\\Saves.")
+                try:
+                    Path(root).mkdir(parents=True, exist_ok=True)
+                except OSError as exc:
+                    raise AppError(f"Could not create that folder: {exc}") from exc
+            self.catalog.data["save_root"] = root or ""
+            self.catalog.save()
+        root = self._save_root()
+        if body.get("create"):
+            try:
+                savefolders.ensure(root, [c.id for c in CONSOLES if c.id in CORES])
+            except OSError as exc:
+                raise AppError(f"Could not create the save folders: {exc}") from exc
+        found = emulators.find_emulators(self._search_roots(), self.catalog.data["emulator_paths"])
+        rows = []
+        for console in CONSOLES:
+            emulator_id, _ = self._emulator_for(console.id, found)
+            managed = console.id in CORES and emulator_id == "retroarch"
+            folder = self.catalog.data["save_sources"].get(console.id) or (
+                str(savefolders.console_dir(root, console.id)) if managed else None)
+            exists = bool(folder) and Path(folder).is_dir()
+            rows.append({
+                "console": console.id, "name": console.name, "folder": folder, "exists": exists,
+                "files": len(saves.find_save_files(Path(folder), "")) if exists else 0,
+                "mode": "custom" if console.id in self.catalog.data["save_sources"] else ("managed" if managed else "emulator"),
+                "emulator": emulators.EMULATORS[emulator_id]["name"] if emulator_id else None,
+                "hint": "" if managed else savefolders.EMULATOR_HINTS.get(emulator_id or "", ""),
+            })
+        return {"root": str(root), "custom_root": bool(self.catalog.data.get("save_root")), "consoles": rows,
+                "backups_folder": str(self.data_dir / "save_backups")}
+
+    def _save_ctx(self, body: dict):
+        game = self._game(body)
+        console = BY_ID[game["console"]]
+        source = self._save_dir(game)
+        if not source:
+            raise AppError(f"Tell the launcher where {console.name} saves are kept first (Save folder).")
+        return game, console, Path(source)
+
+    def api_backup(self, body: dict) -> dict:
+        game, console, source = self._save_ctx(body)
+        files = saves.find_save_files(source, Path(game["path"]).stem)
+        try:
+            return saves.create_backup(self.data_dir, console.id, game["compat_id"], files, source)
+        except ValueError as exc:
+            raise AppError(str(exc)) from exc
+
+    def api_restore(self, body: dict) -> dict:
+        game, console, source = self._save_ctx(body)
+        try:
+            return saves.restore_backup(self.data_dir, console.id, game["compat_id"], str(body.get("backup")), source, Path(game["path"]).stem)
+        except ValueError as exc:
+            raise AppError(str(exc)) from exc
+
+    # multiplayer -------------------------------------------------------------
+    def _client(self) -> LobbyClient:
+        s = self.catalog.settings()
+        fingerprint = "" if s["server_fingerprint"].strip() in {"", "-"} else s["server_fingerprint"]
+        return LobbyClient(s["server_host"], s["server_port"], tls=s["server_tls"], verify=s["server_tls_verify"],
+                           fingerprint=fingerprint)
+
+    def _call(self, request: dict) -> dict:
+        try:
+            return self._client().call(request)
+        except LobbyClientError as exc:
+            raise AppError(str(exc)) from exc
+
+    def _profile(self, game: dict) -> dict:
+        return {"game_id": game["compat_id"], "region": game["region"] or "unspecified"}
+
+    def _auth(self) -> dict:
+        r = self.room
+        if r is None:
+            raise AppError("You are not in a room.")
+        return {"session_id": r["session_id"], "participant_id": r["me"], "credential": r["credential"]}
+
+    def api_mp_host(self, body: dict) -> dict:
+        game = self._game(body)
+        me = self.catalog.player_tag()
+        _, info = self._emulator_for(game["console"])
+        created = self._call({
+            "operation": "create", "participant_id": me, "profile": self._profile(game),
+            "adapter_id": (self._emulator_for(game["console"])[0] or "unconfigured"), "game_pack_id": "generic",
+            "require_approval": bool(body.get("require_approval", True)),
+            "max_players": body.get("max_players", 4),
+            "open": bool(body.get("open", False)), "label": str(body.get("label") or "")[:48],
+        })
+        self.room = {
+            "session_id": created["session"]["session_id"], "me": me, "credential": created["credential"],
+            "role": "host", "game_id": game["id"], "game": game["title"], "console": game["console"], "invite_code": created["invite_code"],
+            "invite_expires_at": created["invite_expires_at"], "events": [], "last_seq": 0, "session": created["session"],
+            "approval": created["require_approval"], "waiting": None, "problem": None,
+            "queue": None, "max_players": created["max_players"], "waitlist": [], "open": created.get("open", False),
+        }
+        return self.api_mp_state({})
+
+    def api_mp_join(self, body: dict) -> dict:
+        """Join with an invite code, or an open room by id. With background=true the join
+        only queues you (keep playing); you switch over when a spot is ready."""
+        game = self._game(body)
+        me = self.catalog.player_tag()
+        request = {"operation": "join", "participant_id": me, "profile": self._profile(game)}
+        if body.get("session_id"):
+            request.update(session_id=str(body["session_id"]), open=True)
+        else:
+            request["invite_code"] = str(body.get("invite_code", ""))
+        result = self._call(request)
+        record = {
+            "session_id": result.get("session_id") or result["session"]["session_id"], "me": me, "credential": result.get("credential"),
+            "role": "guest", "game_id": game["id"], "game": game["title"], "console": game["console"], "invite_code": None, "invite_expires_at": None,
+            "events": [], "last_seq": 0, "session": result.get("session"), "approval": result["status"] == "pending",
+            "waiting": result.get("request_token"), "problem": None,
+            "queue": result if result["status"] == "waiting" else None, "max_players": None, "waitlist": [],
+        }
+        if body.get("background") or (self.room is not None and result["status"] != "joined"):
+            if result["status"] == "joined":
+                # a seat was free right away: it is held for you in the roster, switch when ready
+                record["ready_to_switch"] = True
+            self.waits[record["session_id"]] = record
+            return self.api_mp_state({})
+        self.room = record
+        return self.api_mp_state({})
+
+    def api_mp_browse(self, body: dict) -> dict:
+        """Open rooms on the server: game, how full, line length. No names, no addresses."""
+        listing = self._call({"operation": "browse"})
+        by_compat = {g["compat_id"]: g for g in self.games.values()}
+        rooms = []
+        for r in listing["rooms"]:
+            mine = by_compat.get(r["game_id"])
+            rooms.append({**r, "title": mine["title"] if mine else r["game_id"], "console": mine["console"] if mine else r["game_id"].split(":")[0],
+                          "you_have_it": mine is not None, "local_game_id": mine["id"] if mine else None,
+                          "full": r["players"] >= r["max_players"]})
+        return {"rooms": rooms, "limits": listing["limits"]}
+
+    def api_mp_open(self, body: dict) -> dict:
+        result = self._host_action(body, "set_open", open=bool(body.get("open", True)))
+        if self.room:
+            self.room["open"] = bool(body.get("open", True))
+        return result
+
+    def api_mp_switch(self, body: dict) -> dict:
+        """Make a background wait the active room (leaving the current one if any)."""
+        sid = str(body.get("session_id", ""))
+        record = self.waits.get(sid)
+        if record is None:
+            raise AppError("You are not waiting for that room.")
+        if self.room is not None:
+            self.api_mp_leave({})
+        del self.waits[sid]
+        record.pop("ready_to_switch", None)
+        self.room = record
+        return self.api_mp_state({})
+
+    def api_mp_cancel_wait(self, body: dict) -> dict:
+        sid = str(body.get("session_id", ""))
+        record = self.waits.pop(sid, None)
+        if record is not None:
+            try:
+                if record["waiting"]:
+                    self._call({"operation": "cancel_wait", "session_id": sid, "participant_id": record["me"], "request_token": record["waiting"]})
+                elif record.get("credential"):
+                    self._call({"operation": "leave", "session_id": sid, "participant_id": record["me"], "credential": record["credential"]})
+            except AppError:
+                pass
+        return self.api_mp_state({})
+
+    def _poll_waits(self) -> list[dict]:
+        notices = []
+        for sid, w in list(self.waits.items()):
+            if not w["waiting"]:
+                continue
+            try:
+                status = self._call({"operation": "join_status", "session_id": sid, "participant_id": w["me"], "request_token": w["waiting"]})
+            except AppError as exc:
+                self.waits.pop(sid, None)
+                notices.append({"seq": -1, "kind": "wait", "level": "warn", "at": "", "text": f"Your place in line for {w['game']} was lost: {exc}"})
+                continue
+            if status["status"] == "waiting":
+                w["queue"] = status
+            elif status["status"] == "pending":
+                w["queue"] = None
+            elif status["status"] == "approved":
+                w.update(credential=status["credential"], waiting=None, queue=None, session=status["session"], ready_to_switch=True)
+                notices.append({"seq": -1, "kind": "wait", "level": "info", "at": "",
+                                "text": f"A spot in {w['game']} is yours. Finish what you are doing, then press Switch."})
+            elif status["status"] == "denied":
+                self.waits.pop(sid, None)
+                notices.append({"seq": -1, "kind": "wait", "level": "warn", "at": "", "text": f"The host of {w['game']} declined you."})
+        return notices
+
+    def _waits_view(self) -> list[dict]:
+        return [{"session_id": sid, "game": w["game"], "position": (w.get("queue") or {}).get("position"),
+                 "ready": bool(w.get("ready_to_switch")), "pending": w["waiting"] is not None and w.get("queue") is None}
+                for sid, w in self.waits.items()]
+
+    def api_mp_state(self, body: dict) -> dict:
+        wait_notices = self._poll_waits() if self.waits else []
+        r = self.room
+        if r is None:
+            return {"room": None, "waits": self._waits_view(), "wait_events": wait_notices}
+        new_events = list(wait_notices)
+        try:
+            if r["waiting"]:
+                status = self._call({"operation": "join_status", "session_id": r["session_id"], "participant_id": r["me"], "request_token": r["waiting"]})
+                if status["status"] == "waiting":
+                    before = (r.get("queue") or {}).get("position")
+                    r["queue"] = status
+                    if before is not None and before != status["position"]:
+                        new_events.append({"seq": -1, "kind": "queue", "level": "info", "at": "",
+                                           "text": f"You moved to number {status['position']} in line."})
+                elif status["status"] == "pending":
+                    r["queue"] = None
+                    new_events.append({"seq": -1, "kind": "queue", "level": "info", "at": "",
+                                       "text": "A spot is free. Waiting for the host to approve you."})
+                elif status["status"] == "approved":
+                    r.update(credential=status["credential"], waiting=None, queue=None, session=status["session"])
+                    new_events.append({"seq": -1, "kind": "approved", "text": "You're in. The room has a spot for you.", "level": "info", "at": ""})
+                elif status["status"] == "denied":
+                    self.room = None
+                    return {"room": None, "notice": "The host declined your request."}
+            if not r["waiting"]:
+                res = self._call({"operation": "events", "after_seq": r["last_seq"], **self._auth()})
+                for event in res["events"]:
+                    r["last_seq"] = max(r["last_seq"], event["seq"])
+                    new_events.append(describe_event(event))
+                r["session"] = self._call({"operation": "status", **self._auth()})["session"]
+                if r["role"] == "host":
+                    listing = self._call({"operation": "list_waiting", **self._auth()})
+                    r["waitlist"], r["max_players"] = listing["waiting"], listing["capacity"]
+            r["problem"] = None
+        except AppError as exc:
+            message = str(exc)
+            if "kicked from session" in message or "you left" in message:
+                self.room = None
+                return {"room": None, "notice": message[0].upper() + message[1:], "level": "warn"}
+            r["problem"] = message
+        r["events"] = (r["events"] + new_events)[-100:]
+        session = r.get("session") or {}
+        members = [
+            {"name": name, "role": p["role"], "ready": p["ready"], "me": name == r["me"]}
+            for name, p in (session.get("participants") or {}).items()
+        ]
+        return {"room": {
+            "role": r["role"], "game": r["game"], "console": r["console"], "state": session.get("state", "waiting for host"),
+            "failure": session.get("failure_reason"), "invite_code": r["invite_code"], "invite_expires_at": r["invite_expires_at"],
+            "members": members, "events": r["events"], "new_events": new_events, "problem": r["problem"],
+            "waiting_for_host": bool(r["waiting"]) and not r.get("queue"), "approval": r["approval"],
+            "queue": r.get("queue"), "waitlist": r.get("waitlist") or [], "max_players": r.get("max_players"),
+            "open": r.get("open", False),
+            "pending": self._pending_requests(r),
+            "launch": self._room_launch_state(r, session),
+        }, "waits": self._waits_view()}
+
+    def _room_launch_state(self, room: dict, session: dict) -> dict:
+        game = self.games.get(room["game_id"])
+        if game is None:
+            return {"ready": False, "reason": "Your copy of this game is no longer in the library."}
+        check = self.netplay_check(game)
+        ok = check["ready"]
+        reason = check["reason"]
+        if ok and room["role"] == "host" and session.get("state") not in {"ready-barrier", "active"}:
+            ok, reason = False, "Press 'Check everyone matches' first."
+        if ok and room["role"] == "guest" and session.get("state") not in {"ready-barrier", "active"}:
+            ok, reason = False, "Waiting for the host to check that everyone matches."
+        engine = check.get("engine") or ("dolphin" if game["console"] in DOLPHIN_CONSOLES else "retroarch")
+        return {"ready": ok, "reason": reason, "engine": engine, "suggested_address": detect_lan_address(),
+                "default_port": DOLPHIN_PORT if engine == "dolphin" else 55435}
+
+    @staticmethod
+    def _pending_requests(room: dict) -> list[str]:
+        waiting: list[str] = []
+        for event in room["events"]:
+            who = event.get("who")
+            if event["kind"] == "join_requested" and who and who not in waiting:
+                waiting.append(who)
+            elif event["kind"] in {"participant_joined", "join_denied", "participant_kicked"} and who in waiting:
+                waiting.remove(who)
+        return waiting if room["role"] == "host" else []
+
+    def _host_action(self, body: dict, operation: str, **extra) -> dict:
+        self._call({"operation": operation, **extra, **self._auth()})
+        return self.api_mp_state({})
+
+    def api_mp_invite(self, body: dict) -> dict:
+        res = self._call({"operation": "invite", "priority": bool(body.get("priority")), **self._auth()})
+        self.room["invite_code"], self.room["invite_expires_at"] = res["invite_code"], res["expires_at"]
+        return self.api_mp_state({})
+
+    def api_mp_decide(self, body: dict) -> dict:
+        return self._host_action(body, "decide_join", target_id=str(body.get("target")), approve=bool(body.get("approve")))
+
+    def api_mp_priority(self, body: dict) -> dict:
+        return self._host_action(body, "set_priority", target_id=str(body.get("target")), priority=bool(body.get("priority", True)))
+
+    def api_mp_capacity(self, body: dict) -> dict:
+        result = self._host_action(body, "set_capacity", max_players=body.get("max_players"))
+        return result
+
+    def api_mp_kick(self, body: dict) -> dict:
+        return self._host_action(body, "kick", target_id=str(body.get("target")), reason=str(body.get("reason") or "removed by host"))
+
+    def api_mp_lock(self, body: dict) -> dict:
+        return self._host_action(body, "validate")
+
+    def api_mp_ready(self, body: dict) -> dict:
+        return self._host_action(body, "ready", ready=bool(body.get("ready", True)))
+
+    def api_mp_launch(self, body: dict) -> dict:
+        """Host: publish the address and start RetroArch hosting. Guest: connect to the host."""
+        room = self.room
+        if room is None:
+            raise AppError("You are not in a room.")
+        game = self._game({"id": room["game_id"]})
+        check = self.netplay_check(game)
+        if not check["ready"]:
+            raise AppError(check["reason"])
+        nick = room["me"]
+        if check.get("engine") == "dolphin":
+            return self._launch_dolphin(room, game, check, body)
+        encrypt = bool(self.catalog.settings()["encrypt_matches"])
+        encrypted = False
+        try:
+            self._close_tunnel()
+            extra = self._retroarch_extra(game["console"], check["exe"], netplay=True)
+            if room["role"] == "host":
+                port = body.get("port", 55435)
+                address = str(body.get("address") or detect_lan_address()).strip()
+                state = self._call({"operation": "status", **self._auth()})["session"]["state"]
+                if state not in {"ready-barrier", "active"}:
+                    raise AppError("Press 'Check everyone matches' first.")
+                key = None
+                ra_port = port
+                if encrypt:
+                    if not netplay_tunnel.available():
+                        raise AppError("Encrypted matches need the Legacy Player app (Python 3.13+). Turn off 'Encrypt match traffic' in Settings to play unencrypted on a trusted network.")
+                    ra_port = port + 1 if port < 65535 else port - 1
+                    key = netplay_tunnel.new_key()
+                    self.tunnel = netplay_tunnel.Tunnel("host", key, "0.0.0.0", port, "127.0.0.1", ra_port).start()
+                    encrypted = True
+                command = build_host_command(check["exe"], check["core"], game["path"], ra_port, nick, extra)
+            else:
+                endpoint = self._call({"operation": "get_endpoint", **self._auth()})["endpoint"]
+                if not endpoint:
+                    raise AppError("The host has not launched yet. Wait for the notification.")
+                connect_address, connect_port = endpoint["address"], endpoint["port"]
+                if endpoint.get("psk"):
+                    self.tunnel = netplay_tunnel.Tunnel("guest", endpoint["psk"], "127.0.0.1", 0, connect_address, connect_port).start()
+                    connect_address, connect_port = "127.0.0.1", self.tunnel.port
+                    encrypted = True
+                command = build_guest_command(check["exe"], check["core"], game["path"], connect_address, connect_port, nick, extra)
+            pid = emulators.launch_command(command)
+            if room["role"] == "host":  # publish only once RetroArch is starting
+                request = {"operation": "set_endpoint", "address": address, "port": port, **self._auth()}
+                if encrypted:
+                    request["psk"] = key
+                try:
+                    self._call(request)
+                except AppError:
+                    emulators.stop_pid(pid)  # nobody can reach it anyway; do not leave it running
+                    raise
+        except (NetplayError, netplay_tunnel.TunnelUnavailable) as exc:
+            self._close_tunnel()
+            raise AppError(str(exc)) from exc
+        except OSError as exc:
+            self._close_tunnel()
+            raise AppError(f"Could not start RetroArch: {exc}") from exc
+        self.catalog.record_play(game["id"])
+        return {"launched": game["title"], "role": room["role"], "pid": pid, "encrypted": encrypted}
+
+    def shutdown(self) -> None:
+        """Called when the app window closes: leave rooms politely and drop the tunnel."""
+        try:
+            for sid in list(self.waits):
+                self.api_mp_cancel_wait({"session_id": sid})
+            if self.room is not None:
+                self.api_mp_leave({})
+        except AppError:
+            pass
+        finally:
+            self._close_tunnel()
+
+    def _close_tunnel(self) -> None:
+        if self.tunnel is not None:
+            self.tunnel.stop()
+            self.tunnel = None
+
+    def _launch_dolphin(self, room: dict, game: dict, check: dict, body: dict) -> dict:
+        mode = body.get("mode", "traversal")
+        if mode not in {"traversal", "direct"}:
+            raise AppError("mode must be traversal or direct")
+        try:
+            if room["role"] == "host":
+                state = self._call({"operation": "status", **self._auth()})["session"]["state"]
+                if state not in {"ready-barrier", "active"}:
+                    raise AppError("Press 'Check everyone matches' first.")
+                port = body.get("port", DOLPHIN_PORT)
+                address = str(body.get("address") or detect_lan_address()).strip()
+                guide = dolphin_steps("host", mode=mode, address=address, port=port)
+            else:
+                endpoint = self._call({"operation": "get_endpoint", **self._auth()})["endpoint"]
+                if not endpoint:
+                    raise AppError("The host has not shared a way to connect yet. Wait for the notification.")
+                mode = "traversal" if endpoint["kind"] == "code" else "direct"
+                guide = dolphin_steps("guest", mode=mode, address=endpoint["address"], port=endpoint.get("port"), code=endpoint["address"])
+            pid = emulators.launch_command(dolphin_open_command(check["exe"], game["path"]))
+            if room["role"] == "host" and mode == "direct":
+                self._call({"operation": "set_endpoint", "kind": "direct", "address": address, "port": port, **self._auth()})
+        except DolphinNetplayError as exc:
+            raise AppError(str(exc)) from exc
+        except OSError as exc:
+            raise AppError(f"Could not start Dolphin: {exc}") from exc
+        self.catalog.record_play(game["id"])
+        return {"launched": game["title"], "role": room["role"], "pid": pid, "engine": "dolphin",
+                "steps": guide, "needs_code": room["role"] == "host" and mode == "traversal"}
+
+    def api_mp_share_code(self, body: dict) -> dict:
+        """Host pastes the code Dolphin's traversal server gave them."""
+        if self.room is None or self.room["role"] != "host":
+            raise AppError("Only the host can share a Dolphin host code.")
+        self._call({"operation": "set_endpoint", "kind": "code", "address": str(body.get("code", "")).strip(), **self._auth()})
+        return {"shared": True}
+
+    def api_mp_leave(self, body: dict) -> dict:
+        self._close_tunnel()
+        if self.room is None:
+            return {"room": None}
+        try:
+            if self.room["role"] == "host":
+                self._call({"operation": "revoke_invites", **self._auth()})
+            elif self.room["waiting"]:
+                self._call({"operation": "cancel_wait", "session_id": self.room["session_id"],
+                            "participant_id": self.room["me"], "request_token": self.room["waiting"]})
+            else:
+                self._call({"operation": "leave", **self._auth()})
+        finally:
+            self.room = None
+        return {"room": None}
+
+    # window lifetime (used by the packaged app so it quits when its window closes) ----------
+    def api_ping(self, body: dict) -> dict:
+        self.last_ping, self.bye_at = time.time(), 0.0
+        return {"ok": True}
+
+    def api_bye(self, body: dict) -> dict:
+        self.bye_at = time.time() + 5  # a reload pings again within seconds and cancels this
+        return {"ok": True}
+
+    def should_exit(self, now: float, grace: float = 180.0, started: float = 0.0) -> bool:
+        if self.bye_at and now > self.bye_at:
+            return True
+        if self.last_ping:
+            return now - self.last_ping > 120.0
+        return bool(started) and now - started > grace
+
+    # the multiplayer server this computer can run for friends ----------------------------------
+    def _server_args(self, share: bool) -> argparse.Namespace:
+        """The in-app server: loopback and plain for solo use; TLS with a self-signed certificate
+        (fingerprint shown to the owner) whenever it is opened to other machines. Never plaintext."""
+        from server.selfsigned import ensure_certificate
+        state = self.data_dir / "server"
+        s = self.catalog.settings()
+        cert = key = None
+        if share:
+            cert, key, _ = ensure_certificate(state / "tls")   # instant if the startup thread already made it
+        return argparse.Namespace(host="0.0.0.0" if share else "127.0.0.1", port=s["server_port"], state_dir=state,
+                                  replay_dir=state / "replays", tls_cert=cert, tls_key=key,
+                                  allow_insecure_remote=False, detach=True,
+                                  max_players=s["server_max_players"], max_rooms=s["server_max_rooms"],
+                                  max_waiting=s["server_max_waiting"])
+
+    def _prepare_certificate(self) -> None:
+        """Make the shared-server certificate once, in the background, so sharing is instant later."""
+        import threading
+        from server.selfsigned import ensure_certificate
+        folder = self.data_dir / "server" / "tls"
+        if (folder / "cert.pem").exists():
+            return
+        threading.Thread(target=lambda: ensure_certificate(folder), daemon=True).start()
+
+    def server_fingerprint(self) -> str | None:
+        from server.selfsigned import fingerprint_of, pretty_fingerprint
+        cert = self.data_dir / "server" / "tls" / "cert.pem"
+        return pretty_fingerprint(fingerprint_of(cert)) if cert.exists() else None
+
+    def api_server_control(self, body: dict) -> dict:
+        from server import cli
+        action = body.get("action")
+        if action not in {"start", "stop", "restart", "status"}:
+            raise AppError("Unknown server action.")
+        args = self._server_args(bool(body.get("share")) and action != "status")
+        out = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
+                code = {"start": cli.start, "stop": cli.stop, "restart": cli.restart, "status": cli.status}[action](args)
+        except (OSError, ConnectionError, ValueError) as exc:
+            raise AppError(f"The server did not respond: {exc}") from exc
+        message = " ".join(out.getvalue().split()) or ("Done." if code == 0 else "That did not work.")
+        if code != 0 and action != "status":
+            raise AppError(message)
+        if args.tls_cert and body.get("share") and action in {"start", "restart"} and code == 0:
+            # the app itself must now talk TLS to its own server
+            self.catalog.set_setting("server_tls", True)
+            self.catalog.set_setting("server_fingerprint", self.server_fingerprint() or "-")
+        elif action in {"start", "restart"} and code == 0 and not body.get("share"):
+            self.catalog.set_setting("server_tls", False)
+        return {"message": message, "running": cli._is_running(args.state_dir), "shared": bool(body.get("share")),
+                "log": str(args.state_dir / "server.log"), "fingerprint": self.server_fingerprint(),
+                "limits": {"players": args.max_players, "rooms": args.max_rooms, "waiting": args.max_waiting}}
+
+    def api_server_status(self, body: dict) -> dict:
+        try:
+            self._client().call({"operation": "status", "session_id": "probe", "participant_id": "probe", "credential": "probe"})
+        except LobbyClientError as exc:
+            if "unknown session" in str(exc):
+                return {"online": True}
+            return {"online": False, "message": str(exc)}
+        return {"online": True}

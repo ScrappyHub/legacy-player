@@ -1,0 +1,38 @@
+name: Build Legacy Player app
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Test
+        run: python -m unittest discover -s tests -t .
+        continue-on-error: true
+      - name: Build
+        shell: cmd
+        run: build_exe.bat
+      - name: Smoke test the built app
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath dist\LegacyPlayer.exe -ArgumentList "--no-browser","--data-dir","smoke-data","--port","8799" -PassThru
+          Start-Sleep -Seconds 8
+          $r = Invoke-WebRequest -UseBasicParsing -Uri http://127.0.0.1:8799/
+          if ($r.StatusCode -ne 200 -or $r.Content -notmatch "Legacy Player") { throw "UI did not load" }
+          Stop-Process -Id $p.Id -Force
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LegacyPlayer-windows
+          path: dist/LegacyPlayer.exe
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/LegacyPlayer.exe

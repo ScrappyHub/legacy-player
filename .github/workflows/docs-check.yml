@@ -29,6 +29,12 @@ jobs:
           test -f docs/ROADMAP.md
           test -f docs/IMPLEMENTATION_PLAN_v1.md
           test -f docs/ADAPTER_INTERFACE_v1.md
+          test -f docs/WIRE_PROTOCOL_v1.md
+          test -f docs/DOLPHIN_DSU_BACKEND_v1.md
+          test -f docs/THREAT_MODEL_v1.md
+          test -f docs/VERIFICATION_MATRIX_v1.md
+          test -f docs/DOLPHIN_FRAME_CONTROL_PROTOCOL_v1.md
+          test -f docs/DOLPHIN_AUTOCONFIG_v1.md
           test -f docs/FIRST_TARGET_MARIO_PARTY_v1.md
           test -f runtime/README.md
           test -f adapters/dolphin/README.md
@@ -43,13 +49,12 @@ jobs:
             test -s "$f"
           done < <(find . -type f \( -name "*.md" -o -name "*.yml" -o -name "*.yaml" \) -print0)
 
-      - name: Verify no obvious unfinished placeholders
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Compile and test
         run: |
-          set -euo pipefail
-          if grep -RInE "TODO|TBD|FIXME|<insert|placeholder" . \
-            --exclude-dir=.git \
-            --exclude-dir=node_modules
-          then
-            echo "Found unfinished placeholder text"
-            exit 1
-          fi
+          python -m pip install -r tools/memory_probe/requirements.txt
+          python tools/release_check.py

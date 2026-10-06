@@ -1,83 +1,54 @@
 # Dolphin Adapter
 
-## Purpose
+The current executable Dolphin backend injects released multiplayer controller states
+through Dolphin's built-in DualShock UDP (DSU/Cemuhook) input client. It does not write
+controller values into emulated RAM.
 
-The Dolphin adapter is the first platform adapter for Legacy Player.
+## Dolphin setup
 
-It connects the Legacy Player runtime to Dolphin-based GameCube and later Wii environments.
+1. Start the Legacy Player coordination server.
+2. In Dolphin, open Controller Settings and then Alternate Input Sources.
+3. Enable DSU input and add `127.0.0.1:26760`.
+4. Configure each emulated GameCube controller from the corresponding
+   `DSUClient/<slot>/...` device.
+5. Map DSU `Cross`, `Circle`, `Square`, `Triangle`, shoulder, D-pad, and stick inputs
+   to the desired GameCube controls.
 
-Its job is to expose structured platform capabilities to the runtime without leaking Dolphin-specific assumptions into the shared core.
+Run the bridge after the session has been created:
 
----
+```powershell
+python -m adapters.dolphin.bridge `
+  --session-id SESSION_ID `
+  --participant-id PARTICIPANT_ID `
+  --map host:0 `
+  --map peer:1
+```
 
-## Responsibilities
+Set `LEGACY_PLAYER_CREDENTIAL` in the bridge environment, or pass a local
+`--credential-file`. Credentials are intentionally not accepted as command-line values
+because process arguments are visible to other local tools.
 
-The Dolphin adapter is responsible for:
+The participant-to-slot mapping must include every participant in each released frame.
+Slots are zero-based and range from 0 through 3.
 
-- identifying the active platform environment
-- identifying the active game and supported profile where possible
-- exposing compatibility-relevant fingerprints
-- exposing state and memory observation surfaces
-- exposing controller and input-related capability surfaces
-- reporting capability availability and failure conditions clearly
+## Button representation
 
----
+The shared `buttons` field uses `GameCubeButtons` from `dsu_protocol.py`. The DSU bridge
+maps GameCube A/B/X/Y to DSU Cross/Circle/Square/Triangle and exposes the remaining
+controls through DSU D-pad and shoulder inputs. Dolphin's controller profile performs
+the final mapping into GameCube ports.
 
-## Initial focus
+## Determinism limitation
 
-The first adapter proof should focus on:
+DSU is an officially supported external input source, but it does not expose Dolphin's
+canonical emulation-frame callback or pause/resume control. The bridge therefore
+rejects missing network frame bundles but cannot stop Dolphin itself from advancing.
+This is suitable for proving controller delivery, not yet deterministic netplay.
 
-- GameCube
-- Dolphin
-- one first supported party-game target
-- structured game identification
-- structured capability reporting
-- basic state observation surfaces
+The next deterministic path requires either:
 
-The first adapter proof does not need full broad emulator feature coverage.
+- integration with Dolphin's existing netplay/movie input machinery, or
+- a small upstream-compatible Dolphin extension that exposes frame callbacks and
+  controlled input injection.
 
----
-
-## Adapter boundaries
-
-The Dolphin adapter must not become the multiplayer brain of the system.
-
-It is a platform bridge.
-
-It should expose:
-
-- identity
-- fingerprinting
-- observables
-- controlled hooks
-- diagnostics
-
-It should not own:
-
-- shared session policy
-- shared replay policy
-- game-pack decision logic
-- long-term multiplayer architecture
-
----
-
-## Expected capability areas
-
-The Dolphin adapter should eventually expose:
-
-- adapter identity
-- Dolphin version/environment details where available
-- active title fingerprint
-- region/revision support information
-- memory/state observation surfaces
-- controller/input observation surfaces
-- controlled runtime assistance surfaces
-- adapter health and failure reporting
-
----
-
-## First proof of value
-
-The first proof of value for this adapter is simple:
-
-Legacy Player can attach to a supported Dolphin-driven target and identify enough structured information for the runtime to select a matching game pack and enter a controlled session flow.
+Direct writes to guessed controller memory are intentionally out of scope.

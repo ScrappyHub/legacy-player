@@ -1,0 +1,598 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Legacy Player</title>
+<style>
+:root{--bg:#0f1220;--panel:#171b2e;--panel2:#1f2440;--line:#2b3157;--text:#e8ebff;--mute:#9aa3d0;--accent:#6c8cff;--accent2:#35d0a5;--warn:#ffb454;--bad:#ff6b7a;--r:14px}
+[data-theme=light]{--bg:#f4f5fb;--panel:#fff;--panel2:#eef0fa;--line:#d8dcf0;--text:#171a2e;--mute:#5a6190;--accent:#3b5bdb;--accent2:#0b8f6c;--warn:#b25e00;--bad:#c92a3b}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 system-ui,Segoe UI,Roboto,sans-serif}
+button,input,select{font:inherit;color:inherit}
+header{display:flex;align-items:center;gap:16px;padding:12px 20px;background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5;flex-wrap:wrap}
+.logo{font-weight:800;letter-spacing:.3px}.logo b{color:var(--accent)}
+nav{display:flex;gap:6px;flex-wrap:wrap}nav button{background:none;border:0;padding:8px 14px;border-radius:999px;cursor:pointer;color:var(--mute)}
+nav button.on{background:var(--accent);color:#fff}nav button:hover:not(.on){background:var(--panel2)}
+main{max-width:1200px;margin:0 auto;padding:20px}
+h2{margin:.2em 0 .6em;font-size:1.3rem}h3{margin:1em 0 .4em;font-size:1.02rem}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.grow{flex:1}
+.card,.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:16px}
+.btn{background:var(--panel2);border:1px solid var(--line);padding:8px 14px;border-radius:10px;cursor:pointer}
+.btn:hover{border-color:var(--accent)}.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.good{background:var(--accent2);border-color:var(--accent2);color:#04251c}.btn.bad{border-color:var(--bad);color:var(--bad)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+input[type=text],input[type=number],input[type=search],select{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:8px 10px;min-width:0}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+.chip{padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:var(--panel);cursor:pointer;font-size:.9rem}
+.chip.on{background:var(--accent);border-color:var(--accent);color:#fff}.chip small{opacity:.75;margin-left:4px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px;margin-top:12px}
+.game{position:relative;padding:14px;border-radius:var(--r);background:var(--panel);border:1px solid var(--line);cursor:pointer;display:flex;flex-direction:column;gap:6px;min-height:128px}
+.game:hover,.game:focus-visible{border-color:var(--accent);outline:none;transform:translateY(-2px)}
+.game .t{font-weight:650;line-height:1.25;padding-right:28px}.game .m{color:var(--mute);font-size:.82rem}
+.star{position:absolute;top:8px;right:8px;background:none;border:0;font-size:1.25rem;cursor:pointer;color:var(--mute)}.star.on{color:#ffcf40}
+.badge{display:inline-block;font-size:.72rem;padding:2px 8px;border-radius:999px;border:1px solid var(--line);color:var(--mute)}
+.badge.strong{color:var(--accent2);border-color:var(--accent2)}.badge.per-game{color:var(--accent);border-color:var(--accent)}
+.badge.experimental,.badge.not-practical{color:var(--warn);border-color:var(--warn)}
+.list .game{flex-direction:row;align-items:center;min-height:0;padding:10px 14px}
+.muted{color:var(--mute)}.small{font-size:.85rem}.bad{color:var(--bad)}.good{color:var(--accent2)}
+.why{background:var(--panel2);border-left:3px solid var(--accent);padding:8px 12px;border-radius:8px;margin:8px 0;color:var(--mute);font-size:.88rem}
+.i{display:inline-grid;place-items:center;width:18px;height:18px;border-radius:50%;border:1px solid var(--mute);color:var(--mute);font-size:.7rem;cursor:pointer;margin-left:6px;background:none}
+table{border-collapse:collapse;width:100%}td,th{padding:7px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:middle}
+.code{font:700 2rem/1 ui-monospace,Consolas,monospace;letter-spacing:.12em;background:var(--panel2);padding:12px 18px;border-radius:12px;border:1px dashed var(--accent);display:inline-block}
+.drawer{position:fixed;inset:0 0 0 auto;width:min(480px,100%);background:var(--panel);border-left:1px solid var(--line);padding:20px;overflow:auto;z-index:8;box-shadow:-10px 0 30px #0006}
+.scrim{position:fixed;inset:0;background:#0007;z-index:7}
+#toasts{position:fixed;right:16px;bottom:16px;display:flex;flex-direction:column;gap:8px;z-index:20;max-width:360px}
+.toast{background:var(--panel2);border:1px solid var(--line);border-left:4px solid var(--accent);padding:10px 14px;border-radius:10px;box-shadow:0 6px 20px #0005}
+.toast.warn{border-left-color:var(--warn)}.toast.err{border-left-color:var(--bad)}
+.feed{max-height:240px;overflow:auto;display:flex;flex-direction:column;gap:6px}.feed div{padding:6px 10px;background:var(--panel2);border-radius:8px}.feed .warn{border-left:3px solid var(--warn)}
+.pad{display:flex;gap:6px;flex-wrap:wrap}.pad span{padding:4px 10px;border-radius:8px;border:1px solid var(--line)}.pad span.hit{background:var(--accent2);color:#04251c;border-color:var(--accent2)}
+.dot{width:10px;height:10px;border-radius:50%;display:inline-block;background:var(--bad)}.dot.on{background:var(--accent2)}
+a{color:var(--accent)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media(max-width:600px){main{padding:12px}.grid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}}
+.tv{padding:8px}.tvbar{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}.tvgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px}
+.tvcard{padding:22px 14px;border-radius:14px;border:2px solid var(--line);background:var(--panel);min-height:90px;cursor:pointer}.tvcard.sel{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 35%,transparent);transform:scale(1.03)}.tvtitle{font-size:16px;font-weight:600}.tvhelp{margin-top:14px}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">Legacy <b>Player</b></div>
+  <nav id="nav" aria-label="Sections"></nav>
+  <div class="grow"></div>
+  <span class="small muted" id="srv"><span class="dot" id="srvdot"></span> <span id="srvtxt">server…</span></span>
+</header>
+<main id="main"></main>
+<div id="toasts" aria-live="polite"></div>
+<script>
+"use strict";
+const TOKEN="__LP_TOKEN__";
+const $=(s,r=document)=>r.querySelector(s);
+function h(tag,attrs,...kids){const e=document.createElement(tag);for(const[k,v]of Object.entries(attrs||{})){if(k==="class")e.className=v;else if(k.startsWith("on"))e.addEventListener(k.slice(2),v);else if(v===true)e.setAttribute(k,"");else if(v!==false&&v!=null)e.setAttribute(k,v)}
+ for(const c of kids.flat()){if(c==null||c===false)continue;e.append(c.nodeType?c:document.createTextNode(String(c)))}return e}
+async function api(name,body={}){const r=await fetch("/api/"+name,{method:"POST",headers:{"Content-Type":"application/json","X-LP-Token":TOKEN},body:JSON.stringify(body)});
+ const j=await r.json();if(!r.ok)throw new Error(j.error||"Request failed");return j}
+function toast(text,level){const t=h("div",{class:"toast "+(level||"")},text);$("#toasts").append(t);setTimeout(()=>t.remove(),level==="warn"?9000:5000)}
+async function act(fn,ok){try{const r=await fn();if(ok)toast(ok);return r}catch(e){toast(e.message,"err")}}
+function why(text){const box=h("div",{class:"why",hidden:true},text);const b=h("button",{class:"i","aria-label":"What is this?",title:"What is this?",onclick:()=>{box.hidden=!box.hidden}},"i");return[b,box]}
+function whyInline(label,text){const[b,box]=why(text);return h("span",{},label,b,box)}
+const NETPLAY={strong:"Good fit",["per-game"]:"Needs a game pack","experimental":"Experimental","not-practical":"Not practical yet"};
+
+const S={tab:"library",console:null,q:"",fav:false,sort:"title",lib:null,settings:null,room:null,online:null,lastNotice:null};
+const TABS=[["library","Library"],["together","Play Together"],["console","Console mode"],["setup","Setup"],["engines","Engines"],["controllers","Controllers"],["saves","Saves"],["emulators","Emulators"],["settings","Settings"],["credits","Credits"],["help","How it works"]];
+
+function renderNav(){const n=$("#nav");n.replaceChildren(...TABS.map(([id,l])=>h("button",{class:S.tab===id?"on":"",onclick:()=>{S.tab=id;go()}},l+(id==="together"&&S.room?" ●":""))))}
+async function go(){renderNav();const m=$("#main");m.replaceChildren();({library:viewLibrary,together:viewTogether,console:viewConsole,setup:viewSetup,engines:viewEngines,controllers:viewControllers,saves:viewSaves,emulators:viewEmulators,settings:viewSettings,credits:viewCredits,welcome:viewWelcome,help:viewHelp})[S.tab](m)}
+
+/* ---------- Library ---------- */
+async function viewLibrary(m){
+ const d=S.lib=await api("library",{console:S.console,q:S.q,favorites:S.fav,sort:S.sort});
+ const st=S.settings||(S.settings=(await api("settings")).values);
+ document.documentElement.dataset.theme=st.theme;
+ if(!d.roots.length){m.append(emptyState());return}
+ const search=h("input",{type:"search",placeholder:"Search your games",value:S.q,"aria-label":"Search",oninput:e=>{S.q=e.target.value;clearTimeout(S.t);S.t=setTimeout(()=>refreshGrid(),180)}});
+ const sort=h("select",{"aria-label":"Sort",onchange:e=>{S.sort=e.target.value;refreshGrid()}},...[["title","A-Z"],["recent","Recently played"],["size","Largest"]].map(([v,l])=>h("option",{value:v,selected:S.sort===v},l)));
+ m.append(h("div",{class:"row"},h("h2",{class:"grow"},"Your games ",h("span",{class:"muted small"},d.total+" found")),search,sort,
+  h("button",{class:"btn"+(S.fav?" primary":""),onclick:()=>{S.fav=!S.fav;go()}},"★ Favorites ("+d.favorites_total+")"),
+  h("button",{class:"btn",onclick:rescan},"Rescan")));
+ m.append(h("div",{class:"chips",id:"chips"}));
+ m.append(h("div",{id:"gridwrap"}));
+ drawChips(d);drawGrid(d);
+}
+function drawChips(d){const c=$("#chips");c.replaceChildren(h("button",{class:"chip"+(S.console?"":" on"),onclick:()=>{S.console=null;go()}},"All",h("small",{},d.total)),
+ ...d.consoles.map(k=>h("button",{class:"chip"+(S.console===k.id?" on":""),title:k.netplay_note,onclick:()=>{S.console=k.id;go()}},k.name,h("small",{},k.count))))}
+async function refreshGrid(){const d=S.lib=await api("library",{console:S.console,q:S.q,favorites:S.fav,sort:S.sort});drawGrid(d)}
+function drawGrid(d){const w=$("#gridwrap");if(!w)return;
+ const list=(S.settings&&S.settings.view)==="list";
+ if(!d.games.length){w.replaceChildren(h("p",{class:"muted"},"No games match. Try clearing the search or filters."));return}
+ w.replaceChildren(h("div",{class:"grid"+(list?" list":"")},...d.games.map(g=>card(g))),
+  d.truncated?h("p",{class:"muted"},"Showing the first 1000. Narrow it with search or a console."):null,
+  d.skipped.unrecognized?h("p",{class:"muted small"},d.skipped.unrecognized+" other files were skipped (saves, emulators, or types the launcher does not know). Nothing was changed."):null)}
+function card(g){
+ const star=h("button",{class:"star"+(g.favorite?" on":""),title:g.favorite?"Remove favorite":"Favorite","aria-label":"Toggle favorite",onclick:async e=>{e.stopPropagation();const r=await act(()=>api("favorite",{id:g.id,favorite:!g.favorite}));if(r){g.favorite=r.favorite;star.classList.toggle("on",r.favorite);star.title=r.favorite?"Remove favorite":"Favorite"}}},"★");
+ const showRegion=!S.settings||S.settings.show_region;
+ return h("div",{class:"game",tabindex:0,role:"button",onclick:()=>openGame(g.id),onkeydown:e=>{if(e.key==="Enter")openGame(g.id)}},star,
+  h("div",{class:"t"},g.title),h("div",{class:"m"},consoleName(g.console)+(showRegion&&g.region?" · "+g.region:"")+" · "+g.size_mb+" MB"),
+  g.plays?h("div",{class:"m"},"Played "+g.plays+"×"):null,g.is_archive?h("span",{class:"badge"},"archive "+g.extension):null)}
+function consoleName(id){const c=(S.lib&&S.lib.consoles||[]).find(x=>x.id===id);return c?c.name:id}
+function emptyState(){const input=h("input",{type:"text",placeholder:"Paste your games folder path, e.g. C:\\Games\\Vimm",style:"min-width:min(480px,100%)"});
+ return h("div",{class:"panel"},h("h2",{},"Welcome. Let's find your games."),
+  h("p",{},"Point Legacy Player at the folder that holds your game backups. It only ",h("b",{},"looks"),": it never copies, moves, or edits your files."),
+  h("div",{class:"row"},input,h("button",{class:"btn primary",onclick:async()=>{const r=await act(()=>api("roots",{roots:[input.value.trim()]}));if(r){await act(()=>api("rescan"),"Library scanned");go()}}},"Scan this folder")))}
+async function rescan(){const r=await act(()=>api("rescan"));if(r){toast("Found "+r.games+" games in "+r.seconds+"s");go()}}
+
+async function openGame(id){
+ const g=await act(()=>api("game",{id}));if(!g)return;
+ const close=()=>{scrim.remove();dr.remove()};
+ const scrim=h("div",{class:"scrim",onclick:close});
+ const launchBtn=h("button",{class:"btn good",disabled:!g.launch.ready,onclick:async()=>{
+   if(S.settings&&S.settings.confirm_launch&&!confirm("Open "+g.title+" in "+g.launch.emulator+"?"))return;
+   const r=await act(()=>api("launch",{id}));if(r)toast("Opening "+r.launched+" in "+r.emulator+"…")}},"▶ Play");
+ const backups=h("div",{});
+ const drawBackups=()=>backups.replaceChildren(...(g.backups.length?g.backups.map(b=>h("div",{class:"row small"},h("span",{class:"grow"},b.backup+" ("+b.files+" file"+(b.files===1?"":"s")+")"),
+   h("button",{class:"btn",onclick:async()=>{if(confirm("Restore this backup? Your current saves are backed up first.")){const r=await act(()=>api("restore",{id,backup:b.backup}));if(r)toast("Restored "+r.restored+" file(s)")}}},"Restore"))):[h("span",{class:"muted small"},"No backups yet.")]));drawBackups();
+ const dr=h("aside",{class:"drawer",role:"dialog","aria-label":g.title},
+  h("div",{class:"row"},h("h2",{class:"grow"},g.title),h("button",{class:"btn",onclick:close,"aria-label":"Close"},"✕")),
+  h("div",{class:"muted"},g.console_name+(g.region?" · "+g.region:"")+" · "+g.size_mb+" MB"),
+  h("div",{class:"row",style:"margin:12px 0"},launchBtn,h("button",{class:"btn",onclick:async()=>{const r=await act(()=>api("favorite",{id,favorite:!g.favorite}));if(r){g.favorite=r.favorite;toast(r.favorite?"Added to favorites":"Removed from favorites");refreshGrid()}}},"★ Favorite")),
+  g.launch.ready?h("p",{class:"small muted"},"Will open in "+g.launch.emulator+"."):h("p",{class:"small bad"},g.launch.reason),
+  h("h3",{},whyInline("Playing with friends",
+    "Online play works by sending each player's button presses to everyone and running the game in lockstep. How well that works depends on the console and on a per-game 'game pack'. Nothing is faked: the label below is the honest status.")),
+  h("p",{},h("span",{class:"badge "+g.netplay},NETPLAY[g.netplay]||g.netplay)," ",h("span",{class:"small muted"},g.netplay_note)),
+  h("div",{class:"row"},h("button",{class:"btn primary",onclick:async()=>{const r=await act(()=>api("mp_host",{id}));if(r){S.room=r.room;S.tab="together";close();go();poll()}}},"Host a room"),
+    h("button",{class:"btn",onclick:()=>{close();S.tab="together";S.joinGame=id;go()}},"Join with a code")),
+  h("h3",{},whyInline("Controller for this console",controllerWhy())),
+  h("p",{class:"small"},g.controller.label+": "+g.controller.buttons.slice(0,6).map(b=>b.name+" → "+b.physical.split(" (")[0]).join(", ")+"…"),
+  h("button",{class:"btn",onclick:()=>{close();S.tab="controllers";S.ctrl=g.console;go()}},"Edit or test controller"),
+  h("h3",{},whyInline("Save files","Backups are plain copies of this game's save files, kept in your Legacy Player data folder with a timestamp. Restoring first backs up whatever is there now, so you cannot lose progress by restoring.")),
+  g.save_source?h("p",{class:"small muted"},"Looking in: "+g.save_source):h("p",{class:"small muted"},g.console_name+" saves live on a shared memory card or inside the emulator. Set a save folder in Settings to back them up."),
+  g.save_files.length?h("p",{class:"small"},"Found: "+g.save_files.join(", ")):h("p",{class:"small muted"},"No save files found yet."),
+  h("button",{class:"btn",onclick:async()=>{const r=await act(()=>api("backup",{id}));if(r){toast("Backed up "+r.files+" file(s)");const fresh=await api("game",{id});g.backups=fresh.backups;drawBackups()}}},"Back up saves now"),
+  h("div",{style:"margin-top:8px"},backups));
+ document.body.append(scrim,dr);
+}
+function controllerWhy(){return"Every pad is read in a standard layout. Each console has its own buttons, so Legacy Player maps your pad to that console automatically. You can change any mapping in Controllers."}
+
+/* ---------- Play Together ---------- */
+async function pingServer(){const r=await api("server_status").catch(()=>({online:false}));S.online=r.online;$("#srvdot").className="dot"+(r.online?" on":"");$("#srvtxt").textContent=r.online?"multiplayer server online":"multiplayer server offline";return r}
+async function viewTogether(m){
+ const st=await pingServer();
+ m.append(h("h2",{},"Play Together"),
+  h("div",{class:"why"},"A room is a private lobby on a server you or a friend runs. People join with a short invite code. Nobody else can see it."));
+ const share=h("input",{type:"checkbox",id:"srvshare"});
+ const srvAct=async(action)=>{const r=await act(()=>api("server_control",{action,share:share.checked}));if(r){toast(r.message);go()}};
+ m.append(h("div",{class:"panel"},
+  st.online?h("b",{class:"good"},"The multiplayer server is running. "):h("b",{class:"bad"},"The multiplayer server is not running. "),
+  h("div",{class:"small muted"},whyInline("What is the server?","The server is a small program that keeps rooms and invite codes. One person runs it (you can run it here); everyone else just sets its address in Settings. It keeps your rooms when you stop it and restores them when you start it again.")," ",st.message||""),
+  h("div",{class:"row",style:"margin-top:8px"},
+   h("button",{class:"btn primary",onclick:()=>srvAct("start")},"Start server"),
+   h("button",{class:"btn",onclick:()=>srvAct("restart")},"Restart"),
+   h("button",{class:"btn",onclick:()=>srvAct("stop")},"Stop"),
+   h("label",{class:"small"},share," Let friends connect (always encrypted with this app's own certificate)")),
+  h("div",{id:"srvinfo",class:"small muted",style:"margin-top:6px"})));
+ (async()=>{const info=await api("server_control",{action:"status",share:true}).catch(()=>null);const el=$("#srvinfo");if(!el||!info)return;
+   el.replaceChildren(info.fingerprint?h("div",{},"Friends set your address and this fingerprint in Settings > Multiplayer: ",h("span",{class:"code"},info.fingerprint),h("button",{class:"btn",onclick:()=>{navigator.clipboard&&navigator.clipboard.writeText(info.fingerprint);toast("Copied")}},"Copy")):null,
+    h("div",{},"Limits when started here: "+info.limits.players+" players per room, "+info.limits.rooms+" rooms, waiting line "+info.limits.waiting+" (change in Settings > Your server)"))})();
+ const s=await api("mp_state");S.room=s.room;S.waits=s.waits||[];
+ if(s.notice)toast(s.notice,s.level);(s.wait_events||[]).forEach(e=>toast(e.text,e.level));
+ const waitsBox=h("div",{id:"waits"});m.append(waitsBox);drawWaits(waitsBox);
+ const box=h("div",{id:"room"});m.append(box);drawRoom(box);
+ if(!S.room){
+  const games=(await api("library",{})).games;
+  const sel=h("select",{"aria-label":"Game"},...games.map(g=>h("option",{value:g.id,selected:S.joinGame===g.id},g.title+" ("+consoleName(g.console)+")")));
+  const code=h("input",{type:"text",placeholder:"XXXXX-XXXXX",maxlength:12,style:"width:160px","aria-label":"Invite code"});
+  const approve=h("input",{type:"checkbox",checked:true,id:"appr"});
+  const maxp=h("select",{"aria-label":"Player limit",title:"How many people can play at once. Others wait in line."},...[2,3,4,5,6,7,8].map(n=>h("option",{value:n,selected:n===4},String(n))));
+  const openRoom=h("input",{type:"checkbox",id:"openroom"});const label=h("input",{type:"text",placeholder:"Room name (optional)",maxlength:48,style:"width:200px"});
+  m.append(h("div",{class:"card",style:"margin-top:14px"},h("h3",{},"Pick the game you will play"),h("div",{class:"row"},sel),
+   h("p",{class:"small muted"},"Everyone in a room must have the same game and region. The host can check this before starting."),
+   h("div",{class:"row"},h("label",{class:"small"},"Players ",maxp),
+    h("button",{class:"btn primary",onclick:async()=>{const r=await act(()=>api("mp_host",{id:sel.value,require_approval:approve.checked,max_players:+maxp.value,open:openRoom.checked,label:label.value}));if(r){S.room=r.room;go();poll()}}},"Host a room"),
+    h("label",{class:"small"},approve," Ask me to approve each person")),
+   h("div",{class:"row"},h("label",{class:"small"},openRoom," Open room: anyone on this server can see it and walk in or wait in line"),label),
+   h("h3",{},whyInline("Join a friend","Ask the host for their code. Codes expire in 15 minutes and can be revoked. They travel encrypted only if the server uses TLS, which is required for internet play.")),
+   h("div",{class:"row"},code,h("button",{class:"btn good",onclick:async()=>{const r=await act(()=>api("mp_join",{id:sel.value,invite_code:code.value}));if(r){S.room=r.room;go();poll()}}},"Join"))));
+ }
+ if(st.online){const bb=h("div",{id:"browse"});m.append(bb);drawBrowse(bb)}
+}
+async function drawBrowse(box){
+ const d=await api("mp_browse").catch(()=>null);if(!d)return;
+ box.replaceChildren(h("div",{class:"card",style:"margin-top:14px"},h("div",{class:"row"},h("h3",{class:"grow"},whyInline("Open rooms on this server","Rooms whose host chose to make them public. You see the game and how full it is, never who is inside. Join walks in if there is a seat; Wait in line keeps your place while you play something else and tells you when it is your turn.")),h("button",{class:"btn",onclick:()=>drawBrowse(box)},"Refresh")),
+  h("p",{class:"small muted"},"Server limits: "+d.limits.max_players_per_room+" players per room, "+d.limits.max_rooms+" rooms, line of "+d.limits.max_waiting_per_room+"."),
+  d.rooms.length?h("table",{},h("thead",{},h("tr",{},h("th",{},"Room"),h("th",{},"Game"),h("th",{},"Players"),h("th",{},"Waiting"),h("th",{},""))),h("tbody",{},...d.rooms.map(r=>h("tr",{},
+   h("td",{},r.label||"(no name)",r.require_approval?h("div",{class:"small muted"},"host approves"):null),h("td",{},r.title+" · "+consoleName(r.console)+(r.region?" · "+r.region:"")),
+   h("td",{class:r.full?"warn":"good"},r.players+" / "+r.max_players+(r.full?" full":"")),h("td",{},String(r.waiting)),
+   h("td",{},r.you_have_it?h("div",{class:"row"},
+     r.full?null:h("button",{class:"btn good",onclick:async()=>{const x=await act(()=>api("mp_join",{id:r.local_game_id,session_id:r.session_id}));if(x){S.room=x.room;go();poll()}}},"Join"),
+     h("button",{class:"btn",onclick:async()=>{const x=await act(()=>api("mp_join",{id:r.local_game_id,session_id:r.session_id,background:true}),"You are in line; keep playing");if(x){S.waits=x.waits;go();poll()}}},"Wait in line")):h("span",{class:"small muted"},"you do not have this game"))))))
+   :h("p",{class:"muted"},"No open rooms right now.")));
+}
+function drawWaits(box){const w=S.waits||[];if(!w.length){box.replaceChildren();return}
+ box.replaceChildren(h("div",{class:"panel"},h("h3",{},"You are in line for"),...w.map(x=>h("div",{class:"row"},h("b",{},x.game),
+  x.ready?h("span",{class:"badge good"},"your spot is ready"):x.pending?h("span",{class:"badge"},"waiting for the host to approve"):h("span",{class:"badge"},"number "+(x.position||"?")+" in line"),
+  x.ready?h("button",{class:"btn primary",onclick:async()=>{const r=await act(()=>api("mp_switch",{session_id:x.session_id}));if(r){S.room=r.room;S.waits=r.waits;go();poll()}}},"Switch to it"):null,
+  h("button",{class:"btn",onclick:async()=>{const r=await act(()=>api("mp_cancel_wait",{session_id:x.session_id}));if(r){S.waits=r.waits;go()}}},"Leave line")))));
+}
+function drawRoom(box){const r=S.room;if(!r){box.replaceChildren();return}
+ const rm=r;const host=rm.role==="host";
+ const members=h("table",{},h("tbody",{},...rm.members.map(p=>h("tr",{},h("td",{},p.name+(p.me?" (you)":"")),h("td",{class:"muted"},p.role),h("td",{},p.ready?h("span",{class:"good"},"ready"):h("span",{class:"muted"},"not ready")),
+   h("td",{},host&&!p.me?h("button",{class:"btn bad",onclick:async()=>{const reason=prompt("Reason (optional)","")||"removed by host";const x=await act(()=>api("mp_kick",{target:p.name,reason}));if(x){S.room=x.room;drawRoom(box)}}},"Remove"):null)))));
+ box.replaceChildren(h("div",{class:"panel"},
+  h("div",{class:"row"},h("h3",{class:"grow"},rm.game+" · "+consoleName(rm.console)),rm.max_players?h("span",{class:"badge",title:"Players in the room / the room's limit"},rm.members.length+" / "+rm.max_players+" players"):null,h("span",{class:"badge"},rm.state)),
+  rm.queue?h("div",{class:"panel"},h("b",{},"The room is full. You are number "+rm.queue.position+" in line."),
+    h("p",{class:"small muted"},(rm.queue.priority?"You have priority, so you go before people without it. ":"")+"Keep this page open: when a spot frees up you are let in automatically (or sent to the host to approve). If you close it for about a minute you lose your place.")):null,
+  rm.waiting_for_host?h("p",{},"Waiting for the host to let you in…"):null,
+  rm.failure?h("p",{class:"bad"},"This match ended: "+rm.failure):null,
+  host&&rm.invite_code?h("div",{},h("p",{class:"muted small"},"Share this invite code (expires "+new Date(rm.invite_expires_at*1000).toLocaleTimeString()+"):"),
+    h("div",{class:"row"},h("span",{class:"code"},rm.invite_code),h("button",{class:"btn",onclick:()=>{navigator.clipboard&&navigator.clipboard.writeText(rm.invite_code);toast("Copied")}},"Copy"),
+     h("button",{class:"btn",onclick:async()=>{const x=await act(()=>api("mp_invite"),"New code made");if(x){S.room=x.room;drawRoom(box)}}},"New code"),
+     h("button",{class:"btn",title:"People who join with this code go to the front of the waiting line when the room is full.",onclick:async()=>{const x=await act(()=>api("mp_invite",{priority:true}),"Priority code made");if(x){S.room=x.room;drawRoom(box)}}},"New priority code"),
+     h("label",{class:"small"},h("input",{type:"checkbox",checked:!!rm.open,onchange:async e=>{const x=await act(()=>api("mp_open",{open:e.target.checked}),e.target.checked?"Room is now public":"Room is private again");if(x){S.room=x.room;drawRoom(box)}}})," Open to anyone on the server"),
+     h("label",{class:"small"},"Player limit ",h("select",{"aria-label":"Player limit",onchange:async e=>{const x=await act(()=>api("mp_capacity",{max_players:+e.target.value}));if(x){S.room=x.room;drawRoom(box)}}},...[2,3,4,5,6,7,8].map(n=>h("option",{value:n,selected:n===rm.max_players},String(n))))))):null,
+  host&&rm.waitlist.length?h("div",{style:"margin:12px 0"},h("h3",{},whyInline("Waiting list","The room is full, so these people are waiting. They go in order, and priority goes first. When a spot frees up the next person is let in automatically (or comes to you for approval if you ask to approve everyone).")),
+    ...rm.waitlist.map(w=>h("div",{class:"row"},h("span",{class:"badge"},"#"+w.position),h("b",{},w.participant_id),w.priority?h("span",{class:"badge good"},"priority"):null,
+     h("button",{class:"btn",onclick:async()=>{const x=await act(()=>api("mp_priority",{target:w.participant_id,priority:!w.priority}));if(x){S.room=x.room;drawRoom(box)}}},w.priority?"Remove priority":"Give priority"),
+     h("button",{class:"btn bad",onclick:async()=>{const x=await act(()=>api("mp_decide",{target:w.participant_id,approve:false}));if(x){S.room=x.room;drawRoom(box)}}},"Remove")))):null,
+  host&&rm.pending.length?h("div",{style:"margin:12px 0"},h("h3",{},"Waiting to join"),...rm.pending.map(n=>h("div",{class:"row"},h("b",{},n),
+    h("button",{class:"btn good",onclick:async()=>{const x=await act(()=>api("mp_decide",{target:n,approve:true}));if(x){S.room=x.room;drawRoom(box)}}},"Let in"),
+    h("button",{class:"btn bad",onclick:async()=>{const x=await act(()=>api("mp_decide",{target:n,approve:false}));if(x){S.room=x.room;drawRoom(box)}}},"Decline")))):null,
+  h("h3",{},"In this room"),members,
+  h("div",{class:"row",style:"margin-top:12px"},
+   host?h("button",{class:"btn",title:"Checks that everyone has the same game and region",onclick:async()=>{const x=await act(()=>api("mp_lock"),"Everyone has a matching game");if(x){S.room=x.room;drawRoom(box)}}},"Check everyone matches"):null,
+   h("button",{class:"btn primary",onclick:async()=>{const x=await act(()=>api("mp_ready"));if(x){S.room=x.room;drawRoom(box)}}},"I'm ready"),
+   h("button",{class:"btn bad",onclick:async()=>{await act(()=>api("mp_leave"));S.room=null;go()}},host?"Close room":"Leave")),
+  h("h3",{},whyInline("Start the match","This opens RetroArch with its built-in netplay. The host starts first and everyone else connects to the host's address. Legacy Player handles the room, the code and the address; RetroArch keeps the game in sync. Everyone needs RetroArch with the same core, and the same game file version.")),
+  launchBox(rm,host),
+  rm.problem?h("p",{class:"bad small"},rm.problem):null,
+  h("h3",{},"Activity"),h("div",{class:"feed"},...rm.events.slice().reverse().map(e=>h("div",{class:e.level==="warn"?"warn":""},e.text)))))}
+function launchBox(rm,host){
+ const L=rm.launch||{};const dolphin=L.engine==="dolphin";
+ const addr=h("input",{type:"text",value:L.suggested_address||"",style:"width:180px","aria-label":"Your address"});
+ const port=h("input",{type:"number",value:L.default_port||55435,min:1024,max:65535,style:"width:100px","aria-label":"Port"});
+ const mode=h("select",{"aria-label":"Connection type",onchange:()=>{addrRow.hidden=mode.value!=="direct"}},h("option",{value:"traversal"},"Dolphin traversal server (easiest, no router setup)"),h("option",{value:"direct"},"Direct connection (address and port)"));
+ const addrRow=h("div",{class:"row",hidden:dolphin},h("label",{class:"small"},"Your address ",addr),h("label",{class:"small"},"Port ",port));
+ const steps=h("ol",{class:"small",hidden:true});const codeRow=h("div",{class:"row",hidden:true});
+ const code=h("input",{type:"text",placeholder:"Dolphin host code",maxlength:16,style:"width:170px","aria-label":"Dolphin host code"});
+ codeRow.append(code,h("button",{class:"btn primary",onclick:async()=>{const r=await act(()=>api("mp_share_code",{code:code.value}),"Code shared with the room");if(r)codeRow.hidden=true}},"Share Dolphin host code"));
+ const label=dolphin?(host?"Open Dolphin (host)":"Open Dolphin"):(host?"Launch match (host)":"Join match");
+ const go=h("button",{class:"btn good",disabled:!L.ready,title:L.reason||"",onclick:async()=>{
+   const body=host?(dolphin?{mode:mode.value,address:addr.value.trim(),port:+port.value}:{address:addr.value.trim(),port:+port.value}):{};
+   const r=await act(()=>api("mp_launch",body));if(!r)return;
+   toast((dolphin?"Opening Dolphin for ":"Starting ")+r.launched+"…");
+   if(r.steps){steps.replaceChildren(...r.steps.map(t=>h("li",{},t)));steps.hidden=false}
+   if(r.needs_code)codeRow.hidden=false}},label);
+ return h("div",{class:"card",style:"margin:8px 0"},
+  dolphin&&host?h("div",{class:"row"},h("label",{class:"small"},"Connection ",mode)):null,
+  host?addrRow:null,
+  h("div",{class:"row",style:"margin-top:6px"},go,L.ready?null:h("span",{class:"small muted"},L.reason||"")),
+  steps,codeRow,
+  host?h("p",{class:"small muted"},dolphin?"Dolphin's NetPlay is started inside Dolphin; these steps are filled in for you. Everyone needs the same Dolphin version and the same game file. The traversal server is Dolphin's own, so game traffic is not run through Legacy Player.":"Same home network: use the address above. Over the internet, use a VPN such as Tailscale or ZeroTier, or forward the port. The match traffic itself is not encrypted, so a VPN is the safer choice."):null)}
+let pollTimer=null;
+function poll(){clearInterval(pollTimer);pollTimer=setInterval(async()=>{if(!S.room&&!(S.waits&&S.waits.length)&&S.tab!=="together"){return}
+ const s=await api("mp_state").catch(()=>null);if(!s)return;
+ if(s.notice){toast(s.notice,s.level||"warn");S.room=null;renderNav();if(S.tab==="together")go();return}
+ const had=!!S.room;S.room=s.room;S.waits=s.waits||[];(s.room?s.room.new_events:(s.wait_events||[])).forEach(e=>toast(e.text,e.level));
+ renderNav();const box=$("#room");if(box)drawRoom(box);const wb=$("#waits");if(wb)drawWaits(wb);if(had&&!S.room&&S.tab==="together")go()},2000)}
+
+/* ---------- Setup ---------- */
+async function viewSetup(m){
+ clearInterval(S.setupTimer);
+ const root=h("div",{});m.append(h("h2",{},"Setup"),
+  h("div",{class:"why"},"Online matches for NES, SNES, Game Boy, GBA, Genesis and Atari use RetroArch with a small plug-in per console called a core. GameCube and Wii use Dolphin. This page checks what you have and installs what it safely can."),root);
+ const draw=async()=>{
+  const st=await api("setup_status");const job=st.job;
+  const ok=(b)=>h("span",{class:b?"good":"bad"},b?"✓ ready":"✗ missing");
+  const running=job.state==="running";
+  const nothingToDo=st.retroarch.installed&&!st.cores_missing.length&&st.info_installed;
+  const cannot=!st.can_auto_install_cores||(!st.retroarch.installed&&!st.can_auto_install_retroarch);
+  root.replaceChildren(
+   h("div",{class:"card"},h("div",{class:"row"},h("h3",{class:"grow"},"RetroArch"),ok(st.retroarch.installed)),
+    h("p",{class:"small muted"},st.retroarch.installed?st.retroarch.path:(st.manual_retroarch||"Not found. Setup can download the official Windows build for you."))),
+   h("div",{class:"card",style:"margin-top:12px"},h("div",{class:"row"},h("h3",{class:"grow"},whyInline("Cores","A core is the part of RetroArch that emulates one console. Everyone in a match needs the same core."))),
+    h("div",{class:"chips"},...st.cores.map(c=>h("span",{class:"chip",title:c.wanted},(c.installed?"✓ ":"✗ ")+c.console.toUpperCase()+" · "+c.wanted.replace("_libretro","")+(c.installed&&c.netplay_ready===false?" (info says no netplay)":""))))),
+   st.retroarch.installed&&!st.info_installed?h("p",{class:"small bad"},"Core info files are missing. RetroArch refuses netplay without them. Press Install to add them."):null,
+   st.netplay_not_ready.length?h("p",{class:"small bad"},"RetroArch's own info says these cores do not support netplay: "+st.netplay_not_ready.join(", ")+". Try another core or update the info files."):null,
+   h("div",{class:"card",style:"margin-top:12px"},h("div",{class:"row"},h("h3",{class:"grow"},"Dolphin (GameCube and Wii)"),ok(st.dolphin.installed)),
+    h("p",{class:"small muted"},st.dolphin.installed?st.dolphin.path:"Not found. Download it from the official page, then set its path in Emulators."),
+    st.dolphin.installed?null:h("a",{href:st.dolphin.download_page,target:"_blank",rel:"noopener noreferrer"},"Open the Dolphin download page")),
+   h("div",{class:"card",style:"margin-top:12px"},h("h3",{},"Install"),
+    h("div",{class:"row"},
+     h("button",{class:"btn primary",disabled:running||nothingToDo||cannot,onclick:async()=>{if(!confirm("Download from buildbot.libretro.com into "+st.install_folder+"?"))return;if(await act(()=>api("setup_install",{what:"all",confirm:true}))){draw();poll()}}},
+      st.retroarch.installed?"Install missing cores":"Install RetroArch and cores"),
+     h("button",{class:"btn",onclick:draw},"Check again")),
+    h("p",{class:"small muted"},"Downloads come only from "+st.source+". Installs go into "+st.install_folder+" and need no admin rights. Nothing is run afterwards."),
+    !st.can_auto_install_retroarch&&!st.retroarch.installed?h("p",{class:"small"},st.manual_retroarch):null,
+    job.state!=="idle"?h("div",{style:"margin-top:8px"},
+     h("div",{class:"small"},(running?"Working: ":job.state==="done"?"Done. ":"Stopped. ")+job.step+(running?" ("+job.percent+"%)":"")),
+     job.state==="error"?h("div",{class:"bad small"},job.error):null,
+     h("div",{class:"feed",style:"margin-top:6px"},...job.log.slice().reverse().map(t=>h("div",{},t)))):null));
+  return job.state;
+ };
+ const poll=()=>{clearInterval(S.setupTimer);S.setupTimer=setInterval(async()=>{if(S.tab!=="setup"){clearInterval(S.setupTimer);return}const state=await draw().catch(()=>"error");if(state!=="running")clearInterval(S.setupTimer)},1500)};
+ const first=await draw();if(first==="running")poll();
+}
+
+/* ---------- Controllers ---------- */
+function padKey(p){return p.id.replace(/\s+/g," ").trim().toLowerCase()}
+function padVidPid(id){const m=/vendor:\s*([0-9a-f]{4})\s+product:\s*([0-9a-f]{4})/i.exec(id)||/^([0-9a-f]{4})-([0-9a-f]{4})-/i.exec(id);return m?m[1].toLowerCase()+":"+m[2].toLowerCase():"unknown"}
+function padPrettyName(id){return id.replace(/\(.*?(vendor|product).*?\)/i,"").replace(/^[0-9a-f]{4}-[0-9a-f]{4}-/i,"").trim().slice(0,70)||"Controller"}
+function isOn(p,b){if(b.t==="b")return !!(p.buttons[b.i]&&p.buttons[b.i].pressed);const v=p.axes[b.i];return v!==undefined&&v*b.d>0.6}
+function slotInput(prof,s){if(prof&&prof.bindings[s])return prof.bindings[s];
+ const taken=prof&&Object.values(prof.bindings).some(o=>o.t==="b"&&o.i===s);return taken?null:{t:"b",i:s}}
+function litSlots(p,prof){const lit=new Set();for(let s=0;s<17;s++){const b=slotInput(prof,s);if(b&&isOn(p,b))lit.add(s)}return lit}
+function livePads(){return[...(navigator.getGamepads?navigator.getGamepads():[])].filter(Boolean)}
+
+async function viewControllers(m){
+ const all=await api("controllers",{console:S.ctrl||"snes"});S.ctrl=S.ctrl||"snes";
+ S.P=await api("pads");S.wiz=null;
+ const sel=h("select",{"aria-label":"Console",onchange:e=>{S.ctrl=e.target.value;go()}},...all.all.map(c=>h("option",{value:c.id,selected:c.id===S.ctrl},c.name)));
+ const L=all.layout,edits={},names=S.P.standard_names;
+ const physOptions=Object.keys(names).map(k=>names[k]);
+ const rows=L.buttons.map(b=>{const s=h("select",{"aria-label":b.name,onchange:e=>{edits[b.name]=+e.target.value}},...physOptions.map((p,i)=>h("option",{value:i,selected:i===b.index},p)));return h("tr",{"data-idx":b.index},h("td",{},b.name),h("td",{},s))});
+ const live=h("div",{class:"pad",id:"live"});
+ const padsBox=h("div",{id:"padsbox"}),wizBox=h("div",{id:"wiz"});
+ m.append(h("h2",{},"Controllers"),
+  h("div",{class:"why"},"Plug in or turn on any gamepad, then press a button on it. It appears below. Use Identify to make it rumble (so you know which is which), assign it to a player, and press Map to teach Legacy Player what each of its buttons is. Nothing is sent anywhere; mapping is saved on this computer."),
+  h("h3",{},"Your controllers"),padsBox,wizBox,
+  h("h3",{},whyInline("Console layout","A console has its own buttons. This table says which standard control on your pad is each console button. Your pad's own mapping (above) is applied first.")),
+  h("div",{class:"row"},sel,h("span",{class:"badge"},L.customized?"customized":"default")),L.note?h("p",{class:"small muted"},L.note):"",
+  h("div",{class:"card",style:"margin-top:12px"},h("table",{},h("thead",{},h("tr",{},h("th",{},"Console button"),h("th",{},"Standard control"))),h("tbody",{},...rows)),
+   h("div",{class:"row",style:"margin-top:12px"},h("button",{class:"btn primary",onclick:async()=>{if(Object.keys(edits).length){const cur={};L.buttons.forEach(b=>cur[b.name]=b.index);const r=await act(()=>api("controllers",{console:S.ctrl,buttons:{...cur,...edits}}),"Saved");if(r)go()}}},"Save layout"),
+    h("button",{class:"btn",onclick:async()=>{await act(()=>api("controllers",{console:S.ctrl,buttons:{}}),"Reset to default");go()}},"Reset"))),
+  h("h3",{},"Live test"),live,
+  h("p",{class:"small muted"},"Emulator note: RetroArch gets your Xbox-style (standard layout) pad bindings automatically. Other emulators keep their own controller settings; for those, set the pad inside the emulator once."));
+ let sig="";
+ const drawPads=ps=>{padsBox.replaceChildren(...(ps.length?ps.map(p=>padCard(p)):[h("p",{class:"muted"},"No controller detected yet. Press any button on it (browsers only show a pad after the first press).")]))};
+ const padCard=p=>{
+  const key=padKey(p),prof=S.P.profiles[key];const owner=Object.keys(S.P.players).find(n=>S.P.players[n]===key);
+  const slot=h("select",{"aria-label":"Player",onchange:async e=>{const v=+e.target.value;
+    if(owner&&+owner!==v)await act(()=>api("pad_assign",{player:+owner,id:null}));
+    if(v)S.P=await act(()=>api("pad_assign",{player:v,id:p.id,name:padPrettyName(p.id),standard:p.mapping==="standard"}),"Assigned to player "+v)||S.P;go()}},
+    h("option",{value:0},"Not assigned"),...[1,2,3,4].map(n=>h("option",{value:n,selected:owner===String(n)},"Player "+n)));
+  return h("div",{class:"card","data-pad":p.index},
+   h("div",{class:"row"},h("strong",{},padPrettyName(p.id)),h("span",{class:"badge"},p.mapping==="standard"?"standard layout":"custom layout"),prof&&Object.keys(prof.bindings).length?h("span",{class:"badge"},"mapped"):""),
+   h("p",{class:"small muted"},"Vendor:product "+padVidPid(p.id)+" · "+p.buttons.length+" buttons · "+p.axes.length+" axes · slot "+p.index),
+   h("div",{class:"row"},slot,
+    h("button",{class:"btn",onclick:()=>{const a=p.vibrationActuator;if(a&&a.playEffect)a.playEffect("dual-rumble",{duration:600,strongMagnitude:1,weakMagnitude:1}).catch(()=>{});toast("Pad "+(p.index+1)+" is highlighted below; it rumbles if it supports that.")}},"Identify"),
+    h("button",{class:"btn primary",onclick:()=>startWiz(p.index)},"Map buttons"),
+    prof&&Object.keys(prof.bindings).length?h("button",{class:"btn",onclick:async()=>{S.P=await act(()=>api("pad_delete",{id:p.id}),"Mapping cleared")||S.P;go()}},"Clear mapping"):""),
+   h("div",{class:"pad live-"+p.index,"data-live":p.index}));
+ };
+ const startWiz=index=>{const p=livePads().find(x=>x.index===index);if(!p)return;
+  S.wiz={index,step:0,map:{},rest:{axes:[...p.axes]},release:true,done:false};drawWiz()};
+ const drawWiz=()=>{const w=S.wiz;if(!w){wizBox.replaceChildren();return}
+  const slots=Object.keys(names).map(Number);
+  if(w.step>=slots.length){return finishWiz()}
+  const s=slots[w.step];
+  wizBox.replaceChildren(h("div",{class:"card"},h("h3",{},"Mapping: step "+(w.step+1)+" of "+slots.length),
+   h("p",{},"Press the button (or move the stick/trigger) you want to use as ",h("strong",{},names[s]),". Don't touch the pad until this prompt appears."),
+   h("div",{class:"row"},
+    h("button",{class:"btn",onclick:()=>{w.step++;w.release=true;drawWiz()}},"Skip"),
+    h("button",{class:"btn",onclick:()=>{if(w.step>0){w.step--;delete w.map[slots[w.step]];w.release=true;drawWiz()}}},"Back"),
+    h("button",{class:"btn",onclick:()=>finishWiz()},"Finish now"),
+    h("button",{class:"btn",onclick:()=>{S.wiz=null;drawWiz()}},"Cancel"))))};
+ const finishWiz=async()=>{const w=S.wiz;S.wiz=null;wizBox.replaceChildren();const p=livePads().find(x=>x.index===w.index);if(!p)return;
+  if(!Object.keys(w.map).length){toast("Nothing was mapped.");return}
+  const bindings={};for(const[k,v]of Object.entries(w.map))bindings[k]=v;
+  // slots the user skipped keep their standard meaning only when that input is not already taken
+  const r=await act(()=>api("pad_save",{id:p.id,name:padPrettyName(p.id),standard:p.mapping==="standard",bindings}),"Controller mapping saved");if(r){S.P=r;go()}};
+ const stepWiz=p=>{const w=S.wiz;if(!w||w.index!==p.index)return;const slots=Object.keys(names).map(Number);if(w.step>=slots.length)return;
+  const idle=[...p.buttons].every(b=>!b.pressed)&&p.axes.every((v,i)=>Math.abs(v-(w.rest.axes[i]||0))<0.4);
+  if(w.release){if(idle)w.release=false;return}
+  let hit=null;
+  p.buttons.forEach((b,i)=>{if(!hit&&b.pressed)hit={t:"b",i}});
+  if(!hit)p.axes.forEach((v,i)=>{const d=v-(w.rest.axes[i]||0);if(!hit&&Math.abs(d)>0.7)hit={t:"a",i,d:d>0?1:-1}});
+  if(!hit)return;
+  const dup=Object.values(w.map).some(o=>o.t===hit.t&&o.i===hit.i&&o.d===hit.d);if(dup)return;
+  w.map[slots[w.step]]=hit;w.step++;w.release=true;drawWiz()};
+ clearInterval(S.padTimer);
+ S.padTimer=setInterval(()=>{if(!$("#live")){clearInterval(S.padTimer);return}
+  const ps=livePads(),nsig=ps.map(p=>p.index+":"+p.id).join("|");
+  if(nsig!==sig){sig=nsig;drawPads(ps)}
+  ps.forEach(p=>{stepWiz(p);const prof=S.P.profiles[padKey(p)];const lit=litSlots(p,prof);
+   const box=padsBox.querySelector('[data-live="'+p.index+'"]');
+   if(box)box.replaceChildren(...[...lit].map(s=>h("span",{class:"hit"},names[s])));
+   const card=padsBox.querySelector('[data-pad="'+p.index+'"]');if(card)card.style.outline=(lit.size||p.buttons.some(b=>b.pressed))?"2px solid var(--accent)":"";});
+  const first=ps.find(p=>S.P.players["1"]===padKey(p))||ps[0];
+  if(first){const lit=litSlots(first,S.P.profiles[padKey(first)]);const byIdx={};L.buttons.forEach(b=>{(byIdx[b.index]=byIdx[b.index]||[]).push(b.name)});
+   live.replaceChildren(...[...lit].filter(s=>byIdx[s]).map(s=>h("span",{class:"hit"},byIdx[s].join("/"))))}
+  else live.replaceChildren()},60);
+}
+
+/* ---------- Saves ---------- */
+async function viewSaves(m){
+ const d=await api("save_folders");
+ const rootIn=h("input",{type:"text",value:d.custom_root?d.root:"",placeholder:d.root,style:"min-width:min(520px,100%)"});
+ m.append(h("h2",{},"Saves"),
+  h("div",{class:"why"},"Game saves matter more than the games. Legacy Player gives every RetroArch console its own tidy folder (saves and save states) under one root, and passes that to RetroArch when it launches. Other emulators keep their own folders; you can point backups at them below. Backups are timestamped copies, and restoring first backs up what you have now."),
+  h("div",{class:"card"},h("h3",{},"Save folder root"),h("p",{class:"small muted"},"Currently: "+d.root+(d.custom_root?"":" (default, inside the Legacy Player data folder)")),
+   h("div",{class:"row"},rootIn,
+    h("button",{class:"btn primary",onclick:async()=>{const r=await act(()=>api("save_folders",{root:rootIn.value.trim()||"",create:true}),"Save folders ready");if(r)go()}},"Use this folder"),
+    h("button",{class:"btn",onclick:async()=>{const r=await act(()=>api("save_folders",{create:true}),"Created any missing folders");if(r)go()}},"Create folders"),
+    h("button",{class:"btn",onclick:async()=>{const r=await act(()=>api("save_folders",{root:""}),"Back to the default");if(r)go()}},"Use default")),
+   h("p",{class:"small muted"},"Backups are kept in: "+d.backups_folder)),
+  h("div",{class:"card",style:"margin-top:12px"},h("table",{},h("thead",{},h("tr",{},h("th",{},"Console"),h("th",{},"Save folder"),h("th",{},"Files"),h("th",{},"Managed by"))),h("tbody",{},...d.consoles.map(c=>{
+    const inp=h("input",{type:"text",placeholder:"Custom folder",value:c.mode==="custom"?c.folder:"",style:"width:100%"});
+    return h("tr",{},h("td",{},c.name),
+     h("td",{class:c.folder?"":"muted"},c.folder?c.folder+(c.exists?"":" (will be created on first launch)"):"not set",c.hint?h("div",{class:"small muted"},"Usually: "+c.hint):""),
+     h("td",{},String(c.files)),
+     h("td",{},c.mode==="managed"?"Legacy Player (RetroArch)":c.mode==="custom"?"you":(c.emulator||"no emulator")+" (its own folder)",
+      h("div",{},inp,h("button",{class:"btn",onclick:async()=>{const r=await act(()=>api("save_source",{console:c.console,path:inp.value.trim()||null}),"Saved");if(r)go()}},"Set"))))})))));
+}
+
+/* ---------- Engines (the owned shell) ---------- */
+async function viewEngines(m){
+ clearInterval(S.engTimer);
+ const root=h("div",{});
+ m.append(h("h2",{},"Engines"),
+  h("div",{class:"why"},"Legacy Player is the one program you open; each console runs on an engine (an emulator) inside it. This page finds the engines already on this computer, fetches missing ones from their official project releases, and checks for the BIOS files some consoles need from your own hardware. Nothing is scanned or downloaded until you press a button, and nothing is ever run after a download."),
+  root);
+ const draw=async()=>{
+  const d=await api("engines");const job=d.job;const running=job.state==="running";
+  root.replaceChildren(
+   h("div",{class:"card"},h("div",{class:"row"},h("h3",{class:"grow"},"Find what is already here"),
+     h("button",{class:"btn primary",onclick:async()=>{toast("Scanning the usual program folders…");const r=await act(()=>api("engines_scan",{confirm:true}));if(r){const n=Object.keys(r.new||{}).length;toast(n?"Found "+n+" new engine(s)":"Scan finished; nothing new");draw()}}},"Scan this computer"),
+     h("button",{class:"btn",disabled:running,onclick:async()=>{if(!d.allow_internet){toast("Turn on 'Allow internet downloads' in Settings first","warn");return}
+       if(!confirm("Fetch every missing engine that has an official GitHub release, one after another, into "+d.install_folder+"?"))return;
+       const r=await act(()=>api("engines_install_all",{confirm:true}));if(r){toast("Fetching: "+r.queued.join(", "));draw();poll()}}},"Get all missing engines")),
+    h("p",{class:"small muted"},"Looks in Program Files, your user folders, your games and emulator folders. Read-only, stays on this computer."+(d.last_scan?" Last scan: "+new Date(d.last_scan*1000).toLocaleString():""))),
+   h("div",{class:"card",style:"margin-top:12px"},h("table",{},h("thead",{},h("tr",{},h("th",{},"Engine"),h("th",{},"Consoles"),h("th",{},"Status"),h("th",{},"Official source"))),h("tbody",{},...d.engines.map(e=>h("tr",{},
+     h("td",{},h("b",{},e.name),h("div",{class:"small muted"},e.license)),
+     h("td",{class:"small"},e.consoles.map(consoleName).join(", ")),
+     h("td",{},e.path?h("span",{class:"good"},"✓ "+e.path):h("span",{class:"muted"},"not found")),
+     h("td",{},e.can_download?h("button",{class:"btn",disabled:running,title:"github.com/"+e.official.repo,onclick:async()=>{
+        if(!d.allow_internet){toast("Turn on 'Allow internet downloads' in Settings first","warn");return}
+        if(!confirm("Download the latest "+e.name+" from github.com/"+e.official.repo+" into "+d.install_folder+"? Only that site is contacted.")) return;
+        if(await act(()=>api("engines_install",{engine:e.id,confirm:true}))){draw();poll()}}},e.path?"Update from GitHub":"Get from GitHub")
+      :h("a",{href:e.official.url,target:"_blank",rel:"noopener noreferrer",title:e.official.note||""},"Official page"))))))),
+   job.state!=="idle"?h("div",{class:"card",style:"margin-top:12px"},h("div",{class:"small"},(running?"Working: ":job.state==="done"?"Done. ":"Stopped. ")+job.step+(running?" ("+job.percent+"%)":"")),
+     job.error?h("div",{class:"bad small"},job.error):null,h("div",{class:"feed",style:"margin-top:6px"},...job.log.slice().reverse().map(t=>h("div",{},t)))):null,
+   h("h3",{},whyInline("BIOS and firmware","Some consoles need a copy of their own system software to run. Those files belong to the console makers, so Legacy Player never downloads them: it finds the copies you dumped from hardware you own and tells you which are missing.")),
+   h("div",{class:"card"},...d.bios.map(b=>h("div",{style:"margin-bottom:10px"},h("div",{class:"row"},h("b",{},b.name),h("span",{class:"small muted"},"for "+b.for),b.found.length?h("span",{class:"badge good"},"found"):h("span",{class:"badge"},"not found")),
+     ...b.found.map(f=>h("div",{class:"small"},f.path+"  ("+Math.round(f.size/1024)+" KB, sha256 "+f.sha256+"…)")),
+     b.found.length?null:h("div",{class:"small muted"},b.how)))),
+   h("p",{class:"small muted"},"Downloads use only api.github.com and GitHub's file hosts over https; most projects publish no checksums, so trust rests on TLS to GitHub. Installs go to "+d.install_folder+"."));
+  return job.state};
+ const poll=()=>{clearInterval(S.engTimer);S.engTimer=setInterval(async()=>{if(S.tab!=="engines"){clearInterval(S.engTimer);return}const st=await draw().catch(()=>"error");if(st!=="running")clearInterval(S.engTimer)},1500)};
+ const first=await draw();if(first==="running")poll();
+}
+
+/* ---------- Console mode (big screen, pad-driven) ---------- */
+async function viewConsole(m){
+ const d=await api("library",{sort:S.sort});S.lib=d;
+ const consoles=d.consoles.filter(c=>c.count);
+ let ci=Math.max(0,consoles.findIndex(c=>c.id===S.console)),gi=0;
+ const wrap=h("div",{class:"tv"});
+ m.append(wrap);
+ const render=()=>{
+  const c=consoles[ci];const games=c?d.games.filter(g=>g.console===c.id):[];gi=Math.min(gi,Math.max(0,games.length-1));
+  wrap.replaceChildren(
+   h("div",{class:"tvbar"},...consoles.map((x,i)=>h("span",{class:"chip"+(i===ci?" on":""),onclick:()=>{ci=i;gi=0;render()}},x.name))),
+   consoles.length?h("div",{class:"tvgrid"},...games.map((g,i)=>h("div",{class:"tvcard"+(i===gi?" sel":""),onclick:()=>{gi=i;render()},ondblclick:()=>play(g)},h("div",{class:"tvtitle"},g.title),h("div",{class:"small muted"},g.region||"")))):h("p",{class:"muted"},"No games yet. Add your games folder in Library."),
+   h("p",{class:"small muted tvhelp"},"D-pad or arrows: move · A / Enter: play · Shoulder buttons or [ ]: change console · B / Esc: back to Library"));
+  const sel=wrap.querySelector(".tvcard.sel");if(sel)sel.scrollIntoView({block:"nearest"});
+ };
+ const play=async g=>{const r=await act(()=>api("launch",{id:g.id}));if(r)toast("Started "+r.launched+" in "+r.emulator)};
+ const move=(dx,dy)=>{const c=consoles[ci];if(!c)return;const games=d.games.filter(g=>g.console===c.id);const cols=Math.max(1,Math.floor((wrap.clientWidth-20)/180));
+  gi=Math.max(0,Math.min(games.length-1,gi+dx+dy*cols));render()};
+ const key=e=>{if(S.tab!=="console"){document.removeEventListener("keydown",key);return}
+  const map={ArrowLeft:()=>move(-1,0),ArrowRight:()=>move(1,0),ArrowUp:()=>move(0,-1),ArrowDown:()=>move(0,1),
+   Enter:()=>{const c=consoles[ci];const games=c?d.games.filter(g=>g.console===c.id):[];if(games[gi])play(games[gi])},
+   "[":()=>{ci=(ci-1+consoles.length)%consoles.length;gi=0;render()},"]":()=>{ci=(ci+1)%consoles.length;gi=0;render()},Escape:()=>{S.tab="library";go()}};
+  if(map[e.key]){e.preventDefault();map[e.key]()}};
+ document.addEventListener("keydown",key);
+ let last={},held=0;
+ clearInterval(S.tvTimer);S.tvTimer=setInterval(()=>{if(S.tab!=="console"){clearInterval(S.tvTimer);return}
+  const p=livePads()[0];if(!p)return;const prof=(S.P&&S.P.profiles[padKey(p)])||null;const lit=litSlots(p,prof);
+  const edge=s=>{const now=lit.has(s);const was=!!last[s];last[s]=now;return now&&!was};
+  if(edge(14))move(-1,0);if(edge(15))move(1,0);if(edge(12))move(0,-1);if(edge(13))move(0,1);
+  if(edge(0)){const c=consoles[ci];const games=c?d.games.filter(g=>g.console===c.id):[];if(games[gi])play(games[gi])}
+  if(edge(4)){ci=(ci-1+consoles.length)%consoles.length;gi=0;render()}if(edge(5)){ci=(ci+1)%consoles.length;gi=0;render()}
+  if(edge(1)){S.tab="library";go()}},50);
+ if(!S.P)S.P=await api("pads").catch(()=>null);
+ render();
+}
+
+/* ---------- First-run setup wizard ---------- */
+async function viewWelcome(m){
+ const roots=await api("roots");const eng=await api("engines");const st=S.settings||{};
+ let step=S.wizStep||0;const box=h("div",{});m.append(h("h2",{},"Welcome to Legacy Player"),box);
+ const steps=["Your games","Your engines","Privacy and downloads","Your name"];
+ const nav=(back,next,nextLabel)=>h("div",{class:"row",style:"margin-top:14px"},back?h("button",{class:"btn",onclick:()=>{S.wizStep=step-1;go()}},"Back"):null,
+   h("button",{class:"btn primary",onclick:next},nextLabel||"Next"),h("button",{class:"btn",onclick:async()=>{await api("settings",{key:"setup_done",value:true});S.wizStep=0;S.tab="library";go()}},"Skip setup"));
+ const render=()=>{
+  box.replaceChildren(h("div",{class:"chips"},...steps.map((t,i)=>h("span",{class:"chip"+(i===step?" on":"")},(i+1)+". "+t))));
+  if(step===0){const inp=h("input",{type:"text",placeholder:"P:\\\\Vimm",value:(roots.roots||[])[0]||"",style:"min-width:min(480px,100%)"});
+   box.append(h("div",{class:"card"},h("h3",{},"Where are your games?"),h("p",{class:"small muted"},"Paste the folder that holds your game files, sorted into folders like NES, SNES, PS2. Legacy Player only reads it; nothing is moved or renamed."),
+    h("div",{class:"row"},inp),nav(false,async()=>{const v=inp.value.trim();if(v){const cur=roots.roots||[];const r=await act(()=>api("roots",{roots:cur.includes(v)?cur:cur.concat([v])}));if(!r)return;await act(()=>api("rescan"))}S.wizStep=step+1;go()})))}
+  else if(step===1){
+   const have=eng.engines.filter(e=>e.path),missing=eng.engines.filter(e=>!e.path&&e.can_download);
+   box.append(h("div",{class:"card"},h("h3",{},"Which engines will run your games?"),
+    h("p",{class:"small muted"},"An engine is the emulator for one console family. You can use ones already on this computer, or let Legacy Player fetch its own copies from each project's official releases, kept in its own folder and credited on the Credits page."),
+    h("div",{class:"row"},h("button",{class:"btn",onclick:async()=>{const r=await act(()=>api("engines_scan",{confirm:true}));if(r){toast("Found "+Object.keys(r.new||{}).length+" new");S.wizStep=1;go()}}},"Scan this computer for my own emulators")),
+    h("p",{class:"small"},"Found so far: "+(have.length?have.map(e=>e.name).join(", "):"none yet")),
+    missing.length?h("p",{class:"small"},"Could be fetched from official releases: "+missing.map(e=>e.name).join(", ")+" (needs internet downloads on, next step; you can do it later from Engines)"):null,
+    h("p",{class:"small muted"},"Either way, you can point any console at any program later in Emulators."),
+    nav(true,()=>{S.wizStep=step+1;go()})))}
+  else if(step===2){const allow=h("input",{type:"checkbox",checked:!!st.allow_internet});
+   box.append(h("div",{class:"card"},h("h3",{},"Privacy and downloads"),
+    h("p",{class:"small"},"Legacy Player never sends anything about you, your computer or your games anywhere. Multiplayer talks only to the server address you choose; other players see your display name and nothing else."),
+    h("label",{class:"small"},allow," Allow internet downloads (engines from official project releases, RetroArch cores from libretro). Each download still asks you first."),
+    h("p",{class:"small muted"},"BIOS files for PS1/PS2/Xbox/DS are never downloaded: they belong to the console makers. Legacy Player finds the copies you dumped from your own consoles."),
+    nav(true,async()=>{await act(()=>api("settings",{key:"allow_internet",value:allow.checked}));S.wizStep=step+1;go()})))}
+  else {const name=h("input",{type:"text",value:st.display_name||"Player",maxlength:64});
+   box.append(h("div",{class:"card"},h("h3",{},"What should other players call you?"),h("div",{class:"row"},name),
+    h("p",{class:"small muted"},"A short tag (#1234) is added so two people with the same name never clash. It is random and says nothing about you."),
+    nav(true,async()=>{const r=await act(()=>api("settings",{key:"display_name",value:name.value.trim()||"Player"}));if(!r)return;await api("settings",{key:"setup_done",value:true});S.wizStep=0;S.tab="library";toast("You're set. Plug in a controller any time; the Controllers tab finds it.");go()},"Finish")))}
+ };render();
+}
+
+/* ---------- Credits ---------- */
+async function viewCredits(m){
+ const d=await api("credits");
+ m.append(h("h2",{},"Credits and licenses"),
+  h("div",{class:"why"},"Legacy Player is the shell: library, controllers, saves, rooms, invites, encryption and the installer. The emulation itself is the work of the projects below, used under their licenses and unchanged. Thank them, and if you fetch an engine through this app it comes from that project's own release page, or from a mirror you choose."),
+  h("div",{class:"card"},h("table",{},h("thead",{},h("tr",{},h("th",{},"Engine"),h("th",{},"Consoles"),h("th",{},"License"),h("th",{},"Project"),h("th",{},"Mirror"))),h("tbody",{},...d.engines.map(e=>h("tr",{},
+   h("td",{},h("b",{},e.name),e.path?h("div",{class:"small good"},"installed"):h("div",{class:"small muted"},"not installed")),h("td",{class:"small"},e.consoles.map(consoleName).join(", ")),
+   h("td",{class:"small"},e.license,e.redistributable===false?h("div",{class:"muted"},"not bundled: license forbids redistribution"):null),
+   h("td",{},h("a",{href:e.homepage,target:"_blank",rel:"noopener noreferrer"},e.homepage.replace("https://",""))),
+   h("td",{},d.mirror?h("a",{href:d.mirror.url,target:"_blank",rel:"noopener noreferrer",title:d.mirror.note},d.mirror.name):null)))))),
+  h("p",{class:"small muted"},"Mirror note: "+(d.mirror?d.mirror.note:"")),
+  h("div",{class:"card",style:"margin-top:12px"},h("h3",{},"Also used"),...d.also.map(x=>h("p",{class:"small"},h("b",{},x.name+": "),x.text))));
+}
+
+/* ---------- Emulators ---------- */
+async function viewEmulators(m){
+ const d=await api("emulators");
+ m.append(h("h2",{},"Emulators"),h("div",{class:"why"},"Legacy Player does not replace emulators: it opens the right one for each console. It looks for emulators inside your games folder and on your PATH. If one is missing, paste its program path."),
+  h("div",{class:"card"},h("h3",{},whyInline("Emulator folders","Folders where you keep emulator programs. Legacy Player looks inside them (a few levels deep) and never changes anything there. Installers such as PCSX2 or PPSSPP setup files must be run first; then add the folder they installed to.")),
+   ...(d.folders||[]).map(f=>h("div",{class:"row"},h("code",{class:"grow"},f),h("button",{class:"btn",onclick:async()=>{const r=await act(()=>api("emulators",{folder:f,remove:true}));if(r)go()}},"Remove"))),
+   (()=>{const inp=h("input",{type:"text",placeholder:"Paste a folder path, e.g. P:\\Downloads\\Emulator set ups",style:"min-width:min(480px,100%)"});return h("div",{class:"row"},inp,h("button",{class:"btn primary",onclick:async()=>{const r=await act(()=>api("emulators",{folder:inp.value.trim()}),"Folder added");if(r)go()}},"Add folder"))})()),
+  h("div",{class:"card",style:"margin-top:12px"},h("table",{},h("thead",{},h("tr",{},h("th",{},"Emulator"),h("th",{},"Found at"),h("th",{},""))),h("tbody",{},...d.emulators.map(e=>{
+    const inp=h("input",{type:"text",placeholder:"Full path to program",value:e.source==="you set this"?e.path:"",style:"width:100%"});
+    return h("tr",{},h("td",{},e.name),h("td",{class:e.path?"":"muted"},e.path?e.path+"  ("+e.source+")":"not found"),h("td",{},inp,h("button",{class:"btn",onclick:async()=>{const r=await act(()=>api("emulators",{emulator:e.id,path:inp.value.trim()||null}),"Saved");if(r)go()}},"Set")))})))),
+  h("h3",{},"Which emulator opens which console"),
+  h("div",{class:"card"},h("table",{},h("tbody",{},...d.consoles.map(c=>h("tr",{},h("td",{},c.name),h("td",{class:c.emulator?"good":"muted"},c.emulator||"none set")))))));
+}
+
+/* ---------- Settings ---------- */
+async function viewSettings(m){
+ const s=await api("settings");S.settings=s.values;const roots=await api("roots");
+ const groups={};Object.entries(s.schema).forEach(([k,sp])=>{(groups[sp.group]=groups[sp.group]||[]).push([k,sp])});
+ m.append(h("h2",{},"Settings"));
+ const rootIn=h("input",{type:"text",placeholder:"Add a games folder path",style:"min-width:min(420px,100%)"});
+ m.append(h("div",{class:"card"},h("h3",{},whyInline("Library folders","These folders are read-only. Saves, emulators and BIOS folders inside them are skipped when listing games.")),
+  ...roots.roots.map(r=>h("div",{class:"row"},h("code",{class:"grow"},r),h("button",{class:"btn bad",onclick:async()=>{await act(()=>api("roots",{roots:roots.roots.filter(x=>x!==r)}));go()}},"Remove"))),
+  h("div",{class:"row",style:"margin-top:8px"},rootIn,h("button",{class:"btn primary",onclick:async()=>{if(!rootIn.value.trim())return;const r=await act(()=>api("roots",{roots:[...roots.roots,rootIn.value.trim()]}));if(r){await act(()=>api("rescan"),"Library scanned");go()}}},"Add and scan"))));
+ for(const[g,items]of Object.entries(groups)){
+  m.append(h("div",{class:"card",style:"margin-top:14px"},h("h3",{},g),...items.map(([k,sp])=>{
+   let ctl;const v=s.values[k];
+   const save=async val=>{const r=await act(()=>api("settings",{key:k,value:val}));if(r){S.settings=r.values;if(k==="theme")document.documentElement.dataset.theme=val;if(k==="view"||k==="show_region")toast("Saved")}};
+   if(sp.type==="bool")ctl=h("input",{type:"checkbox",checked:v,onchange:e=>save(e.target.checked)});
+   else if(sp.type==="choice")ctl=h("select",{onchange:e=>save(e.target.value)},...sp.choices.map(c=>h("option",{value:c,selected:c===v},c)));
+   else if(sp.type==="int")ctl=h("input",{type:"number",value:v,min:sp.min,max:sp.max,onchange:e=>save(+e.target.value)});
+   else ctl=h("input",{type:"text",value:v,onchange:e=>save(e.target.value)});
+   return h("div",{style:"margin:10px 0"},h("div",{class:"row"},h("label",{class:"grow"},sp.label),ctl),h("div",{class:"small muted"},sp.help))})));
+ }
+}
+
+/* ---------- Help ---------- */
+function viewHelp(m){
+ const sec=(t,...p)=>h("div",{class:"card",style:"margin-bottom:12px"},h("h3",{},t),...p.map(x=>h("p",{},x)));
+ m.append(h("h2",{},"How it works"),
+  sec("Your games stay yours","Legacy Player scans your games folder by file type and folder name. It lists files; it never opens, copies, moves, or changes them, and it ships no games, BIOS, or firmware."),
+  sec("Playing","Pressing Play starts the emulator you chose for that console with your game. Emulators are separate programs; Legacy Player opens and organizes them."),
+  sec("Playing together (technical)","A coordination server runs on Windows, Linux, or a Raspberry Pi. Each player's emulator sends button presses; the server releases a frame only when every player's input has arrived (lockstep), and players compare state checksums to detect desync. This only works when the emulator is deterministic, so support is tiered per console and per game."),
+  sec("Invite codes and privacy","A code like ABCDE-FGH12 is a secret that lets someone ask to join one room. It expires, has a use limit, can be cancelled, and wrong guesses are rate-limited. The server stores only hashes. Traffic is encrypted when the server runs with TLS, which internet hosting requires."),
+  sec("Notifications","You are told when someone asks to join, joins, leaves, disconnects, is removed by the host, or when the server restarts. A removed player sees the host's reason."),
+  sec("Starting and stopping the server","python -m server.cli start --detach, stop, restart, and status work the same everywhere. Stopping saves rooms; starting resumes them. A match in progress returns to the ready step so everyone re-syncs."),
+  sec("Starting a match","NES, SNES, Game Boy, GBA, Genesis and Atari start through RetroArch netplay. GameCube and Wii open Dolphin and guide you through its NetPlay window with the room address filled in. Other consoles have rooms and invites but no match launcher yet."));
+}
+
+setInterval(()=>{api("ping").catch(()=>{})},5000);
+window.addEventListener("pagehide",()=>{try{fetch("/api/bye",{method:"POST",keepalive:true,headers:{"Content-Type":"application/json","X-LP-Token":TOKEN},body:"{}"})}catch(e){}});
+(async function init(){try{const s=await api("settings");S.settings=s.values;document.documentElement.dataset.theme=s.values.theme}catch(e){}
+ const r=await api("mp_state").catch(()=>({room:null}));S.room=r.room;S.waits=r.waits||[];if(S.room||S.waits.length)poll();pingServer();setInterval(pingServer,15000);
+ if(S.settings&&!S.settings.setup_done)S.tab="welcome";go()})();
+</script>
+</body>
+</html>

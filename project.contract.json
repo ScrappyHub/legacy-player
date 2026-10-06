@@ -1,0 +1,23 @@
+{
+    "project_id":  "legacy-player",
+    "canonical_name":  "legacy-player",
+    "ecosystem":  {
+                      "registry_schema":  "atlas.service.registry.v1",
+                      "service_id":  "legacy-player",
+                      "layer":  "unclassified",
+                      "role":  "Repository discovered under C:\\dev. Canonical ecosystem role requires classification.",
+                      "standalone_first":  true,
+                      "upstream_services":  [
+
+                                            ],
+                      "downstream_users":  [
+
+                                           ],
+                      "contract_families":  [
+
+                                            ],
+                      "service_map_path":  "C:\\dev\\_ecosystem\\SERVICE_MAP.md",
+                      "registry_path":  "C:\\dev\\_ecosystem\\service.registry.json",
+                      "integration_doc_path":  "docs/canonical/ECOSYSTEM_INTEGRATION.md"
+                  }
+}

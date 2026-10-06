@@ -1,0 +1,7 @@
+{
+  "schema": "legacy_player.action_byte_patterns.v9",
+  "generated_at_utc": "2026-04-25T17:06:46.477026Z",
+  "minimum_repeat": 3,
+  "notes": "No action is promotable until at least three repeatable captures include separable byte-level offsets and negative controls.",
+  "actions": {}
+}

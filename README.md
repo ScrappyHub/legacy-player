@@ -198,23 +198,12 @@ Users are expected to use their own legally obtained game data and emulator envi
 
 See docs/LEGAL_POSITION.md.
 
-Status
+## Current status
 
-Fresh repo bootstrap.
-
-Initial work to lock:
-
-architecture
-
-runtime spec
-
-game pack spec
-
-legal position
-
-roadmap
-
-After spec lock, the first implementation target is a Dolphin adapter and a first party-game game pack.
+Legacy Player has a Windows/Dolphin observation toolkit for the Mario Party 4
+`GMPE01` USA profile, an executable session and input-lockstep runtime, and a private
+self-hosted coordination server. The project does not yet provide Dolphin controller
+injection or playable remote multiplayer.
 
 Venture Lab role
 
@@ -267,39 +256,9 @@ legacy-player/
    ├─ memory_probe/
    ├─ replay_inspector/
    └─ pack_builder/
-
----
-=======
-\## Current Legacy Player milestone
+```
 
 
+## Library and launcher (proposed, Proposal 0002)
 
-Legacy Player now has a working emulator observation foundation for Mario Party 4 on Dolphin.
-
-
-
-Proven capabilities:
-
-
-
-\- Dolphin process attach
-
-\- game fingerprint detection
-
-\- GMPE01 / USA profile identification
-
-\- active window title selection
-
-\- readable host memory region inventory
-
-\- candidate dynamic region selection
-
-\- repeated region sampling with stable hashes
-
-\- mutation-capture tooling for controlled in-game state discovery
-
-
-
-This is the observation and modeling foundation required before full multiplayer synchronization and self-hosted session transport.
-
-(Add Dolphin probe, memory discovery, and mutation capture for Mario Party 4)
+`python -m launcher --games "<your games folder>"` (or just `python -m launcher`, then add the folder in the app) opens a local UI for your game library, favorites, controller profiles, save backups and multiplayer rooms. See `docs/LIBRARY_AND_LAUNCHER_v1.md`.
