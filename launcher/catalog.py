@@ -24,6 +24,11 @@ SETTINGS_SCHEMA: dict[str, dict] = {
         "label": "Keep running in the tray when I close the window",
         "help": "Closing the window with X hides Legacy Player in the notification area (Windows) instead of quitting, so a server you started stays managed. Right-click its icon to open the app, start or stop your server, copy a fresh server code, or exit. Turn off to quit on X; if a server is running Legacy Player still stays in the tray so it is never stopped by surprise.",
     },
+    "dolphin_manage_pads": {
+        "type": "bool", "default": True, "group": "Controllers",
+        "label": "Set up Dolphin's GameCube controller for me",
+        "help": "When you give a player a controller (or pick a keyboard layout for player 1), Legacy Player writes it into Dolphin's GameCube pad file before Dolphin starts. The file you had is saved once as GCPadNew.ini.legacy-player-backup, and turning this off puts it back the next time Dolphin starts. Players you have not set up are left to Dolphin. Wii remotes are never touched.",
+    },
     "auto_network_test": {
         "type": "bool", "default": True, "group": "Multiplayer",
         "label": "Test my network when Legacy Player opens",

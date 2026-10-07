@@ -48,7 +48,6 @@ This note does not choose a vendor.
 
 ## Still open
 
-- Rescans still hold the global lock (start/stop of the server no longer does; see the follow-up below).
 - A one-time secret in a window's command line can be seen by other programs running as the same user. That is
   the same trust boundary as the player's own files; it removes the drive-by case, not a hostile program that
   already runs as the player.
@@ -81,3 +80,20 @@ them, and the browser test checks Esc and Tab.
 
 Still open: Dolphin pad profiles, emulator fullscreen flags per emulator, contrast measurement, and everything
 under "Still to verify on Windows".
+
+## Follow-up: the open items (same day)
+
+- **Rescans** now walk the disk without the big lock (one walk at a time); only swapping the result in takes it.
+- **Dolphin pads:** `launcher/dolphinpads.py` writes the assigned pad (or the player-1 keyboard layout) into Dolphin's
+  `GCPadNew.ini` before a GameCube game starts, keeps the player's own file as `GCPadNew.ini.legacy-player-backup`,
+  and puts it back on request or when the new setting "Set up Dolphin's GameCube controller for me" is turned off.
+  Players with nothing assigned are left to Dolphin; Wii remotes are never touched. The control names are
+  Dolphin's, but not yet confirmed on a real Windows Dolphin.
+- **Full-screen flags:** added for bsnes, Mupen64Plus, melonDS and xemu. Each emulator is marked `documented`,
+  `unconfirmed` or `none`, and the Display page says when a flag is a best guess.
+- **Contrast:** `tools/contrast_check.py` measures real pixels behind text, in both themes. It found white text on
+  the bright button/card gradients and some muted greys below 4.5:1; those are fixed (darker button gradient, a scrim
+  under card gradients, lighter muted text, lighter links) and `tests/test_contrast.py` keeps them fixed.
+- **Copy buttons** fall back to a hidden text box when the browser refuses clipboard access, and say so if both fail.
+- **Windows:** `tools/windows_selfcheck.py` runs the Recycle Bin move, specs read, icon, tray icon and cleanup script
+  and prints PASS/FAIL; `docs/WINDOWS_CHECKLIST.md` lists the hand checks. These still need one run on a real PC.

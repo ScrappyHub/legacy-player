@@ -18,14 +18,14 @@ EMULATORS: dict[str, dict] = {
     "mgba": {"name": "mGBA", "exes": ["mGBA.exe", "mgba-qt", "mgba"], "args": ["{rom}"], "fullscreen": ["-f"]},
     "duckstation": {"name": "DuckStation", "exes": ["duckstation-qt-x64-ReleaseLTCG.exe", "duckstation-qt"], "args": ["-batch", "--", "{rom}"], "fullscreen": ["-fullscreen"]},
     "mesen": {"name": "Mesen", "exes": ["Mesen.exe", "mesen"], "args": ["{rom}"], "fullscreen": ["--fullscreen"]},
-    "bsnes": {"name": "bsnes", "exes": ["bsnes.exe", "bsnes"], "args": ["{rom}"]},
+    "bsnes": {"name": "bsnes", "exes": ["bsnes.exe", "bsnes"], "args": ["{rom}"], "fullscreen": ["--fullscreen"]},
     "snes9x": {"name": "Snes9x", "exes": ["snes9x-x64.exe", "snes9x"], "args": ["{rom}"]},
-    "mupen": {"name": "Mupen64Plus", "exes": ["mupen64plus-gui.exe", "mupen64plus"], "args": ["{rom}"]},
-    "melonds": {"name": "melonDS", "exes": ["melonDS.exe", "melonDS"], "args": ["{rom}"]},
+    "mupen": {"name": "Mupen64Plus", "exes": ["mupen64plus-gui.exe", "mupen64plus"], "args": ["{rom}"], "fullscreen": ["--fullscreen"]},
+    "melonds": {"name": "melonDS", "exes": ["melonDS.exe", "melonDS"], "args": ["{rom}"], "fullscreen": ["-f"]},
     "ppsspp": {"name": "PPSSPP", "exes": ["PPSSPPWindows64.exe", "PPSSPPSDL"], "args": ["{rom}"], "fullscreen": ["--fullscreen"]},
     "azahar": {"name": "Azahar", "exes": ["azahar.exe", "azahar"], "args": ["{rom}"], "fullscreen": ["-f"]},
     "citra": {"name": "Citra", "exes": ["citra-qt.exe", "citra-qt"], "args": ["{rom}"], "fullscreen": ["-f"]},
-    "xemu": {"name": "xemu", "exes": ["xemu.exe", "xemu"], "args": ["-dvd_path", "{rom}"]},
+    "xemu": {"name": "xemu", "exes": ["xemu.exe", "xemu"], "args": ["-dvd_path", "{rom}"], "fullscreen": ["-full-screen"]},
     "xenia": {"name": "Xenia", "exes": ["xenia.exe", "xenia_canary.exe"], "args": ["{rom}"], "fullscreen": ["--fullscreen=true"]},
     "rpcs3": {"name": "RPCS3", "exes": ["rpcs3.exe", "rpcs3"], "args": ["{rom}"]},
     "retroarch": {"name": "RetroArch", "exes": ["retroarch.exe", "retroarch"], "args": ["{rom}"]},
@@ -90,6 +90,19 @@ def find_emulators(search_roots: list[Path], configured: dict[str, str]) -> dict
                         break
         result[emulator_id] = {"name": spec["name"], "path": path, "source": source if path else None}
     return result
+
+
+# Which start-up full-screen flags come from the emulator's own documentation, and which are best guesses that the
+# player should confirm once. The page says so instead of promising.
+FULLSCREEN_DOCUMENTED = {"dolphin", "pcsx2", "duckstation", "mgba", "azahar", "citra", "ppsspp", "xenia"}
+
+
+def fullscreen_status(emulator_id: str) -> str:
+    """'documented', 'unconfirmed' (we pass a flag but have not confirmed it for every version), or 'none'."""
+    spec = EMULATORS.get(emulator_id, {})
+    if not spec.get("fullscreen"):
+        return "none"
+    return "documented" if emulator_id in FULLSCREEN_DOCUMENTED else "unconfirmed"
 
 
 def build_command(emulator_id: str, exe: str, rom_path: str) -> list[str]:

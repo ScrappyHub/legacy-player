@@ -31,7 +31,7 @@ from adapters.retroarch import tunnel as netplay_tunnel
 
 from . import controllers, emulators, engines, pads, savefolders, saves
 from .installer import EngineInstaller, InstallError, latest_release, pick_asset
-from . import keyboard, netcheck, selfuninstall, sysinfo
+from . import dolphinpads, keyboard, netcheck, selfuninstall, sysinfo
 from .covers import (CONTENT_TYPES, CoverFetcher, SYSTEMS as COVER_SYSTEMS, clear_custom_cover, cover_path,
                      custom_cover, set_custom_cover)
 from .pcscan import PcScan
@@ -147,6 +147,7 @@ class LauncherApp:
         self.quit_requested = False
         self._specs_lock = threading.Lock()
         self.api_lock = threading.RLock()        # one ordinary API call at a time (the web layer takes it)
+        self._scan_lock = threading.Lock()       # one disk walk at a time (rescan)
         self._server_op_lock = threading.Lock()  # starting/stopping the server: one at a time, outside api_lock
         self.tray_mode = False   # the window is closed but the app keeps running in the tray
         self._net_running = False
@@ -175,17 +176,21 @@ class LauncherApp:
             pass
 
     def rescan(self, body: dict | None = None) -> dict:
+        """Read the games folders again. The slow part (walking the disk) runs without the big lock, so the app stays
+        responsive; only swapping the result in takes it."""
         roots = [Path(r) for r in self.catalog.data["roots"]]
         if not roots:
             raise AppError("Add a games folder first (Library folders).")
         started = time.time()
-        result = scan(roots, DEFAULT_EXCLUDES)
-        self.games = {g.id: g.as_dict() for g in result["games"]}
-        self.skipped = result["skipped"]
-        self.catalog.data["last_rescan"] = time.time()
-        self.catalog.save()
-        self._cache_path().write_text(json.dumps({"games": list(self.games.values()), "skipped": self.skipped}), encoding="utf-8")
-        return {"games": len(self.games), "skipped": self.skipped, "seconds": round(time.time() - started, 2)}
+        with self._scan_lock:                     # one disk walk at a time
+            result = scan(roots, DEFAULT_EXCLUDES)
+            with self.api_lock:
+                self.games = {g.id: g.as_dict() for g in result["games"]}
+                self.skipped = result["skipped"]
+                self.catalog.data["last_rescan"] = time.time()
+                self.catalog.save()
+                self._cache_path().write_text(json.dumps({"games": list(self.games.values()), "skipped": self.skipped}), encoding="utf-8")
+                return {"games": len(self.games), "skipped": self.skipped, "seconds": round(time.time() - started, 2)}
 
     def api_roots(self, body: dict) -> dict:
         if "roots" in body:
@@ -361,6 +366,29 @@ class LauncherApp:
         configured = self.catalog.data.get("save_root")
         return Path(configured) if configured else savefolders.default_root(self.data_dir)
 
+    def _prepare_dolphin(self, exe: str, console_id: str) -> list[str]:
+        """Write the player's GameCube pad choices into Dolphin before it starts. Returns notes; never stops a launch."""
+        if console_id != "gamecube":
+            return []
+        if not self.catalog.settings()["dolphin_manage_pads"]:
+            dolphinpads.restore(exe)          # switched off: give the player's own file back
+            return []
+        out = dolphinpads.apply(exe, self.catalog.data["player_pads"], self.catalog.data["pad_profiles"], self.catalog.data.get("keyboard"))
+        return out.get("notes", [])
+
+    def api_dolphin_pads(self, body: dict) -> dict:
+        """What Legacy Player would write into Dolphin's GameCube pad file, or put the player's own file back."""
+        found = emulators.find_emulators(self._search_roots(), self.catalog.data["emulator_paths"])
+        exe = found.get("dolphin", {}).get("path")
+        if not exe:
+            raise AppError("Dolphin is not set up yet.")
+        if body.get("restore"):
+            return dolphinpads.restore(exe)
+        text, notes = dolphinpads.build(self.catalog.data["player_pads"], self.catalog.data["pad_profiles"], self.catalog.data.get("keyboard"))
+        user = dolphinpads.find_user_dir(exe)
+        return {"will_write": bool(text), "notes": notes, "settings_folder": str(user) if user else None,
+                "enabled": self.catalog.settings()["dolphin_manage_pads"]}
+
     def _retroarch_extra(self, console_id: str, exe: str, netplay: bool = False) -> list[str]:
         """Extra RetroArch arguments: managed save folders and any custom pad bindings."""
         lines: list[str] = ["netplay_public_announce = \"false\""] if netplay else []  # private rooms stay private
@@ -465,6 +493,8 @@ class LauncherApp:
                                              self._retroarch_extra(game["console"], info["path"]) + self._user_args(game))
                 pid = emulators.launch_command(command)
             else:
+                if check["emulator_id"] == "dolphin":
+                    self._prepare_dolphin(info["path"], game["console"])
                 pid = emulators.launch(check["emulator_id"], info["path"], game["path"],
                                        emulators.video_args(check["emulator_id"], self._video_for(game["console"])["fullscreen"]) + self._user_args(game))
         except NetplayError as exc:
@@ -662,6 +692,8 @@ class LauncherApp:
                 how = "RetroArch: every display choice is applied each time Legacy Player opens a game."
             elif eid and emulators.EMULATORS[eid].get("fullscreen"):
                 how = f"{info['name']}: only 'start full screen' can be applied. Everything else is set inside {info['name']} once (Graphics settings)."
+                if emulators.fullscreen_status(eid) == "unconfirmed":
+                    how += f" The start-up flag is a best guess for some {info['name']} versions; if it does not go full screen, press F11 or Alt+Enter once inside it."
             elif eid:
                 how = f"{info['name']}: has no start-up option for this. Set the display inside {info['name']} once; it remembers."
             else:
@@ -1360,7 +1392,8 @@ class LauncherApp:
         if self.catalog.data["roots"]:
             out["rescan"] = self.rescan()
         try:
-            self.api_save_folders({"create": True})
+            with self.api_lock:
+                self.api_save_folders({"create": True})
             out["saves"] = True
         except Exception:
             out["saves"] = False
@@ -1842,6 +1875,7 @@ class LauncherApp:
                     raise AppError("The host has not shared a way to connect yet. Wait for the notification.")
                 mode = "traversal" if endpoint["kind"] == "code" else "direct"
                 guide = dolphin_steps("guest", mode=mode, address=endpoint["address"], port=endpoint.get("port"), code=endpoint["address"])
+            self._prepare_dolphin(check["exe"], game["console"])
             pid = emulators.launch_command(dolphin_open_command(check["exe"], game["path"]))
             if room["role"] == "host" and mode == "direct":
                 self._call({"operation": "set_endpoint", "kind": "direct", "address": address, "port": port, **self._auth()})
@@ -1879,7 +1913,7 @@ class LauncherApp:
 
     # window lifetime (used by the packaged app so it quits when its window closes) ----------
     # calls that need no global lock: quick reads, or slow work that only touches its own cache
-    UNLOCKED = frozenset({"ping", "bye", "status", "specs", "server_status", "network_last", "server_control"})
+    UNLOCKED = frozenset({"ping", "bye", "status", "specs", "server_status", "network_last", "server_control", "rescan", "scan_everything"})
 
     def api_ping(self, body: dict) -> dict:
         self.last_ping, self.bye_at, self.tray_mode = time.time(), 0.0, False

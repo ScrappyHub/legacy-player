@@ -153,3 +153,42 @@ class ServerControlDoesNotFreezeTests(unittest.TestCase):
             gate.set()
             cli.status = real
             t.join(5)
+
+
+class RescanDoesNotFreezeTests(unittest.TestCase):
+    def test_the_disk_walk_runs_without_the_big_lock(self):
+        from launcher import app as appmod
+        app, _ = make_app()
+        self.assertIn("rescan", LauncherApp.UNLOCKED)
+        gate, entered = threading.Event(), threading.Event()
+        real = appmod.scan
+
+        def slow(roots, excludes):
+            entered.set()
+            gate.wait(5)
+            return real(roots, excludes)
+        appmod.scan = slow
+        try:
+            t = threading.Thread(target=app.rescan)
+            t.start()
+            self.assertTrue(entered.wait(3))
+            got = []
+
+            def probe():
+                ok = app.api_lock.acquire(timeout=1)
+                got.append(ok)
+                if ok:
+                    app.api_lock.release()
+            u = threading.Thread(target=probe)
+            u.start(); u.join(2)
+            self.assertEqual([True], got)
+        finally:
+            gate.set()
+            appmod.scan = real
+            t.join(5)
+        self.assertEqual(1, len(app.games))
+
+    def test_dolphin_pads_action_needs_dolphin(self):
+        app, _ = make_app()
+        with self.assertRaises(AppError):
+            app.api_dolphin_pads({})
