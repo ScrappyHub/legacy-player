@@ -130,6 +130,8 @@ DEFAULT_DATA = {
     "install_id": "",       # random tag so two players with the same name never collide
     "bios_found": {},       # bios kind -> list of files found by the last scan
     "last_scan": None,
+    "last_rescan": None,    # when the games folders were last read
+    "doctor_dismissed": [], # things the user told the doctor not to worry about
     "save_root": "",        # managed save folder root ("" = inside the data folder)
     "pad_profiles": {},     # pad key -> profile (see launcher/pads.py)
     "player_pads": {},      # "1".."4" -> pad key

@@ -157,6 +157,8 @@ class LauncherApp:
         result = scan(roots, DEFAULT_EXCLUDES)
         self.games = {g.id: g.as_dict() for g in result["games"]}
         self.skipped = result["skipped"]
+        self.catalog.data["last_rescan"] = time.time()
+        self.catalog.save()
         self._cache_path().write_text(json.dumps({"games": list(self.games.values()), "skipped": self.skipped}), encoding="utf-8")
         return {"games": len(self.games), "skipped": self.skipped, "seconds": round(time.time() - started, 2)}
 
@@ -834,6 +836,64 @@ class LauncherApp:
             "featured": featured, "version": VERSION, "alias": s["display_name"], "avatar": s["avatar"],
         }
 
+    def api_doctor(self, body: dict) -> dict:
+        """A health check of everything the app needs, in plain facts. Nothing is changed."""
+        found = emulators.find_emulators(self._search_roots(), self.catalog.data["emulator_paths"])
+        have = [v["name"] for v in found.values() if v["path"]]
+        counts: dict[str, int] = {}
+        for g in self.games.values():
+            counts[g["console"]] = counts.get(g["console"], 0) + 1
+        dismissed = set(self.catalog.data.get("doctor_dismissed", []))
+        issues = []
+        for c in CONSOLES:
+            if counts.get(c.id) and not self._emulator_for(c.id, found)[0]:
+                names = ", ".join(emulators.EMULATORS[e]["name"] for e in c.emulators if e in emulators.EMULATORS)
+                issues.append({"key": c.id, "kind": "emulator", "text": f"{counts[c.id]} {c.name} games but no emulator for them yet ({names}).",
+                               "dismissed": c.id in dismissed})
+        bios_found = self.catalog.data.get("bios_found", {})
+        bios_needed = bios_have = 0
+        for eid, v in found.items():
+            kind = engines.ENGINES.get(eid, {}).get("bios")
+            if v["path"] and kind:
+                bios_needed += 1
+                if bios_found.get(kind):
+                    bios_have += 1
+                else:
+                    issues.append({"key": "bios:" + kind, "kind": "bios", "text": f"{engines.BIOS[kind]['name']} not found; {v['name']} needs it.",
+                                   "dismissed": ("bios:" + kind) in dismissed})
+        active = [i for i in issues if not i["dismissed"]]
+        if not self.games or not have:
+            mood = "sad"
+        elif active:
+            mood = "worried"
+        else:
+            mood = "happy"
+        return {"mood": mood, "games": len(self.games), "emulators": have, "saves_ready": self._save_root().is_dir(),
+                "bios_needed": bios_needed, "bios_have": bios_have, "issues": issues,
+                "last_rescan": self.catalog.data.get("last_rescan"), "last_scan": self.catalog.data.get("last_scan"),
+                "consoles_ready": sum(1 for c in CONSOLES if self._emulator_for(c.id, found)[0]), "consoles_total": len(CONSOLES)}
+
+    def api_doctor_dismiss(self, body: dict) -> dict:
+        key = str(body.get("key", ""))[:40]
+        cur = set(self.catalog.data.get("doctor_dismissed", []))
+        (cur.discard if body.get("undo") else cur.add)(key)
+        self.catalog.data["doctor_dismissed"] = sorted(cur)
+        self.catalog.save()
+        return self.api_doctor({})
+
+    def api_scan_everything(self, body: dict) -> dict:
+        """The quick, no-wait parts of a full check: read the games folders again and make the save folders.
+        The slower program-and-BIOS scan is started separately with scan_pc."""
+        out = {}
+        if self.catalog.data["roots"]:
+            out["rescan"] = self.rescan()
+        try:
+            self.api_save_folders({"create": True})
+            out["saves"] = True
+        except Exception:
+            out["saves"] = False
+        return out
+
     def api_check_update(self, body: dict) -> dict:
         """Ask GitHub whether a newer release exists. Only when the user presses the button and allows internet."""
         if not self.catalog.settings()["allow_internet"]:
@@ -906,6 +966,8 @@ class LauncherApp:
             mine = by_compat.get(r["game_id"])
             rooms.append({**r, "title": mine["title"] if mine else r["game_id"], "console": mine["console"] if mine else r["game_id"].split(":")[0],
                           "you_have_it": mine is not None, "local_game_id": mine["id"] if mine else None,
+                          "console_name": BY_ID[mine["console"]].name if mine else r["game_id"].split(":")[0],
+                          "emulator": (self._emulator_for(mine["console"])[1] or {}).get("name") if mine else None,
                           "full": r["players"] >= r["max_players"]})
         return {"rooms": rooms, "limits": listing["limits"]}
 

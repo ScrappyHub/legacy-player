@@ -153,6 +153,20 @@ body.busy .brand .martin,.hop{animation:hop .55s ease-in-out infinite}
 .petheart{position:fixed;z-index:81;pointer-events:none;animation:heartup 1s ease-out forwards}
 @keyframes heartup{from{transform:translateY(0) scale(.6);opacity:1}to{transform:translateY(-34px) scale(1.2);opacity:0}}
 .martin.pet{animation:hop .35s ease-in-out 2}
+/* menus, dialogs and the top bar are solid so nothing shows through them */
+:root{--solid:#0b1030}[data-theme=light]{--solid:#ffffff}
+.chrome,.dd,.modalbox,.drawer,.toast{background:var(--solid);backdrop-filter:none}
+.dd{box-shadow:0 18px 40px #000a;z-index:40}
+.doc{min-width:300px;max-width:380px;flex:0 1 380px;position:relative;z-index:1}
+.doc .px.doctor{flex:0 0 auto;filter:drop-shadow(0 4px 10px rgba(59,224,168,.35));animation:bob 3.4s ease-in-out infinite}
+.doc .px.doctor.worried{animation:shake .6s ease-in-out infinite;filter:drop-shadow(0 4px 10px rgba(255,180,84,.45))}
+.doc .px.doctor.sad{animation:none;filter:grayscale(.4) drop-shadow(0 4px 10px rgba(79,140,255,.3))}
+@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-2px)}75%{transform:translateX(2px)}}
+.retro{flex:1;min-width:0;padding:8px 10px;background:#08150f;color:#6dff9a;font:700 11px/1.55 ui-monospace,Consolas,monospace;letter-spacing:.6px;text-transform:uppercase;box-shadow:-3px 0 #6dff9a,3px 0 #6dff9a,0 -3px #6dff9a,0 3px #6dff9a;margin:3px}
+.retro .hd{color:#fff;margin-bottom:4px}.retro .w{color:#ffd23f}
+.retro::after{content:"_";animation:blinkc 1s steps(1) infinite}@keyframes blinkc{50%{opacity:0}}
+.worry{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0 0;font-size:.84rem}
+.joinbox td,.joinbox th{font-size:.9rem}
 </style>
 </head>
 <body>
@@ -290,15 +304,20 @@ async function viewHome(m){
  S.profile=S.profile||await api("profile");
  const resume=d.recent[0];
  const cta=[resume?h("button",{class:"btn primary",onclick:()=>openGame(resume.id)},"Continue: "+resume.title):null,
-  h("button",{class:"btn "+(resume?"":"primary"),onclick:()=>nav("library")},"Browse my games"),h("button",{class:"btn",onclick:()=>nav("together")},"Play together")];
+  h("button",{class:"btn "+(resume?"":"primary"),onclick:()=>nav("library")},"Browse my games")];
+ const code=h("input",{type:"text",placeholder:"Enter a code to play together","aria-label":"Server or invite code",style:"width:min(250px,100%)",onkeydown:e=>{if(e.key==="Enter")go1.click()}});
+ const go1=h("button",{class:"btn good",onclick:()=>getStarted(code.value,joinBox)},"Get started");
+ const joinBox=h("div",{class:"joinbox"});
+ const dr=await api("doctor");
  m.append(h("div",{class:"hero"},martin(120),h("div",{class:"grow"},
    h("h1",{},"Welcome back, "+d.alias),
    h("p",{},d.games_total?d.games_total+" games, "+d.consoles_ready+" of "+d.consoles_total+" consoles ready to play.":"Point me at your games folder and I'll line everything up."),
-   h("div",{class:"row",style:"margin-top:12px"},...cta),
+   h("div",{class:"row",style:"margin-top:12px"},...cta),h("div",{class:"row",style:"margin-top:8px"},code,go1),
    h("div",{class:"pstat"},
     h("span",{class:"badge "+(S.online?"good":"")},(S.online?"● ":"○ ")+(S.online?"server online":"server offline")),
     h("span",{class:"badge"},"network tested "+(S.netBusy?"now…":ago(S.netcheck&&S.netcheck.at))),
-    h("span",{class:"badge"},"version "+d.version)))));
+    h("span",{class:"badge"},"version "+d.version))),doctorCard(dr)));
+ m.append(joinBox);
  const cards=[["One home for every console","NES to PS3 in a single place. Legacy Player opens the right emulator for each game, the way a console picks the right disc.","#3b6bff","#7a5cff",AVATARS.controller],
   ["Your games stay yours","It only reads your folders. Nothing is copied, moved or sent anywhere, and no games or BIOS files are included.","#0aa57a","#2bd1b0",AVATARS.gem],
   ["Play together, privately","Run a small server on your own computer, share a short code and play in a room. Other players never see your address.","#d9468f","#ff8a5c",AVATARS.rocket],
@@ -317,6 +336,56 @@ async function viewHome(m){
   :h("div",{class:"card featured",style:"margin-top:14px"},h("div",{class:"row"},h("span",{class:"tag"},"Featured"),h("b",{class:"grow"},"Your featured spot"),h("button",{class:"btn",onclick:()=>nav("settings")},"Set it up")),
    h("p",{class:"small muted"},"Put a game night, a friend's server or a link here. Set the title, text and link under Settings > Home page.")));
 }
+
+/* ---------- Get started: a server code connects, then you see what you would be joining ---------- */
+async function getStarted(raw,box){
+ const v=(raw||"").trim();
+ if(!v){toast("Paste a server code (LP-…) or a room invite code first","warn");return}
+ if(/^LP-/i.test(v)){
+  const r=await act(()=>api("server_connect",{code:v}));if(!r)return;
+  if(!r.connected){toast(r.message,"warn");return}
+  toast("Connected to the server");S.onlineSeen=false;pingServer();autoNetTest(0);showJoin(box);return}
+ if(/^[A-Za-z0-9]{5}-[A-Za-z0-9]{5}$/.test(v)){S.joinCode=v.toUpperCase();nav("together");return}
+ toast("That does not look like a server code (starts with LP-) or an invite code (like ABCDE-FGH12).","warn")}
+async function showJoin(box){
+ const d=await act(()=>api("mp_browse"));if(!d)return;
+ const state=s=>s==="active"?"In a match":s==="completed"||s==="failed"?"Finished":"In the lobby";
+ box.replaceChildren(h("div",{class:"card",style:"margin-top:14px"},h("div",{class:"row"},martin(36),h("h3",{class:"grow",style:"margin:0"},"Found the server. Here is what is happening on it."),h("button",{class:"btn",onclick:()=>showJoin(box)},"Refresh")),
+  d.rooms.length?h("table",{},h("thead",{},h("tr",{},...["Game","Console","Region","Emulator","Players","Waiting","Status",""].map(t=>h("th",{},t)))),
+   h("tbody",{},...d.rooms.map(r=>h("tr",{},h("td",{},h("b",{},r.title),r.label?h("div",{class:"small muted"},r.label):null),h("td",{},r.console_name),h("td",{},r.region||"–"),
+    h("td",{class:r.emulator?"":"warn"},r.emulator||(r.you_have_it?"none set":"you do not have this game")),
+    h("td",{class:r.full?"warn":"good"},r.players+" / "+r.max_players),h("td",{},String(r.waiting)),h("td",{},state(r.state)),
+    h("td",{},r.you_have_it?h("button",{class:"btn good",onclick:async()=>{const x=await act(()=>api("mp_join",{id:r.local_game_id,session_id:r.session_id,background:r.full}),r.full?"You are in line":"");if(x){S.room=x.room;S.waits=x.waits||[];nav("together");poll()}}},r.full?"Wait in line":"Join"):null)))))
+  :h("p",{class:"muted"},"No public rooms right now. If your host gave you an invite code, enter it here."),
+  h("p",{class:"small muted"},"Rooms show the game and how full they are, never who is inside. Private rooms need the host's invite code.")))}
+
+/* ---------- Doc: checks that everything is in place ---------- */
+const DOC_BASE=[".....KKKKKK.....","....KKKKKKKK....","....KSSSSSSK....","....SSSSSSSS....","....SEESSEES....","....SSSSSSSS....","....SDSSSSDS....",".....SDDDDS.....","...WWWWWWWWWW...","..WWGWWWWWWGWW..","..WWGWWWWWWGRW..","..WWWGGGGGWRRR..","..WWWWWWWWWWRW..","..WWWWWWWWWWWW..","...WWWWWWWWWW...","....KK....KK...."];
+function doctorRows(mood){const r=DOC_BASE.slice();
+ if(mood==="worried"){r[3]="....SDDSSDDS.C..";r[6]="....SSDDDDSS....";r[7]=".....SDSSDS.....";r[4]="....SEESSEES.C..";}
+ if(mood==="sad"){r[3]="....SSDSSDSS....";r[6]="....SSSDDSSS....";r[7]=".....SSSSSS.....";r[5]="....SSSSSSSS....";}
+ return r}
+async function scanEverything(refresh){
+ if(!await ask("Scan everything? I will read your games folders again, make the save folders, and look through this computer for emulators and BIOS files. It reads names only, changes nothing, sends nothing and uses no internet.","Scan everything"))return;
+ await act(()=>api("scan_everything"));await runScan(true);refresh()}
+function doctorCard(dr){
+ const box=h("div",{class:"doc"});
+ const refresh=async()=>{const x=await api("doctor");S.doc=x;draw(x)};
+ const say={happy:"All good! I can see everything.",worried:"Hmm... a few things worry me.",sad:dr.games?"No emulators found yet...":"No games found yet..."};
+ const draw=dr=>{
+  const active=dr.issues.filter(i=>!i.dismissed),quiet=dr.issues.filter(i=>i.dismissed);
+  const L=(a,b,warn)=>h("div",{class:warn?"w":""},a+": "+b);
+  box.replaceChildren(h("div",{class:"row",style:"align-items:flex-start;flex-wrap:nowrap"},pixels(doctorRows(dr.mood),88,"doctor "+dr.mood),
+   h("div",{class:"retro"},h("div",{class:"hd"},say[dr.mood]),
+    L("Games",dr.games+" read "+ago(dr.last_rescan),!dr.games),L("Emulators",dr.emulators.length+" found",!dr.emulators.length),L("Consoles",dr.consoles_ready+"/"+dr.consoles_total+" ready"),
+    L("Saves",dr.saves_ready?"folders ready":"not made yet",!dr.saves_ready),L("BIOS",dr.bios_needed?dr.bios_have+"/"+dr.bios_needed+" found":"none needed yet"),
+    L("PC scanned",ago(dr.last_scan),!dr.last_scan))),
+   ...active.map(i=>h("div",{class:"worry"},h("span",{class:"grow"},i.text),
+    i.kind==="emulator"||i.kind==="bios"?h("button",{class:"btn",onclick:()=>nav("engines")},"Fix"):null,
+    h("button",{class:"btn",title:"I do not want to install that. Stop worrying about it.",onclick:async()=>{await act(()=>api("doctor_dismiss",{key:i.key}));refresh()}},"I don't need it"))),
+   quiet.length?h("div",{class:"small muted",style:"margin-top:6px"},quiet.length+" worr"+(quiet.length>1?"ies":"y")+" set aside. ",h("a",{href:"#",onclick:async e=>{e.preventDefault();for(const q of quiet)await api("doctor_dismiss",{key:q.key,undo:true});refresh()}},"Bring back")):null,
+   h("div",{class:"row",style:"margin-top:8px"},h("button",{class:"btn primary",onclick:()=>scanEverything(refresh)},"Scan everything")))};
+ draw(dr);return box}
 
 /* ---------- Storage by console ---------- */
 async function viewStorage(m){
@@ -441,6 +510,7 @@ function drawGrid(d){const w=$("#gridwrap");if(!w)return;
  if(!d.games.length){w.replaceChildren(h("p",{class:"muted"},"No games match. Try clearing the search or filters."));return}
  w.replaceChildren(h("div",{class:"grid"+(list?" list":"")},...d.games.map(g=>card(g))),
   d.truncated?h("p",{class:"muted"},"Showing the first 1000. Narrow it with search or a console."):null,
+  h("p",{class:"muted small",style:"margin-top:14px"},(S.console?consoleName(S.console)+": ":"")+d.shown+" game"+(d.shown===1?"":"s")+" · "+fmtBytes(d.games.reduce((n,g)=>n+g.size_mb,0)*1048576)+(d.truncated?" (first 1000 counted)":"")+" · "+d.total+" in your whole library"),
   d.skipped.unrecognized?h("p",{class:"muted small"},d.skipped.unrecognized+" other files were skipped (saves, emulators, or types the launcher does not know). Nothing was changed."):null)}
 function card(g){
  const star=h("button",{class:"star"+(g.favorite?" on":""),title:g.favorite?"Remove favorite":"Favorite","aria-label":"Toggle favorite",onclick:async e=>{e.stopPropagation();const r=await act(()=>api("favorite",{id:g.id,favorite:!g.favorite}));if(r){g.favorite=r.favorite;star.classList.toggle("on",r.favorite);star.title=r.favorite?"Remove favorite":"Favorite"}}},"★");
@@ -512,7 +582,7 @@ async function viewTogether(m){
  if(!S.room){
   const games=(await api("library",{})).games;
   const sel=h("select",{"aria-label":"Game"},...games.map(g=>h("option",{value:g.id,selected:S.joinGame===g.id},g.title+" ("+consoleName(g.console)+")")));
-  const code=h("input",{type:"text",placeholder:"XXXXX-XXXXX",maxlength:12,style:"width:160px","aria-label":"Invite code"});
+  const code=h("input",{type:"text",placeholder:"XXXXX-XXXXX",value:S.joinCode||"",maxlength:12,style:"width:160px","aria-label":"Invite code"});
   const approve=h("input",{type:"checkbox",checked:true,id:"appr"});
   const maxp=h("select",{"aria-label":"Player limit",title:"How many people can play at once. Others wait in line."},...[2,3,4,5,6,7,8].map(n=>h("option",{value:n,selected:n===4},String(n))));
   const openRoom=h("input",{type:"checkbox",id:"openroom"});const label=h("input",{type:"text",placeholder:"Room name (optional)",maxlength:48,style:"width:200px"});
@@ -872,8 +942,8 @@ async function viewSaves(m){
 /* ---------- Engines (the owned shell) ---------- */
 
 /* One scan for every "Scan this computer" button: runs in the background, shows progress, then uses what it found. */
-async function runScan(){
- if(!await ask("Scan this computer for emulator programs? It reads folder and file names only. It changes nothing, sends nothing and does not use the internet.","Scan"))return null;
+async function runScan(noAsk){
+ if(!noAsk&&!await ask("Scan this computer for emulator programs? It reads folder and file names only. It changes nothing, sends nothing and does not use the internet.","Scan"))return null;
  const start=await act(()=>api("scan_pc",{action:"start",consent:true}));if(!start)return null;
  const tid="scan"+Date.now();let v=start;
  while(v.state==="running"){const t=h("div",{class:"toast",id:tid},"Scanning… "+v.visited+" folders checked");const old=$("#"+tid);if(old)old.remove();$("#toasts").append(t);
