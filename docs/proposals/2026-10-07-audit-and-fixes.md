@@ -195,3 +195,10 @@ list is short and should be extended.
 - **Fix:** clicking the doctor repeatedly could leave speech bubbles on the top bar; bubbles now only appear for elements still on the page.
 - **Force quit game.** A button beside "game running" stops the running game immediately (`api_force_quit`, process tree, no waiting on the emulator's own "are you sure?").
 - **Planned, not built yet: in-game overlay + key/controller bind to open it.** Needs a design decision (see chat): a topmost mini window with Force quit, volume/screen, room code and chat, opened by a global hotkey and a controller button combo.
+
+## Follow-up: in-game overlay
+
+- `launcher/overlay.py`: a global keyboard shortcut (default Ctrl+Shift+L, `RegisterHotKey`) and a controller combo (default hold Back + Start for 0.8 s, XInput polling; the Guide button is included where Windows exposes it). Both are changeable in Settings > In-game overlay, including "Set by holding buttons" to capture a combo. Either one opens the overlay, and the same input closes it.
+- The overlay is a small always-on-top window (its own browser profile, top-right of the chosen screen). It shows the running game, Back to the game, Full screen / Windowed, Force quit (press twice), and the room invite code with Copy. It has no heartbeat, so closing it never ends the app, and it can be driven by a controller (D-pad moves, A presses, B closes) or Esc.
+- Also in the tray menu ("Open the in-game overlay").
+- Limits, stated plainly: it is a separate window floating above the game, not drawn inside the game, so exclusive-fullscreen games may hide it (borderless or windowed shows it). Only XInput (Xbox-style) pads are read by the combo; other pads work through Steam Input / DS4Windows. Unverified on real Windows until tested by hand.

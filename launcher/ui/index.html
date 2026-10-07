@@ -203,6 +203,7 @@ body.busy .brand .martin,.hop{animation:hop .55s ease-in-out infinite}
 .tipwrap .startip{position:absolute;top:100%;right:0;margin-top:10px;z-index:60;display:none}
 .tipwrap.off:hover .startip,.tipwrap.off:focus-within .startip,.tipwrap.show .startip{display:flex}
 .tipwrap .startip::before{content:"";position:absolute;left:0;right:0;top:-12px;height:12px}
+.ovl{padding:14px;max-width:420px;margin:0 auto}
 .startip{display:flex;gap:10px;align-items:center;width:max-content;max-width:300px}
 .startip .bub{position:relative;background:#fff6c8;color:#2b3157;font:700 12px/1.45 ui-monospace,Consolas,monospace;padding:10px 12px;box-shadow:0 -4px #2b3157,0 4px #2b3157,-4px 0 #2b3157,4px 0 #2b3157;display:flex;flex-direction:column;gap:8px;align-items:flex-start}
 .startip .bub .btn{font:600 12px system-ui,sans-serif;padding:4px 10px}
@@ -491,6 +492,46 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}input[type=num
 <div id="toasts" aria-live="polite"></div>
 <div id="boot"><div id="bootmartin"></div><div class="muted">Waking Martin<span class="dots"></span></div></div>
 <script>
+
+/* ================= the in-game overlay (its own small window; no heartbeat, closing it never closes the app) ================= */
+const OVERLAY=location.hash==="#overlay";
+async function overlayInit(){
+ document.title="Legacy Player overlay";
+ try{const s=await api("settings");document.documentElement.dataset.theme=s.values.theme}catch(e){}
+ const boot=document.getElementById("boot");if(boot)boot.remove();
+ const root=h("div",{class:"ovl"});document.body.replaceChildren(root);
+ const closeIt=async()=>{try{window.close()}catch(e){}try{await api("overlay_open")}catch(e){}};
+ let armed=0,last="";
+ const draw=async()=>{
+  const d=await api("overlay_state").catch(()=>null);if(!d)return;
+  const sig=JSON.stringify(d)+armed;if(sig===last)return;last=sig;
+  const idx=[...root.querySelectorAll("button")].indexOf(document.activeElement);
+  const how=[d.hotkey?d.hotkey.replace(/\+/g," + "):"",(d.pad||[]).length?"hold the controller combo":""].filter(Boolean).join(" or ");
+  root.replaceChildren(
+   h("h2",{style:"margin:0 0 4px"},"Legacy Player"),
+   h("div",{class:"small muted"},how?"Press "+how+" again to close this.":"Close this with the button below."),
+   h("div",{class:"card",style:"margin:10px 0"},d.game?h("div",{},h("b",{},d.game.title),h("div",{class:"small muted"},"in "+d.game.emulator)):h("div",{class:"muted"},"No game was started from Legacy Player.")),
+   h("button",{class:"btn primary",style:"width:100%;margin:4px 0",onclick:closeIt},d.game?"Back to the game":"Close overlay"),
+   d.game?h("div",{class:"row",style:"gap:6px;margin:4px 0"},
+    h("button",{class:"btn grow",onclick:async()=>{const r=await api("game_window",{mode:"fullscreen"}).catch(()=>null);if(r)closeIt()}},"Full screen"),
+    h("button",{class:"btn grow",onclick:async()=>{const r=await api("game_window",{mode:"windowed"}).catch(()=>null);if(r)closeIt()}},"Windowed")):null,
+   d.game?h("button",{class:"btn bad",style:"width:100%;margin:4px 0",onclick:async()=>{
+     if(!armed){armed=Date.now();last="";setTimeout(()=>{armed=0;last="";draw()},4000);draw();return}
+     await api("force_quit").catch(()=>{});armed=0;closeIt()}},armed?"Press again to force quit (unsaved progress is lost)":"Force quit game"):null,
+   d.room?h("div",{class:"card",style:"margin:10px 0"},h("div",{class:"small muted"},(d.room.role==="host"?"Hosting ":"In room: ")+(d.room.game||"")),
+     d.room.invite_code?h("div",{class:"row",style:"gap:6px"},h("code",{class:"grow"},d.room.invite_code),h("button",{class:"btn",onclick:()=>copyText(d.room.invite_code,"Invite code copied")},"Copy")):null):null);
+  if(idx>=0){const b=root.querySelectorAll("button")[idx];if(b)b.focus()}else{const f=root.querySelector("button");if(f)f.focus()}};
+ await draw();setInterval(draw,2500);
+ document.addEventListener("keydown",e=>{if(e.key==="Escape")closeIt()});
+ const was={};
+ setInterval(()=>{const pads=[...(navigator.getGamepads?navigator.getGamepads():[])].filter(Boolean);if(!pads.length)return;const p=pads[0];
+  const edge=i=>{const on=!!(p.buttons[i]&&p.buttons[i].pressed);const w=was[i];was[i]=on;return on&&!w};
+  const btns=[...root.querySelectorAll("button:not(:disabled)")];let i=btns.indexOf(document.activeElement);
+  if(edge(13)||edge(15)){if(btns.length)btns[(i+1)%btns.length].focus()}
+  if(edge(12)||edge(14)){if(btns.length)btns[(i<=0?btns.length:i)-1].focus()}
+  if(edge(0)&&document.activeElement&&document.activeElement.click)document.activeElement.click();
+  if(edge(1))closeIt()},80)}
+
 "use strict";
 const TOKEN="__LP_TOKEN__";
 const $=(s,r=document)=>r.querySelector(s);
@@ -1681,6 +1722,27 @@ async function viewSettings(m){
    h("button",{class:"btn",disabled:rep.mode==="off"||!rep.pending,onclick:async()=>{const r=await act(()=>api("report_send_all"));if(r){toast(r.sent?r.sent+" sent":"Nothing sent. Check the report address, or try again later.");go()}}},"Send what's waiting"),
    h("button",{class:"btn",disabled:!rep.pending,onclick:async()=>{const l=await api("report_list");if(!l.reports.length)return;const r=await api("report_preview",{id:l.reports[0].id});copyText(r.text);toast("Copied the newest report")}},"Copy the newest report"),
    h("button",{class:"btn bad",disabled:!rep.pending,onclick:async()=>{if(await ask("Delete the reports waiting on this computer?","Delete")){await act(()=>api("report_clear"));go()}}},"Delete waiting reports"))));
+
+ const ov=await api("overlay",{});
+ const padText=a=>a.length?a.map(n=>(ov.pad_buttons.find(b=>b.id===n)||{label:n}).label).join(" + "):"not set";
+ const keyIn=h("input",{type:"text",value:ov.hotkey,placeholder:"ctrl+shift+l","aria-label":"Overlay keyboard shortcut",style:"width:180px"});
+ const padOut=h("code",{},padText(ov.pad));
+ const ovNote=h("div",{class:"small muted"},ov.error||"");
+ const saveOv=async body=>{const r=await act(()=>api("overlay",body));if(r){Object.assign(ov,r);padOut.textContent=padText(r.pad);keyIn.value=r.hotkey;ovNote.textContent=r.error||"";toast("Overlay saved")}};
+ const capture=async b=>{b.disabled=true;const old=b.textContent;let best=[];
+  for(let i=0;i<30;i++){b.textContent="Hold your buttons… "+Math.ceil((30-i)/10);const r=await api("overlay_capture_pad").catch(()=>({pressed:[]}));if(r.pressed.length>=best.length&&r.pressed.length)best=r.pressed;await new Promise(x=>setTimeout(x,100))}
+  b.disabled=false;b.textContent=old;
+  if(best.length<2){toast("I did not see two or more buttons held together. Xbox-style controllers work here; try again.","warn");return}
+  await saveOv({pad:best})};
+ m.append(h("div",{class:"card",style:"margin-top:14px"},h("h3",{},whyInline("In-game overlay","A small Legacy Player window that floats over your game. It has Force quit, full screen or windowed, and your room code. Open it with the shortcut or the controller combo below, press either again to close it. The shortcut works even while the game has focus.")),
+  h("label",{class:"row"},h("input",{type:"checkbox",checked:ov.enabled,onchange:e=>saveOv({enabled:e.target.checked})}),h("span",{},"Turn the overlay on")),
+  ov.supported?null:h("div",{class:"small muted"},"Shortcuts and controller combos work in the Windows app."),
+  h("div",{class:"row",style:"gap:8px;margin-top:8px;flex-wrap:wrap"},h("b",{style:"min-width:150px"},"Keyboard shortcut"),keyIn,
+   h("button",{class:"btn",onclick:()=>saveOv({hotkey:keyIn.value})},"Save"),h("button",{class:"btn",onclick:()=>saveOv({hotkey:""})},"Turn off")),
+  h("div",{class:"row",style:"gap:8px;margin-top:8px;flex-wrap:wrap"},h("b",{style:"min-width:150px"},"Controller combo"),padOut,
+   h("button",{class:"btn",onclick:e=>capture(e.target)},"Set by holding buttons"),h("button",{class:"btn",onclick:()=>saveOv({pad:["back","start"]})},"Back + Start"),h("button",{class:"btn",onclick:()=>saveOv({pad:[]})},"Turn off")),
+  h("div",{class:"small muted",style:"margin-top:6px"},"Hold the combo for about a second. Works with Xbox-style controllers (including most PlayStation and other pads run through Steam Input or DS4Windows)."),
+  ovNote,h("div",{class:"row",style:"margin-top:8px"},h("button",{class:"btn primary",onclick:()=>act(()=>api("overlay_open"))},"Try the overlay now"))));
  for(const[g,items]of Object.entries(groups).sort((a,b)=>(a[0]==="You"?-1:0)-(b[0]==="You"?-1:0))){
   m.append(h("div",{class:"card",style:"margin-top:14px"},h("h3",{},g),...items.map(([k,sp])=>{
    let ctl;const v=s.values[k];
@@ -1717,7 +1779,7 @@ async function showReport(p){
 function reportClientError(message,where,stack){try{api("report_client_error",{message:String(message||"").slice(0,400),page:S.tab,where:where||"",stack:String(stack||"").slice(0,1500)}).catch(()=>{})}catch(e){}}
 window.addEventListener("error",e=>reportClientError(e.message,"window",e.error&&e.error.stack));
 window.addEventListener("unhandledrejection",e=>{const r=e.reason;reportClientError(r&&r.message||r,"promise",r&&r.stack)});
-setInterval(()=>{api("ping").then(r=>{if(r&&r.report_prompt)showReport(r.report_prompt)}).catch(()=>{})},5000);
+if(!OVERLAY)setInterval(()=>{api("ping").then(r=>{if(r&&r.report_prompt)showReport(r.report_prompt)}).catch(()=>{})},5000);
 /* The window title is what Windows shows when you hover the taskbar button, so keep it informative. */
 async function refreshTitle(){try{const d=await api("status");const bits=["Legacy Player"];
  if(d.game)bits.push("Playing "+d.game);
@@ -1725,8 +1787,8 @@ async function refreshTitle(){try{const d=await api("status");const bits=["Legac
  d.waits.forEach(w=>bits.push("In line for "+w.game+(w.position?" (#"+w.position+")":"")));
  bits.push(S.online===true?"Server online":S.online===false?"Server offline":"");
  document.title=bits.filter(Boolean).join(" — ")}catch(e){}}
-setInterval(refreshTitle,4000);setTimeout(refreshTitle,800);
-window.addEventListener("pagehide",()=>{try{fetch("/api/bye",{method:"POST",keepalive:true,headers:{"Content-Type":"application/json","X-LP-Token":TOKEN},body:"{}"})}catch(e){}});
+if(!OVERLAY){setInterval(refreshTitle,4000);setTimeout(refreshTitle,800)}
+if(!OVERLAY)window.addEventListener("pagehide",()=>{try{fetch("/api/bye",{method:"POST",keepalive:true,headers:{"Content-Type":"application/json","X-LP-Token":TOKEN},body:"{}"})}catch(e){}});
 /* ================= right-click menu, game properties, custom covers ================= */
 const GAMES={};
 function allowNet(){return !!(S.settings&&S.settings.allow_internet)}
@@ -2408,7 +2470,7 @@ async function homeArtTip(){
   "No box art for "+g.title+" yet.",h("div",{class:"row",style:"gap:6px"},h("button",{class:"btn",onclick:()=>{GAMES[g.id]=GAMES[g.id]||g;findArt(g)}},"Find art"),
    h("button",{class:"btn",onclick:e=>{S.artTipOff=g.id;e.target.closest(".arttip").remove()}},"Not now")))))}
 
-(async function init(){try{const s=await api("settings");S.settings=s.values;document.documentElement.dataset.theme=s.values.theme}catch(e){}
+(async function init(){if(OVERLAY){await overlayInit();return}try{const s=await api("settings");S.settings=s.values;document.documentElement.dataset.theme=s.values.theme}catch(e){}
  buildMenubar();$("#brand").addEventListener("click",()=>nav("home"));$("#logomartin").append(martin(34));$("#bootmartin").append(martin(96,"hop"));
  try{S.profile=await api("profile")}catch(e){}renderWho();
  const r=await api("mp_state").catch(()=>({room:null}));S.room=r.room;S.waits=r.waits||[];if(S.room||S.waits.length)poll();pingServer();setInterval(pingServer,15000);

@@ -95,7 +95,7 @@ def make_handler(app: LauncherApp, token: str, port_getter, launch: Launch | Non
                             return self._json(403, {"error": "That link was already used. Open Legacy Player from its window or tray icon."})
                         self.send_response(302)      # set the cookie, then drop the secret from the address
                         self.send_header("Set-Cookie", f"{cookie_name}={session}; Path=/; HttpOnly; SameSite=Strict")
-                        self.send_header("Location", "/")
+                        self.send_header("Location", "/#overlay" if "overlay" in parse_qs(parsed.query) else "/")
                         self.send_header("Content-Length", "0")
                         self.end_headers()
                         return
@@ -210,6 +210,12 @@ def serve(app: LauncherApp, port: int = 8780, open_browser: bool = True, opener=
         tray = TrayController(app, reopen)
         if not tray.start():
             tray = None
+        from .overlay import Listeners
+        from .shell import make_overlay_opener
+        overlay_window = make_overlay_opener(app.data_dir)
+        app.overlay_opener = lambda: overlay_window(url_for_window() + "&overlay=1")
+        app.overlay_listeners = Listeners(lambda: app.api_overlay_open({}))
+        app.overlay_listeners.start(app._overlay_prefs())
     if exit_when_closed:
         started = time.time()
 
@@ -256,6 +262,8 @@ def serve(app: LauncherApp, port: int = 8780, open_browser: bool = True, opener=
             pass
         if tray is not None:
             tray.stop()
+        if app.overlay_listeners is not None:
+            app.overlay_listeners.stop()
         httpd.server_close()
         app.shutdown()
 

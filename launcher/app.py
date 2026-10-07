@@ -29,6 +29,7 @@ from adapters.dolphin.netplay_guide import (
 
 from adapters.retroarch import tunnel as netplay_tunnel
 
+from . import overlay as overlaymod
 from . import controllers, emulators, engines, pads, savefolders, saves
 from .installer import EngineInstaller, InstallError, latest_release, pick_asset
 from . import dolphinpads, firewall, gameinfo, portmap, winplace, keyboard, memprobe, netcheck, reports, selfuninstall, sysinfo
@@ -140,6 +141,8 @@ class LauncherApp:
         self.skipped = {"unrecognized": 0, "duplicates": 0}
         self.room: dict | None = None
         self.waits: dict[str, dict] = {}   # rooms you are queued for while doing something else
+        self.overlay_opener = None            # set by the web server: opens the overlay window
+        self.overlay_listeners = None         # global shortcut + controller watcher
         self.running: dict | None = None   # the game started from the library, if any
         self.tunnel = None
         self.last_ping = 0.0
@@ -660,7 +663,7 @@ class LauncherApp:
             raise AppError(f"Could not start {check['emulator']}: {exc}") from exc
         self._bring_forward(pid, eid, mode, monitor)
         self.catalog.record_play(game["id"])
-        self.running = {"pid": pid, "title": game["title"], "emulator": check["emulator"]}
+        self.running = {"pid": pid, "title": game["title"], "emulator": check["emulator"], "emulator_id": eid}
         return {"launched": game["title"], "emulator": check["emulator"], "pid": pid}
 
     def api_emulators(self, body: dict) -> dict:
@@ -2079,7 +2082,7 @@ class LauncherApp:
 
     # window lifetime (used by the packaged app so it quits when its window closes) ----------
     # calls that need no global lock: quick reads, or slow work that only touches its own cache
-    UNLOCKED = frozenset({"force_quit", "router_test", "firewall_allow", "ping", "bye", "status", "specs", "server_status", "network_last", "server_control", "rescan", "scan_everything"})
+    UNLOCKED = frozenset({"force_quit", "overlay", "overlay_open", "overlay_state", "overlay_capture_pad", "game_window", "router_test", "firewall_allow", "ping", "bye", "status", "specs", "server_status", "network_last", "server_control", "rescan", "scan_everything"})
 
     def api_ping(self, body: dict) -> dict:
         self.last_ping, self.bye_at, self.tray_mode = time.time(), 0.0, False
@@ -2117,6 +2120,56 @@ class LauncherApp:
         report["server_stopped"] = server_stopped
         self.catalog.save = lambda: None      # never write the settings file back after it was removed
         return report
+
+    def _overlay_prefs(self) -> dict:
+        cur = self.catalog.data.get("overlay") or {}
+        return {**overlaymod.DEFAULTS, **{k: v for k, v in cur.items() if k in overlaymod.DEFAULTS}}
+
+    def api_overlay(self, body: dict) -> dict:
+        """The overlay's settings: on/off, keyboard shortcut, controller combo. Saving applies at once."""
+        if any(k in body for k in ("enabled", "hotkey", "pad", "hold")):
+            try:
+                self.catalog.data["overlay"] = overlaymod.validate_prefs(body, self._overlay_prefs())
+            except (ValueError, TypeError) as exc:
+                raise AppError(str(exc)) from exc
+            self.catalog.save()
+            if self.overlay_listeners is not None:
+                self.overlay_listeners.start(self._overlay_prefs())
+        return {**self._overlay_prefs(), "pad_buttons": [{"id": k, "label": v} for k, v in overlaymod.PAD_LABELS.items()],
+                "supported": sys.platform == "win32", "listening": self.overlay_listeners is not None,
+                "error": getattr(self.overlay_listeners, "error", "") or ""}
+
+    def api_overlay_open(self, body: dict) -> dict:
+        """Open the overlay, or close it if it is already open (so the same shortcut works both ways)."""
+        if winplace.close_titled(overlaymod.TITLE):
+            return {"open": False}
+        opener = self.overlay_opener
+        if opener is None:
+            raise AppError("The overlay opens from the Windows app.")
+        opener()
+        prefs = self._display_prefs()
+        winplace.pin_titled(overlaymod.TITLE, self._monitor_for(prefs["monitor"]) or next((m for m in winplace.list_monitors() if m.get("primary")), None))
+        return {"open": True}
+
+    def api_overlay_state(self, body: dict) -> dict:
+        room = self.room
+        return {"game": ({"title": self.running["title"], "emulator": self.running["emulator"]} if self.running else None),
+                "room": ({"game": room.get("game"), "role": room.get("role"), "invite_code": room.get("invite_code")} if room else None),
+                "hotkey": self._overlay_prefs()["hotkey"], "pad": self._overlay_prefs()["pad"]}
+
+    def api_overlay_capture_pad(self, body: dict) -> dict:
+        """Which controller buttons are held right now (the page asks a few times while you hold your combo)."""
+        masks = overlaymod.read_pads()
+        return {"pressed": overlaymod.names_of(max(masks, key=lambda m: bin(m).count("1"))) if masks else [], "connected": len(masks)}
+
+    def api_game_window(self, body: dict) -> dict:
+        if not self.running:
+            raise AppError("No game is running from Legacy Player.")
+        mode = body.get("mode")
+        if mode not in ("fullscreen", "windowed"):
+            raise AppError("Pick full screen or windowed.")
+        self._bring_forward(self.running["pid"], self.running.get("emulator_id") or "", mode)
+        return {"mode": mode}
 
     def api_force_quit(self, body: dict) -> dict:
         """Stop the running game now, even if the emulator is showing its own "are you sure?" box. No saves are written."""

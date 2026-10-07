@@ -211,6 +211,11 @@ class UiSmokeTests(unittest.TestCase):
             self.assertEqual(0, page.locator(".modal").count())
             page.evaluate('nav("settings")')
             page.wait_for_selector("text=Problem reports")
+            page.wait_for_selector("text=In-game overlay")
+            # the overlay window's own view (last, because it takes over the page)
+            page.evaluate('void overlayInit()')
+            page.wait_for_selector(".ovl")
+            self.assertIn("No game was started", page.inner_text(".ovl"))
             browser.close()
         self.assertEqual([], problems)
 

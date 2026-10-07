@@ -306,7 +306,7 @@ class TrayController:
             line = "Server running  ·  " + self._plural(st["players"], "player") + "  ·  " + self._plural(st["live"], "room")
         else:
             line = "Server stopped" if st["known"] else "Checking the server..."
-        items = [("open", "Open Legacy Player", True, True), None, ("open", line, True)]
+        items = [("open", "Open Legacy Player", True, True), ("overlay", "Open the in-game overlay", True), None, ("open", line, True)]
         if room:
             who = room.get("game", "a game")
             items.append(("open", f"In a room: {who}" + (" (you are hosting)" if room.get("role") == "host" else ""), True))
@@ -327,6 +327,8 @@ class TrayController:
         try:
             if command == "open":
                 self.open_window()
+            elif command == "overlay":
+                app.api_overlay_open({})
             elif command in ("server_start", "server_share", "server_stop", "server_restart"):
                 action = {"server_start": "start", "server_share": "start", "server_stop": "stop", "server_restart": "restart"}[command]
                 share = command == "server_share" or (command == "server_restart" and app.catalog.settings().get("server_tls"))
