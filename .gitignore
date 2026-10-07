@@ -1,37 +1,39 @@
+# --- Legacy Player .gitignore (grouped; nothing here is source) ---
 
-# OS / editor
-.DS_Store
-Thumbs.db
-.vscode/
-.idea/
-
-# Logs
-*.log
-
-# Runtime outputs
-out/
+# Build output and release packaging (the release workflow builds these; they are never committed)
 build/
 dist/
+out/
+*.spec
+build.log
+smoke/
+smoke-data/
+_to_delete/
+
+# Logs and temp
+*.log
 tmp/
 temp/
-
-# Node
-node_modules/
 
 # Python
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
 *.bak_pre_fix
+.venv/
+venv/
+env/
 
-# Rust
-target/
+# A player's data folder, if one is ever created inside the checkout (settings, saves, covers, damaged-file copies)
+.legacy-player/
+user_data*.json
+user_data*.corrupt
 
-# Go
-bin/
-
-# Local env
-.env
-.env.local
+# Local probe exports / evidence
+tools/memory_probe/exports/
+tools/memory_probe/_out/
+tools/memory_probe/_scratch/
 
 # Replay / captures / generated artifacts
 replays/
@@ -41,33 +43,16 @@ artifacts/
 # Emulator-local or user-local directories
 local/
 user/
-# Python
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
 
-# Virtual envs
-.venv/
-venv/
-env/
+# Node / Rust / Go leftovers from other tooling
+node_modules/
+target/
+bin/
 
-# Local probe exports / evidence
-tools/memory_probe/exports/
-tools/memory_probe/_out/
-tools/memory_probe/_scratch/
-
-# OS / editor
+# Local env and OS / editor
+.env
+.env.local
 .DS_Store
 Thumbs.db
 .vscode/
 .idea/
-
-# General temp
-tmp/
-temp/
-*.log
-
-# PyInstaller
-*.spec
-build/

@@ -1,6 +1,6 @@
 # Legacy Player Roadmap
 
-## Where things stand (October 2026, v0.7.3)
+## Where things stand (October 2026, v0.7.4)
 
 Built: the Windows launcher app and release pipeline, library and emulator management, controllers, saves, the lobby and
 relay server, rooms, invite and server codes, automatic router opening with a shared-server fallback, opt-in problem

@@ -225,3 +225,18 @@ Known and left alone (say if you want any changed):
 - The installer's checksum comes from the same release as the zip, so it catches a damaged download, not a tampered release. Signing the exe is the real fix.
 - Anyone holding the app's page token can start any program as the player; the token is single-use per window and loopback-only.
 - Game uninstall deletes saves by file name, so two games with the same file name in one folder can share one save; engine downloads are not hash-checked beyond size.
+
+## Hardening round 2 (0.7.4)
+
+Closed from the "left alone" list above:
+- **Server codes** that carry the key now hold an 80-bit certificate fingerprint (34 characters), so it can no longer be ground out by brute force. Older codes still work.
+- **Firewall rule:** the uninstaller lists and removes it (Windows asks for approval).
+- **Router port:** the app records the port it opened; a crash is cleaned up on the next start (unless the server is still running) and on uninstall.
+- **Game uninstall:** never deletes saves that a second game with the same file name also uses, and never takes a cue-sheet track or companion file that belongs to another game.
+- **Restoring a backup:** the whole archive is checked before anything is written, each save is replaced whole, and a bad backup says so instead of crashing.
+- **Engine downloads:** size and checksum (when GitHub lists one) are verified, and an archive that would unpack to more than 4 GB is refused.
+- **Tests** no longer change result when RetroArch happens to be installed on the computer running them.
+
+Release: the build now also publishes the bare `LegacyPlayer-<version>-win64.exe` with `.sha256` files and `SHA256SUMS.txt`; `.gitignore` is regrouped and covers build output, `_to_delete/`, damaged-settings copies and data folders; the stale second workflow was removed (a test now fails if one comes back); `lp` (`lp.ps1` / `lp.cmd`) is the simple install command through git (install, update, run, version, path, uninstall, source).
+
+Still true: UPnP maps "forever" until closed; the firewall rule is for any profile; the installer's checksum comes from the same release (signing the exe is the real fix).

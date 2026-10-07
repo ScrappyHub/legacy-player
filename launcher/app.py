@@ -155,6 +155,8 @@ class LauncherApp:
         self.memprobe = memprobe.MemProbe(self.data_dir)
         self.port_map: dict = {}
         self.fallback_active = False
+        if self.catalog.data.get("router_mapped") and not os.environ.get("LEGACY_PLAYER_NO_BACKGROUND"):
+            threading.Thread(target=self._tidy_old_router_mapping, daemon=True, name="router-tidy").start()
         self.reports = reports.ReportCenter(self.data_dir, lambda: self.catalog.settings(), lambda k, v: self.catalog.set_setting(k, v), self._report_context)
         self._scan_lock = threading.Lock()       # one disk walk at a time (rescan)
         self._server_op_lock = threading.Lock()  # starting/stopping the server: one at a time, outside api_lock
@@ -983,9 +985,18 @@ class LauncherApp:
             siblings = [p for p in folder.iterdir() if p.is_file()]
         except OSError:
             siblings = []
+        others = {str(Path(g["path"])).lower() for g in self.games.values() if g["id"] != game["id"]}   # files that are another game's own
         for p in siblings:
-            if p != main and p.stem.lower() == stem and p.suffix.lower() in self.COMPANION_EXTS:
+            if p != main and p.stem.lower() == stem and p.suffix.lower() in self.COMPANION_EXTS and str(p).lower() not in others:
                 files.append(p)
+        shared_tracks: set[str] = set()                          # tracks another game's cue sheet also lists stay put
+        for other in self.games.values():
+            op = Path(other["path"])
+            if other["id"] != game["id"] and op.suffix.lower() == ".cue" and op.parent == folder:
+                try:
+                    shared_tracks.update(Path(n).name.lower() for n in re.findall(r'FILE\s+"([^"]+)"', op.read_text(encoding="utf-8", errors="ignore"), flags=re.I))
+                except OSError:
+                    pass
         for cue in [p for p in files if p.suffix.lower() == ".cue"]:
             try:
                 text = cue.read_text(encoding="utf-8", errors="ignore")
@@ -993,14 +1004,20 @@ class LauncherApp:
                 continue
             for name in re.findall(r'FILE\s+"([^"]+)"', text, flags=re.I):
                 track = folder / Path(name).name
-                if track.is_file() and track not in files:
+                if track.is_file() and track not in files and track.suffix.lower() in self.COMPANION_EXTS and track.name.lower() not in shared_tracks:
                     files.append(track)
         return [p for p in files if self._within_roots(p) and p.is_file() and not p.is_symlink()]
 
+    def _shares_saves(self, game: dict) -> bool:
+        """Another game with the same file name would use the same save file (Mario.gb and Mario.gbc side by side)."""
+        stem, save_dir = Path(game["path"]).stem.lower(), self._save_dir(game)
+        return any(g["id"] != game["id"] and Path(g["path"]).stem.lower() == stem and self._save_dir(g) == save_dir for g in self.games.values())
+
     def _game_saves(self, game: dict) -> list[Path]:
-        """Save files that belong to this game alone: the name must match exactly up to the first dot (Name.srm, Name.state1)."""
+        """Save files that belong to this game alone: the name must match exactly up to the first dot (Name.srm, Name.state1).
+        When another game would use the very same save file, none are listed: deleting them would take that game's progress too."""
         save_dir = self._save_dir(game)
-        if not save_dir or not Path(save_dir).is_dir():
+        if not save_dir or not Path(save_dir).is_dir() or self._shares_saves(game):
             return []
         stem = Path(game["path"]).stem.lower()
         return [p for p in saves.find_save_files(Path(save_dir), Path(game["path"]).stem)
@@ -1062,7 +1079,8 @@ class LauncherApp:
             return {"title": self._meta(game).get("title") or game["title"],
                     "files": [{"name": p.name, "folder": str(p.parent), "mb": round(p.stat().st_size / 1048576, 1)} for p in files],
                     "total_mb": round(sum(p.stat().st_size for p in files) / 1048576, 1),
-                    "saves": [p.name for p in save_files], "backups": backups}
+                    "saves": [p.name for p in save_files], "backups": backups,
+                    "saves_shared": self._shares_saves(game)}
         delete_saves = bool(body.get("delete_saves"))
         victims = files + (save_files if delete_saves else [])
         try:
@@ -1078,7 +1096,7 @@ class LauncherApp:
         except OSError as exc:
             hint = "" if body.get("permanent") else " Tick 'Delete permanently' if you want to skip the Recycle Bin."
             raise AppError(f"The game was not removed: {exc}.{hint}") from exc
-        if delete_saves and backup_folder.is_dir():
+        if delete_saves and backup_folder.is_dir() and not any(g["id"] != game["id"] and g.get("compat_id") == game["compat_id"] and g["console"] == game["console"] for g in self.games.values()):
             shutil.rmtree(backup_folder, ignore_errors=True)
         gid = game["id"]
         self.games.pop(gid, None)
@@ -2121,8 +2139,12 @@ class LauncherApp:
     def api_self_uninstall(self, body: dict) -> dict:
         """Uninstall Legacy Player itself. Without `confirm` it only lists what would go; with it, the doctor cleans up."""
         if not body.get("confirm"):
-            return selfuninstall.plan(self.data_dir, self.catalog.data.get("save_root") or "",
+            plan = selfuninstall.plan(self.data_dir, self.catalog.data.get("save_root") or "",
                                       self.catalog.data.get("backup_root") or "", self._managed_console_ids())
+            if firewall.exists():
+                plan["items"].insert(-1, {"key": "firewall", "label": "The Windows Firewall rule for your server", "keepable": False,
+                                          "why": "The door I opened so friends could connect. Windows may ask you to approve removing it.", "paths": [], "mb": 0.0})
+            return plan
         why = selfuninstall.check_data_dir(self.data_dir)
         if why:
             raise AppError(why)               # checked before anything is stopped
@@ -2146,6 +2168,13 @@ class LauncherApp:
         except ValueError as exc:
             raise AppError(str(exc)) from exc
         report["server_stopped"] = server_stopped
+        if firewall.exists():
+            gone = firewall.remove()["removed"]
+            report["steps"].insert(-1 if report["steps"] and report["steps"][-1]["key"] == "program" else len(report["steps"]),
+                                   {"key": "firewall", "label": "The Windows Firewall rule for your server", "status": "removed" if gone else "problem", "mb": 0.0})
+            if not gone:
+                report["problems"].append("the Windows Firewall rule 'Legacy Player server' (remove it in Windows Defender Firewall)")
+        self._close_router_mapping()
         self.catalog.save = lambda: None      # never write the settings file back after it was removed
         return report
 
@@ -2309,14 +2338,18 @@ class LauncherApp:
         if action in {"stop", "restart"} and code == 0:
             if old.get("state") == "mapped":
                 portmap.close_port(old.get("port", port), old.get("location", ""))
+            self._forget_router_mapping()
             was_fallback = self.fallback_active
             self.port_map, self.fallback_active = {}, False
             if was_fallback:
                 with self.api_lock:
                     self.api_server_connect({"local": True})
         if action in {"start", "restart"} and code == 0 and share and self.catalog.settings().get("server_auto_open", True):
+            self._close_router_mapping()                      # a mapping left by a crashed run goes first
             self.port_map = portmap.open_port(port)
             if self.port_map["state"] == "mapped":
+                self.catalog.data["router_mapped"] = {"port": self.port_map.get("port", port), "location": self.port_map.get("location", "")}
+                self.catalog.save()
                 self.fallback_active = False
                 return self.port_map
             self.reports.capture("router-not-opened", None, self.port_map["message"],
@@ -2335,6 +2368,30 @@ class LauncherApp:
                                  if self.fallback_active else self.port_map["message"] + " The shared server did not answer either."}
             return self.port_map
         return self.port_map or None
+
+    def _tidy_old_router_mapping(self) -> None:
+        """A port opened by an earlier run that crashed: close it, unless the server it was for is still running."""
+        try:
+            from server import cli
+            if not cli._is_running(self.data_dir / "server"):
+                self._close_router_mapping()
+        except Exception:
+            pass
+
+    def _forget_router_mapping(self) -> None:
+        if self.catalog.data.get("router_mapped"):
+            self.catalog.data["router_mapped"] = {}
+            self.catalog.save()
+
+    def _close_router_mapping(self) -> None:
+        """Close any port this app opened on the router and has not closed (after a crash, or when uninstalling)."""
+        rec = self.catalog.data.get("router_mapped") or {}
+        if rec.get("location") and rec.get("port"):
+            try:
+                portmap.close_port(int(rec["port"]), str(rec["location"]))
+            except (OSError, ValueError):
+                pass
+        self._forget_router_mapping()
 
     def api_router_test(self, body: dict) -> dict:
         """Does this router let the app open a port? Opens the server port and closes it again straight away."""

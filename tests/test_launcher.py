@@ -5,6 +5,7 @@ import sys
 import tempfile
 import threading
 import unittest
+from unittest import mock
 from pathlib import Path
 
 from launcher.app import AppError, LauncherApp
@@ -104,6 +105,9 @@ class CatalogTests(unittest.TestCase):
 
 class AppTests(unittest.TestCase):
     def setUp(self):
+        _p = mock.patch("launcher.emulators.shutil.which", return_value=None)   # a RetroArch installed on this computer must not change the result
+        _p.start()
+        self.addCleanup(_p.stop)
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name) / "Games"
         make_library(self.root)
@@ -248,6 +252,9 @@ class ServerThread:
 
 class MultiplayerFlowTests(unittest.TestCase):
     def setUp(self):
+        _p = mock.patch("launcher.emulators.shutil.which", return_value=None)   # a RetroArch installed on this computer must not change the result
+        _p.start()
+        self.addCleanup(_p.stop)
         self.server = ServerThread().start()
         self.tmp = tempfile.TemporaryDirectory()
         self.apps = {}

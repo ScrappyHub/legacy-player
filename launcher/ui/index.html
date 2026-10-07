@@ -2331,6 +2331,7 @@ async function uninstallGame(g){
   h("h3",{style:"margin:0 0 6px"},"Uninstall "+plan.title+"?"),
   h("p",{class:"small muted",style:"margin:0 0 10px"},"These files will be removed from your computer ("+plan.total_mb+" MB). They go to the Recycle Bin first, so you can still get them back from there."),
   h("div",{class:"unlist"},...plan.files.map(f=>h("div",{class:"unrow"},h("b",{},f.name),h("span",{class:"small muted"},f.mb+" MB · "+f.folder)))),
+  plan.saves_shared?h("div",{class:"small muted"},"Another game in this folder has the same file name, so it would use the same save file. I will not delete saves for this one."):null,
   hasSaves?h("label",{class:"unopt"},delSaves,h("span",{},h("b",{},"Also delete my save files for this game"),h("span",{class:"small muted"}," ("+plan.saves.length+" save file"+(plan.saves.length===1?"":"s")+", "+plan.backups+" backup file"+(plan.backups===1?"":"s")+")"),
     h("div",{class:"small warn"},"Leave this off to keep your progress in case you reinstall the game later.")))
    :h("p",{class:"small muted"},"No save files were found for this game."),
@@ -2352,7 +2353,7 @@ function prescription(){return h("div",{class:"rx",role:"note","aria-label":"The
  h("div",{},"Refills: none. I am finally off shift."),
  h("div",{class:"rxs"},"- The Doctor"))}
 /* ================= closing the clinic: uninstalling Legacy Player itself ================= */
-const RETIRE_LINES={emulators:"Sweeping out the waiting room...",library:"Shredding the paperwork...",saves:"Clearing the save shelves...",created:"Folding up the save boxes I left around...",logs:"Wiping the clipboard...",program:"Locking up the clinic..."};
+const RETIRE_LINES={emulators:"Sweeping out the waiting room...",library:"Shredding the paperwork...",saves:"Clearing the save shelves...",created:"Folding up the save boxes I left around...",firewall:"Closing the side door I opened for your friends...",logs:"Wiping the clipboard...",program:"Locking up the clinic..."};
 async function retireClinic(){
  const plan=await act(()=>api("self_uninstall",{}));if(!plan)return;
  const keep=h("input",{type:"checkbox",checked:true}),prog=h("input",{type:"checkbox",checked:true}),delMade=h("input",{type:"checkbox",checked:false});

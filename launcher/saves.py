@@ -3,11 +3,15 @@ keep timestamped backups. Restore backs up the current files first."""
 from __future__ import annotations
 
 import re
+import os
 import shutil
 import time
 from pathlib import Path
 
 SAVE_EXTENSIONS = {".sav", ".srm", ".state", ".sta", ".ss0", ".ss1", ".ss2", ".fcs", ".dsv", ".eep", ".fla", ".mpk", ".mcr", ".mc", ".mcd", ".ps2", ".gci", ".sav0"}
+
+
+MAX_RESTORE_BYTES = 2 * 1024 ** 3      # a save backup bigger than this is not a save backup
 
 
 def _safe(name: str) -> str:
@@ -142,20 +146,36 @@ def restore_all(dest_root: Path, name: str, sources: dict[str, Path], safety_roo
     except ValueError:
         pass
     restored = 0
-    with _zipfile.ZipFile(archive) as z:
-        manifest = _json.loads(z.read("manifest.json"))
-        for member in z.infolist():
-            if member.is_dir() or member.filename == "manifest.json":
-                continue
-            console, _, rel = member.filename.partition("/")
-            folder = sources.get(console)
-            if not folder or not rel:
-                continue
-            target = (Path(folder) / rel).resolve()
-            if Path(folder).resolve() not in target.parents:
-                continue     # never write outside the save folder
-            target.parent.mkdir(parents=True, exist_ok=True)
-            with z.open(member) as src, open(target, "wb") as out:
-                shutil.copyfileobj(src, out)
-            restored += 1
+    try:
+        with _zipfile.ZipFile(archive) as z:
+            manifest = _json.loads(z.read("manifest.json"))
+            if not isinstance(manifest, dict) or not isinstance(manifest.get("consoles"), (list, dict)):
+                raise ValueError("this backup has no readable contents list")
+            if sum(m.file_size for m in z.infolist()) > MAX_RESTORE_BYTES or any(m.file_size > MAX_RESTORE_BYTES for m in z.infolist()):
+                raise ValueError("this backup is far larger than save files should be, so it was not opened")
+            bad = z.testzip()                      # checks every file before anything on disk is touched
+            if bad:
+                raise ValueError(f"this backup is damaged ({bad}), so nothing was restored")
+            for member in z.infolist():
+                if member.is_dir() or member.filename == "manifest.json":
+                    continue
+                console, _, rel = member.filename.partition("/")
+                folder = sources.get(console)
+                if not folder or not rel:
+                    continue
+                target = (Path(folder) / rel).resolve()
+                if Path(folder).resolve() not in target.parents:
+                    continue     # never write outside the save folder
+                target.parent.mkdir(parents=True, exist_ok=True)
+                part = target.with_name(target.name + ".lp-part")
+                try:
+                    with z.open(member) as src, open(part, "wb") as out:
+                        shutil.copyfileobj(src, out)
+                    os.replace(part, target)       # a save is either the old one or the whole new one, never half
+                finally:
+                    if part.exists():
+                        part.unlink()
+                restored += 1
+    except (_zipfile.BadZipFile, KeyError, _json.JSONDecodeError) as exc:
+        raise ValueError("this backup could not be read, so nothing was restored") from exc
     return {"restored": restored, "safety_backup": safety, "consoles": sorted(manifest["consoles"])}

@@ -3,8 +3,9 @@ fingerprint prefix, so a friend types one thing instead of three.
 
 Format: LP-XXXX-XXXX-XXXX-XXXX-XX (Crockford base32 of: 4 address bytes, 2 port bytes,
 5 fingerprint bytes). Only IPv4 addresses fit; for a name or IPv6 address share the long form.
-The 40-bit fingerprint prefix is checked against the server certificate on every connect, which
-protects against casual impostors; the full fingerprint is still shown for people who want it.
+Codes that carry the server key are longer: 4 address, 2 port, 10 fingerprint and 5 key bytes (34 characters), so the
+80-bit fingerprint prefix checked against the server certificate on every connect can not be forged by brute force.
+Older codes (40-bit fingerprint, with or without the key) still decode.
 """
 from __future__ import annotations
 
@@ -25,17 +26,18 @@ def encode(host: str, port: int, fingerprint_hex: str, key_hex: str = "") -> str
         raise CodeError("Short codes only work with a numeric IPv4 address.") from exc
     if not 1 <= port <= 65535:
         raise CodeError("Port out of range.")
-    try:
-        fp = bytes.fromhex("".join(c for c in fingerprint_hex.lower() if c in "0123456789abcdef"))[:5]
-    except ValueError as exc:
-        raise CodeError("Bad fingerprint.") from exc
-    fp = fp.ljust(5, b"\0")
     key = bytes.fromhex(key_hex) if key_hex else b""
     if key and len(key) != 5:
         raise CodeError("Bad server key.")
+    try:
+        full = bytes.fromhex("".join(c for c in fingerprint_hex.lower() if c in "0123456789abcdef"))
+    except ValueError as exc:
+        raise CodeError("Bad fingerprint.") from exc
+    width = 10 if key and len(full) >= 10 else 5       # the long form only when the certificate fingerprint is long enough
+    fp = full[:width].ljust(width, b"\0")
     raw = ip.packed + port.to_bytes(2, "big") + fp + key
     value = int.from_bytes(raw, "big")
-    length = 26 if key else 18          # 11 bytes -> 18 base32 chars; 16 bytes (with the key) -> 26
+    length = {11: 18, 16: 26, 21: 34}[len(raw)]   # base32 characters for 11 (no key), 16 (old, with key) and 21 (with key) bytes
     chars = []
     for _ in range(length):
         chars.append(ALPHABET[value & 31])
@@ -46,12 +48,12 @@ def encode(host: str, port: int, fingerprint_hex: str, key_hex: str = "") -> str
 
 def decode(code: str) -> dict:
     text = "".join(c for c in code.upper() if c not in "- _")
-    if text.startswith("LP") and len(text) in (20, 28):
+    if text.startswith("LP") and len(text) in (20, 28, 36):
         text = text[2:]
     text = "".join(_FIX.get(c, c) for c in text)
-    if len(text) not in (18, 26) or any(c not in ALPHABET for c in text):
+    if len(text) not in (18, 26, 34) or any(c not in ALPHABET for c in text):
         raise CodeError("That server code does not look right. It should be LP- followed by letters and numbers.")
-    size = 11 if len(text) == 18 else 16
+    size = {18: 11, 26: 16, 34: 21}[len(text)]
     value = 0
     for c in text:
         value = value << 5 | ALPHABET.index(c)
@@ -62,7 +64,8 @@ def decode(code: str) -> dict:
     port = int.from_bytes(raw[4:6], "big")
     if not port:
         raise CodeError("That server code does not look right.")
-    out = {"host": host, "port": port, "fingerprint": raw[6:11].hex()}
-    if size == 16:
-        out["key"] = raw[11:16].hex()
+    fp_end = 16 if size == 21 else 11
+    out = {"host": host, "port": port, "fingerprint": raw[6:fp_end].hex()}
+    if size in (16, 21):
+        out["key"] = raw[fp_end:fp_end + 5].hex()
     return out

@@ -56,3 +56,29 @@ def allow(port: int, run=_run) -> dict:
     if not now["allowed"]:
         now["message"] = "The rule was not added (the approval box was closed or refused). Friends on other networks may be blocked."
     return now
+
+
+def exists(run=_run) -> bool:
+    """Is there a Legacy Player rule in the Windows Firewall at all."""
+    if not supported():
+        return False
+    try:
+        out = run(["netsh", "advfirewall", "firewall", "show", "rule", f"name={RULE}"])
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return out.returncode == 0 and RULE in (out.stdout or "")
+
+
+def remove(run=_run) -> dict:
+    """Take the rule away again (used by the uninstaller). Asks Windows for approval when not already an administrator."""
+    if not supported():
+        return {"removed": True}
+    args = ["advfirewall", "firewall", "delete", "rule", f"name={RULE}"]
+    try:
+        if run(["netsh"] + args).returncode != 0 and exists(run):
+            quoted = " ".join(f'"{a}"' if " " in a else a for a in args).replace('"', '""')
+            run(["powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command",
+                 f"Start-Process netsh -ArgumentList '{quoted}' -Verb RunAs -Wait -WindowStyle Hidden"], timeout=120)
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return {"removed": not exists(run)}

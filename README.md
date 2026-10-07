@@ -8,16 +8,26 @@ can download emulators from their official release pages when you ask it to.
 
 ## Install (Windows)
 
-PowerShell, no administrator needed:
+PowerShell, no administrator needed. Either one line:
 
 ```powershell
 irm https://raw.githubusercontent.com/ScrappyHub/legacy-player/main/install.ps1 | iex
 ```
 
-It downloads the latest release from [Releases](https://github.com/ScrappyHub/legacy-player/releases), checks its SHA-256,
-installs to `%LOCALAPPDATA%\Programs\LegacyPlayer`, adds a Start menu shortcut and opens the app. Or download
-`LegacyPlayer-<version>-win64.zip` from Releases, unzip it and double-click `LegacyPlayer.exe`. The app is not code-signed
-yet, so Windows SmartScreen says "unknown publisher": More info, then Run anyway. See `docs/RELEASE.md`.
+or, through git, with the small `lp` command that comes with the repository:
+
+```powershell
+git clone https://github.com/ScrappyHub/legacy-player
+cd legacy-player
+.\lp install            # newest release; or  .\lp install v0.7.4  for one exact version
+.\lp run                # later:  .\lp update   .\lp version   .\lp path   .\lp uninstall   .\lp help
+```
+
+Both download the release from [Releases](https://github.com/ScrappyHub/legacy-player/releases), check its SHA-256, install to
+`%LOCALAPPDATA%\Programs\LegacyPlayer`, add a Start menu shortcut and open the app. Or download the files yourself: each
+release has `LegacyPlayer-<version>-win64.zip` (the exe plus a read-me) and the bare `LegacyPlayer-<version>-win64.exe`, each
+with a `.sha256` and a combined `SHA256SUMS.txt`. The app is not code-signed yet, so Windows SmartScreen says "unknown
+publisher": More info, then Run anyway. See `docs/RELEASE.md`.
 
 ## What it does
 

@@ -4,6 +4,7 @@ import sys
 import tempfile
 import threading
 import unittest
+from unittest import mock
 import zipfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -49,6 +50,9 @@ class FakeBuildbot(BaseHTTPRequestHandler):
 
 class SetupTests(unittest.TestCase):
     def setUp(self):
+        _p = mock.patch("launcher.emulators.shutil.which", return_value=None)   # a RetroArch installed on this computer must not change the result
+        _p.start()
+        self.addCleanup(_p.stop)
         FakeBuildbot.mode = "ok"
         self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), FakeBuildbot)
         threading.Thread(target=self.httpd.serve_forever, daemon=True).start()

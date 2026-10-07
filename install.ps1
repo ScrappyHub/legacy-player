@@ -3,6 +3,8 @@
 
    irm https://raw.githubusercontent.com/ScrappyHub/legacy-player/main/install.ps1 | iex
 
+ (or, with the repository cloned:  .\lp install)
+
  Options (run the file instead of piping):  .\install.ps1 -Tag v0.7.0  -NoLaunch  -Token <github token, for a private repo>
 #>
 param(
@@ -51,6 +53,7 @@ try {
     Copy-Item -Path (Join-Path $stage '*') -Destination $dest -Recurse -Force
     Get-ChildItem $dest -Recurse -File | Unblock-File
 
+    $release.tag_name | Set-Content (Join-Path $dest 'VERSION.txt') -Encoding ASCII   # so `lp version` can say what is installed
     $exe = Join-Path $dest 'LegacyPlayer.exe'
     $shell = New-Object -ComObject WScript.Shell
     $lnk = Join-Path ([Environment]::GetFolderPath('Programs')) 'Legacy Player.lnk'

@@ -1,0 +1,104 @@
+import tempfile
+import unittest
+from pathlib import Path
+from unittest import mock
+
+from launcher import firewall
+from launcher.app import LauncherApp
+
+
+class RouterTidyTests(unittest.TestCase):
+    def setUp(self):
+        p = mock.patch.dict("os.environ", {"LEGACY_PLAYER_NO_BACKGROUND": "1"})
+        p.start()
+        self.addCleanup(p.stop)
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.app = LauncherApp(Path(self.tmp.name) / "data", roots=[])
+
+    def test_mapping_is_recorded_closed_and_forgotten(self):
+        mapped = {"state": "mapped", "port": 8765, "location": "http://192.168.1.1:5000/x", "external_ip": "93.184.216.34", "kind": "public", "message": "ok"}
+        with mock.patch("launcher.portmap.open_port", return_value=mapped), mock.patch("launcher.portmap.close_port", return_value=True) as close:
+            self.app._manage_router("start", 0, True, 8765)
+            self.assertEqual(8765, self.app.catalog.data["router_mapped"]["port"])
+            self.app._manage_router("stop", 0, True, 8765)
+            close.assert_called_with(8765, "http://192.168.1.1:5000/x")
+        self.assertEqual({}, self.app.catalog.data["router_mapped"])
+
+    def test_a_mapping_left_by_a_crash_is_closed_on_next_start_and_on_uninstall(self):
+        self.app.catalog.data["router_mapped"] = {"port": 8765, "location": "http://192.168.1.1:5000/x"}
+        with mock.patch("launcher.portmap.close_port", return_value=True) as close:
+            self.app._close_router_mapping()
+            close.assert_called_once_with(8765, "http://192.168.1.1:5000/x")
+        self.assertEqual({}, self.app.catalog.data["router_mapped"])
+
+
+class FirewallRemoveTests(unittest.TestCase):
+    def test_remove_is_a_noop_off_windows(self):
+        if firewall.supported():
+            self.skipTest("windows")
+        self.assertEqual({"removed": True}, firewall.remove())
+        self.assertFalse(firewall.exists())
+
+    def test_remove_asks_for_approval_only_when_the_plain_delete_fails(self):
+        calls = []
+
+        class R:
+            def __init__(self, rc, out=""):
+                self.returncode, self.stdout = rc, out
+
+        state = {"there": True}
+
+        def run(args, timeout=15.0):
+            calls.append(args[0])
+            if args[0] == "netsh" and "show" in args:
+                return R(0 if state["there"] else 1, firewall.RULE if state["there"] else "")
+            if args[0] == "netsh" and "delete" in args:
+                return R(1)                      # not an administrator
+            state["there"] = False               # the elevated run worked
+            return R(0)
+        with mock.patch("launcher.firewall.supported", return_value=True):
+            self.assertEqual({"removed": True}, firewall.remove(run))
+        self.assertIn("powershell", calls)
+
+
+if __name__ == "__main__":
+    unittest.main()
+
+
+class SharedSaveTests(unittest.TestCase):
+    def test_two_games_with_one_file_name_never_lose_each_others_saves_or_files(self):
+        from tests.test_app_actions import make_app
+        app, base = make_app()
+        folder = base / "games" / "NES"
+        (folder / "Twin.nes").write_bytes(b"NES\x1a" + b"1" * 64)
+        (folder / "Twin.sfc").write_bytes(b"2" * 1024 * 33)
+        (folder / "Twin.srm").write_bytes(b"save")
+        (folder / "Twin.cue").write_text('FILE "Test Game (USA).nes" BINARY\n')       # points at another game's file
+        app.rescan()
+        nes = next(g for g in app.games.values() if g["path"].endswith("Twin.nes"))
+        plan = app.api_game_uninstall({"id": nes["id"]})
+        self.assertTrue(plan["saves_shared"])
+        self.assertEqual([], plan["saves"])
+        names = [f["name"] for f in plan["files"]]
+        self.assertNotIn("Test Game (USA).nes", names)
+
+
+class RestoreSafetyTests(unittest.TestCase):
+    def test_a_damaged_backup_restores_nothing_and_says_so(self):
+        import zipfile
+        from launcher import saves
+        base = Path(tempfile.mkdtemp())
+        dest, folder = base / "b", base / "s"
+        dest.mkdir(); folder.mkdir()
+        (folder / "a.srm").write_bytes(b"keep me")
+        bad = dest / "LegacyPlayer-saves-x.zip"
+        bad.write_bytes(b"not a zip at all")
+        with self.assertRaises(ValueError):
+            saves.restore_all(dest, bad.name, {"nes": folder}, base / "safety")
+        nomanifest = dest / "LegacyPlayer-saves-y.zip"
+        with zipfile.ZipFile(nomanifest, "w") as z:
+            z.writestr("nes/a.srm", b"x")
+        with self.assertRaises(ValueError):
+            saves.restore_all(dest, nomanifest.name, {"nes": folder}, base / "safety")
+        self.assertEqual(b"keep me", (folder / "a.srm").read_bytes())

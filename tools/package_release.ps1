@@ -1,6 +1,9 @@
 <#
- Builds the release zip on a Windows computer with Python 3.13+:   powershell -ExecutionPolicy Bypass -File tools\package_release.ps1
- Output (in dist\release):  LegacyPlayer-<version>-win64.zip  and  LegacyPlayer-<version>-win64.zip.sha256
+ Builds the release files on a Windows computer with Python 3.13+:   powershell -ExecutionPolicy Bypass -File tools\package_release.ps1
+ Output (in dist\release):
+   LegacyPlayer-<version>-win64.zip      the exe plus a READ ME, what the installer downloads
+   LegacyPlayer-<version>-win64.exe      the bare exe, for people who just want the one file
+   each of the two with a .sha256 next to it, and SHA256SUMS.txt listing both
 #>
 $ErrorActionPreference = 'Stop'
 Set-Location (Split-Path -Parent $PSScriptRoot)
@@ -28,7 +31,17 @@ To play with a friend: Servers page > Start (leave "Let friends connect" ticked)
 $zip = Join-Path $out "LegacyPlayer-$version-win64.zip"
 Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip -Force
 Remove-Item $stage -Recurse -Force
-$hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
-"$hash  $(Split-Path $zip -Leaf)" | Set-Content "$zip.sha256" -Encoding ASCII
-Write-Host "Built $zip"
-Write-Host "SHA256 $hash"
+
+$exe = Join-Path $out "LegacyPlayer-$version-win64.exe"
+Copy-Item 'dist\LegacyPlayer.exe' $exe
+
+$sums = @()
+foreach ($f in @($zip, $exe)) {
+    $hash = (Get-FileHash $f -Algorithm SHA256).Hash.ToLower()
+    $line = "$hash  $(Split-Path $f -Leaf)"
+    $line | Set-Content "$f.sha256" -Encoding ASCII
+    $sums += $line
+    Write-Host $line
+}
+$sums | Set-Content (Join-Path $out 'SHA256SUMS.txt') -Encoding ASCII
+Write-Host "Built $zip and $exe"

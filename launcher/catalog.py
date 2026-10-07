@@ -179,6 +179,7 @@ DEFAULT_DATA = {
     "game_meta": {},        # game id -> {"title", "hidden", "emulator", "args", "note"} the player chose for that one game
     "collections": {},      # collection name -> [game ids], like Steam categories
     "video": {},            # "all" or console id -> display choices (see launcher/app.py VIDEO_FIELDS)
+    "router_mapped": {},   # {"port", "location"} while the app has a port open on the router, so a crash can be cleaned up later
     "overlay": {"enabled": True, "hotkey": "ctrl+shift+l", "pad": ["back", "start"], "hold": 0.8},   # the in-game overlay and how to open it
     "display_prefs": {"modes": {}, "monitor": ""},   # emulator id -> "ask"|"fullscreen"|"windowed"; monitor "" = automatic, else "1","2",...
     "last_rescan": None,    # when the games folders were last read

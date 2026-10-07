@@ -670,6 +670,14 @@ class ServerKeyTests(unittest.TestCase):
         old = servercode.decode(servercode.encode("192.168.1.20", 8765, "abcdef0123"))     # codes made before keys still decode
         self.assertNotIn("key", old)
 
+    def test_long_fingerprint_codes_round_trip_and_are_longer(self):
+        from launcher import servercode
+        fp = "abcdef0123456789abcdef0123456789"
+        code = servercode.encode("10.0.0.7", 9000, fp, "0a1b2c3d4e")
+        got = servercode.decode(code)
+        self.assertEqual(("10.0.0.7", 9000, fp[:20], "0a1b2c3d4e"), (got["host"], got["port"], got["fingerprint"], got["key"]))
+        self.assertGreater(len(code.replace("-", "")), len(servercode.encode("10.0.0.7", 9000, fp[:16], "0a1b2c3d4e").replace("-", "")))
+
     def test_fresh_key_keeps_current_players_but_stops_new_ones(self):
         from server.lobby import LobbyService
         from tests.test_community_lobby import PROFILE, auth

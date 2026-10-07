@@ -11,6 +11,7 @@ Consent model
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import shutil
@@ -25,6 +26,7 @@ from .engines import ENGINES
 from .setup import SetupError, extract_7z
 
 GITHUB_HOSTS = {"api.github.com", "github.com", "objects.githubusercontent.com", "release-assets.githubusercontent.com"}
+MAX_UNPACKED_BYTES = 4 * 1024 ** 3
 PLAYER_DATA = ("User", "saves", "states", "memcards", "portable.txt", "config", "retroarch.cfg", "sys_config")   # kept across an update
 MAX_ASSET_BYTES = 400 * 1024 * 1024
 
@@ -80,6 +82,8 @@ def pick_asset(assets: list[dict], pattern: str) -> dict | None:
 def extract_zip_safe(archive: Path, dest: Path) -> int:
     count = 0
     with zipfile.ZipFile(archive) as z:
+        if sum(m.file_size for m in z.infolist()) > MAX_UNPACKED_BYTES:
+            raise InstallError("The archive would unpack to far more than an emulator needs, so it was refused.")
         for member in z.infolist():
             if member.is_dir():
                 continue
@@ -174,6 +178,7 @@ class EngineInstaller:
             self._set(step=f"Downloading {asset['name']}")
             with tempfile.TemporaryDirectory() as tmp:
                 archive = Path(tmp) / asset["name"]
+                digest = hashlib.sha256()
                 with _open(asset["url"], self.hosts, self.allow_http, timeout=60) as response, open(archive, "wb") as out:
                     done = 0
                     total = asset["size"] or int(response.headers.get("Content-Length") or 0)
@@ -182,8 +187,13 @@ class EngineInstaller:
                         if done > MAX_ASSET_BYTES:
                             raise InstallError("The download exceeded its size limit and was stopped.")
                         out.write(chunk)
+                        digest.update(chunk)
                         if total:
                             self._set(percent=int(80 * done / total))
+                if asset["size"] and done != asset["size"]:
+                    raise InstallError("The download is not the size GitHub lists for it (it may have been cut short), so nothing was installed.")
+                if asset.get("sha256") and digest.hexdigest() != asset["sha256"].lower():
+                    raise InstallError("The download does not match the checksum GitHub lists for it, so nothing was installed.")
                 self._set(step="Unpacking", percent=85)
                 staging = Path(tmp) / "unpacked"
                 if archive.suffix.lower() == ".zip":
