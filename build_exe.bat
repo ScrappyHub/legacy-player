@@ -16,7 +16,11 @@ pause
 exit /b %RC%
 :build
 python --version || (echo Python was not found. Install Python 3.13+ from python.org and try again. & exit /b 1)
-python -m pip install --upgrade pip pyinstaller psutil || exit /b 1
+rem A running copy locks dist\LegacyPlayer.exe ("Access is denied"), so close it first.
+taskkill /f /im LegacyPlayer.exe >nul 2>&1
+if exist dist\LegacyPlayer.exe del /f /q dist\LegacyPlayer.exe
+if exist dist\LegacyPlayer.exe (echo dist\LegacyPlayer.exe is still locked. Close Legacy Player and any antivirus scan of the dist folder, then run this again. & exit /b 1)
+python -m pip install --upgrade pip pyinstaller || exit /b 1
 python -m PyInstaller --noconfirm --clean --onefile --windowed --name LegacyPlayer --icon "launcher\ui\legacy-player.ico" ^
   --paths . ^
   --add-data "launcher\ui;launcher\ui" ^
