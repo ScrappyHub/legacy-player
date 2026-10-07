@@ -1452,7 +1452,7 @@ async function viewSupplies(m){
    st.retroarch.installed&&!st.info_installed?h("p",{class:"small bad"},"Core info files are missing. RetroArch refuses netplay without them. Press Install to add them."):null,
    h("div",{class:"card",style:"margin-top:12px"},h("div",{class:"row"},h("h3",{class:"grow"},"Dolphin (GameCube and Wii)"),ok(st.dolphin.installed)),
     h("p",{class:"small muted"},st.dolphin.installed?st.dolphin.path:"Not found. Download it from the official page, then set its path in Emulators."),
-    st.dolphin.installed?null:h("a",{href:st.dolphin.download_page,target:"_blank",rel:"noopener noreferrer"},"Open the Dolphin download page")),
+    st.dolphin.installed?h("div",{class:"row"},h("button",{class:"btn",onclick:async()=>{const r=await act(()=>api("dolphin_folders",{}));if(r)toast(r.added?"Added "+r.added+" game folder(s) to Dolphin. Open Dolphin to see them.":"Dolphin already has your game folders.")}},"Add my game folders to Dolphin"),h("span",{class:"small muted"},"Close Dolphin first.")):h("a",{href:st.dolphin.download_page,target:"_blank",rel:"noopener noreferrer"},"Open the Dolphin download page")),
    h("div",{class:"card",style:"margin-top:12px"},h("h3",{},"Install"),
     h("div",{class:"row"},
      h("button",{class:"btn primary",disabled:running||nothingToDo||cannot,onclick:async()=>{if(!await ask("Download from buildbot.libretro.com into "+st.install_folder+"?"))return;if(await act(()=>api("setup_install",{what:"all",confirm:true}))){draw();poll()}}},

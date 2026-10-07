@@ -22,11 +22,12 @@ def _norm(p: str) -> str:
     return p.strip().strip('"').replace("\\", "/").rstrip("/").lower()
 
 
-def add_game_folder(exe: str | Path, folder: str | Path) -> dict:
+def add_game_folders(exe: str | Path, folders: list, *, recursive: bool = True) -> dict:
+    """Add each folder not already listed. `recursive` also ticks Dolphin's "Search Subfolders"."""
     try:
         user = find_user_dir(exe)
         if user is None:
-            return {"added": False, "why": "Dolphin has not made its settings folder yet."}
+            return {"added": [], "already": 0, "why": "Dolphin has not made its settings folder yet. Open Dolphin once, close it, then try again."}
         target = user / "Config" / "Dolphin.ini"
         text = target.read_text(encoding="utf-8", errors="replace") if target.exists() else ""
         nl = "\r\n" if "\r\n" in text else "\n"
@@ -36,34 +37,57 @@ def add_game_folder(exe: str | Path, folder: str | Path) -> dict:
             lines += ["[General]"]
             start = len(lines) - 1
         end = next((i for i in range(start + 1, len(lines)) if lines[i].strip().startswith("[")), len(lines))
-        existing, count_at = {}, None
+        existing, count_at, rec_at = {}, None, None
         for i in range(start + 1, end):
             m = _KEY.match(lines[i])
             if m:
                 existing[int(m.group(1))] = m.group(2)
-                continue
-            if _COUNT.match(lines[i]):
+            elif _COUNT.match(lines[i]):
                 count_at = i
-        want = Path(folder).as_posix()
-        if any(_norm(v) == _norm(want) for v in existing.values()):
-            return {"added": False, "why": "already there"}
-        index = (max(existing) + 1) if existing else 0
+            elif lines[i].strip().lower().startswith("recursiveisopaths"):
+                rec_at = i
+        have = {_norm(v) for v in existing.values()}
+        added, already, index = [], 0, (max(existing) + 1) if existing else 0
+        new = []
+        for f in folders:
+            want = Path(f).as_posix()
+            if _norm(want) in have:
+                already += 1
+                continue
+            have.add(_norm(want))
+            new.append(f"ISOPath{index} = {want}")
+            added.append(want)
+            index += 1
+        changed = bool(new)
+        if recursive and (rec_at is None or "true" not in lines[rec_at].lower()):
+            changed = True
+            if rec_at is None:
+                new.append("RecursiveISOPaths = True")
+            else:
+                lines[rec_at] = "RecursiveISOPaths = True"
+        if not changed:
+            return {"added": [], "already": already}
         insert_at = end
         while insert_at > start + 1 and not lines[insert_at - 1].strip():
             insert_at -= 1
-        new = [f"ISOPath{index} = {want}"]
         lines[insert_at:insert_at] = new
-        count_line = f"ISOPaths = {index + 1}"
-        if count_at is not None:
-            lines[count_at] = count_line
-        else:
-            lines.insert(start + 1, count_line)
+        if added:
+            count_line = f"ISOPaths = {index}"
+            if count_at is not None:
+                lines[count_at] = count_line
+            else:
+                lines.insert(start + 1, count_line)
         backup = target.with_name(BACKUP)
         if target.exists() and not backup.exists():
             backup.write_text(text, encoding="utf-8", newline="")
         tmp = target.with_suffix(".ini.lp-tmp")
         tmp.write_text(nl.join(lines) + nl, encoding="utf-8", newline="")
         os.replace(tmp, target)
-        return {"added": True, "file": str(target)}
+        return {"added": added, "already": already, "file": str(target)}
     except OSError as exc:
-        return {"added": False, "why": f"Could not update Dolphin's settings: {exc}"}
+        return {"added": [], "already": 0, "why": f"Could not update Dolphin's settings: {exc}"}
+
+
+def add_game_folder(exe: str | Path, folder: str | Path) -> dict:
+    out = add_game_folders(exe, [folder])
+    return {"added": bool(out["added"]), **{k: v for k, v in out.items() if k in {"file", "why"}}}

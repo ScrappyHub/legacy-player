@@ -49,10 +49,18 @@ def user_dirs(exe: str | Path) -> list[Path]:
 
 
 def find_user_dir(exe: str | Path) -> Path | None:
-    for d in user_dirs(exe):
-        if (d / "Config").is_dir():
-            return d
-    return None
+    """The settings folder Dolphin is really using. Where two exist, the one whose Dolphin.ini was changed last wins."""
+    dirs = [d for d in user_dirs(exe) if (d / "Config").is_dir()]
+    if not dirs:
+        return None
+    if (Path(exe).parent / "portable.txt").exists() and dirs[0] == Path(exe).parent / "User":
+        return dirs[0]
+    def stamp(d: Path) -> float:
+        try:
+            return (d / "Config" / "Dolphin.ini").stat().st_mtime
+        except OSError:
+            return -1.0
+    return max(dirs, key=stamp)
 
 
 def _keyboard_device() -> str:

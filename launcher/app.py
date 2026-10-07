@@ -487,6 +487,23 @@ class LauncherApp:
     def api_probe_cancel(self, body: dict) -> dict:
         return self.memprobe.cancel()
 
+    def api_dolphin_folders(self, body: dict) -> dict:
+        """Put the folders your GameCube and Wii games are in into Dolphin's game list, so you never open Dolphin's settings."""
+        found = emulators.find_emulators(self._search_roots(), self.catalog.data["emulator_paths"])
+        exe = found.get("dolphin", {}).get("path")
+        if not exe:
+            raise AppError("Dolphin is not set up yet.")
+        running = self._running_now()
+        if running and running.get("emulator_id") == "dolphin":
+            raise AppError("Close Dolphin first. It would undo the change when it quits.")
+        folders = sorted({str(Path(g["path"]).parent) for g in self.games.values() if g.get("console") in {"gamecube", "wii"}})
+        if not folders:
+            raise AppError("No GameCube or Wii games found yet. Add your games folder in the Library first.")
+        out = dolphinpaths.add_game_folders(exe, folders)
+        if out.get("why"):
+            raise AppError(out["why"])
+        return {"added": len(out["added"]), "already": out["already"], "folders": folders}
+
     def api_dolphin_pads(self, body: dict) -> dict:
         """What Legacy Player would write into Dolphin's GameCube pad file, or put the player's own file back."""
         found = emulators.find_emulators(self._search_roots(), self.catalog.data["emulator_paths"])
