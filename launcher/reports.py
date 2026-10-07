@@ -21,6 +21,7 @@ import hashlib
 import json
 import os
 import platform
+import ipaddress
 import re
 import socket
 import sys
@@ -46,10 +47,17 @@ NOISY = {"ping", "status", "mp_state", "server_status", "network_last", "setup_s
          "home", "probe_status", "report_status"}
 
 _IPV4 = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}(?::\d{1,5})?\b")
-_IPV6 = re.compile(r"\b(?:[0-9a-fA-F]{1,4}:){2,7}[0-9a-fA-F]{1,4}\b")
+# Any IPv6 form (::1, fe80::1%eth0, 2001:db8::5, [::1]:8765, ::ffff:1.2.3.4): find candidates, then let `ipaddress` decide.
+_IPV6_CANDIDATE = re.compile(r"(?<![\w:.])\[?[0-9A-Fa-f:]*:[0-9A-Fa-f:]*:?[0-9A-Fa-f:.]*(?:%[\w.-]+)?\]?(?::\d{1,5})?(?![\w:])")
+_MAC = re.compile(r"\b[0-9A-Fa-f]{2}(?:[:-][0-9A-Fa-f]{2}){5}\b")
+_URL = re.compile(r"\b[a-z][a-z0-9+.-]{1,12}://[^\s'\"<>]+", re.I)
+_HOST_PORT = re.compile(r"\b(?:[A-Za-z0-9-]+\.)+(?!(?:py|pyc|js|html?|css|json|txt|log|md|bat|ps1|exe|dll|ya?ml|toml|ini|cfg|lock|spec)\b)[A-Za-z]{2,}:\d{2,5}\b")
+_LONG_HEX = re.compile(r"\b[0-9a-fA-F]{16,}\b")
+_ASSIGNED_SECRET = re.compile(r"(?i)\b(access[_-]?key|api[_-]?key|token|secret|password|passwd|credential|authorization|bearer|fingerprint|join[_-]?code|invite[_-]?code)\b(\s*[:=]\s*|\s+)(?:\"[^\"]*\"|'[^']*'|[^\s,;}\]]+)")
 _EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
-_SERVER_CODE = re.compile(r"\bLP-[A-Z0-9-]{8,}\b", re.I)
+_SERVER_CODE = re.compile(r"\bLP2?-[A-Z0-9-]{8,}\b", re.I)
 _INVITE = re.compile(r"\b[A-Z0-9]{5}-[A-Z0-9]{5}\b")
+_INVITE_LOWER = re.compile(r"\b(?=[a-z0-9]{0,4}\d)[a-z0-9]{5}-[a-z0-9]{5}\b|\b[a-z0-9]{5}-(?=[a-z0-9]{0,4}\d)[a-z0-9]{5}\b")
 _SECRETISH = re.compile(r"\b(?=[A-Za-z0-9_-]*\d)(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9_-]{24,}\b")
 _URL_QUERY = re.compile(r"(\?[^\s'\"]+)")
 _WIN_PATH = re.compile(r"(?<!\w)[A-Za-z]:[\\/](?:[^\\/:*?\"<>|\r\n']+[\\/])*[^\\/:*?\"<>|\r\n'\s]*")
@@ -88,22 +96,49 @@ class Scrubber:
         ext = os.path.splitext(parts[-1])[1][:8] if parts and "." in parts[-1] else ""
         return "<path>" + ext
 
+    @staticmethod
+    def _url(match: re.Match) -> str:
+        url = match.group(0)
+        host = re.sub(r"^[a-z][a-z0-9+.-]*://(?:[^/@]*@)?", "", url, flags=re.I).split("/")[0].split(":")[0].lower()
+        if host in ("github.com", "pypi.org", "python.org", "docs.python.org") or host.endswith(".github.com"):
+            return url.split("?")[0].split("#")[0] + ("?<removed>" if "?" in url else "")        # our own public places stay readable
+        return "<url>"
+
+    @staticmethod
+    def _ipv6(match: re.Match) -> str:
+        token = match.group(0)
+        core = re.sub(r"^\[|\]?(?::\d{1,5})?$", "", token) if token.startswith("[") else token
+        core = core.split("%")[0].strip("[]")
+        for candidate in (core, token.split("%")[0]):
+            try:
+                ipaddress.IPv6Address(candidate)
+                return "<ip>"
+            except ValueError:
+                pass
+        return token
+
     def text(self, value, limit: int = MAX_TEXT) -> str:
         s = str(value if value is not None else "")
         for folder, label in self.folders:
             s = re.sub(re.escape(folder), label, s, flags=re.I)
             s = re.sub(re.escape(folder.replace("\\", "/")), label, s, flags=re.I)
+        s = _ASSIGNED_SECRET.sub(lambda m: f"{m.group(1)}=<removed>", s)
+        s = _URL.sub(self._url, s)
         s = _UNC_PATH.sub(self._path, s)
         s = _WIN_PATH.sub(self._path, s)
         s = _HOSTNAME.sub("<host>", s)
+        s = _HOST_PORT.sub("<host>", s)
         s = _NIX_PATH.sub(self._path, s)
         for name, label in self.names.items():
             s = re.sub(re.escape(name), label, s, flags=re.I)
         s = _SERVER_CODE.sub("<server code>", s)
         s = _EMAIL.sub("<email>", s)
-        s = _IPV6.sub("<ip>", s)
+        s = _MAC.sub("<mac>", s)
+        s = _IPV6_CANDIDATE.sub(self._ipv6, s)
         s = _IPV4.sub(lambda m: m.group(0) if m.group(0).startswith(("127.0.0.1", "0.0.0.0")) else "<ip>", s)
         s = _INVITE.sub("<invite code>", s)
+        s = _INVITE_LOWER.sub("<invite code>", s)
+        s = _LONG_HEX.sub("<hex>", s)
         s = _SECRETISH.sub("<secret>", s)
         s = _URL_QUERY.sub("?<removed>", s)
         return s[:limit]

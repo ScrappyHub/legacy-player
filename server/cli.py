@@ -4,6 +4,10 @@
     python -m server.cli stop
     python -m server.cli restart [server options]
     python -m server.cli status
+    python -m server.cli code --address play.example.com     (print the server code friends type)
+
+`start --share` listens on every address with an encrypted connection: it makes its own certificate on first run and
+keeps it in the state folder, so the server code stays the same across restarts.
 
 Stop is graceful: connected clients are notified, lobby state is saved, and the
 next start resumes it. Control uses a local admin token in the state folder, so
@@ -72,7 +76,35 @@ def _server_command(args: argparse.Namespace) -> list[str]:
     return command
 
 
+def _apply_share(args: argparse.Namespace) -> None:
+    if not getattr(args, "share", False):
+        return
+    from server.selfsigned import ensure_certificate
+    if args.host == "127.0.0.1":
+        args.host = "0.0.0.0"
+    if not args.tls_cert:
+        args.tls_cert, args.tls_key, _ = ensure_certificate(args.state_dir / "tls")
+
+
+def code(args: argparse.Namespace) -> int:
+    """Print the server code for this server (needs --address: the public name or number friends reach it at)."""
+    from launcher import servercode
+    from server.selfsigned import ensure_certificate, fingerprint_of
+    if not args.address:
+        print("Give the public address friends use, e.g.  --address play.example.com  (a name or an IP number).", file=sys.stderr)
+        return 2
+    cert, _, _ = ensure_certificate(args.state_dir / "tls")
+    try:
+        text = servercode.encode(args.address, args.port, fingerprint_of(cert), StateStore(args.state_dir).access_key())
+    except servercode.CodeError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    print(text)
+    return 0
+
+
 def start(args: argparse.Namespace) -> int:
+    _apply_share(args)
     if _is_running(args.state_dir):
         print("Server is already running.")
         return 0
@@ -130,20 +162,22 @@ def status(args: argparse.Namespace) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("command", choices=["start", "stop", "restart", "status"])
+    parser.add_argument("command", choices=["start", "stop", "restart", "status", "code"])
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--state-dir", type=Path, default=Path("artifacts/state"))
     parser.add_argument("--replay-dir", type=Path, default=Path("artifacts/replays"))
     parser.add_argument("--tls-cert", type=Path)
     parser.add_argument("--tls-key", type=Path)
+    parser.add_argument("--share", action="store_true", help="listen for friends over an encrypted connection (start)")
+    parser.add_argument("--address", help="the public name or IP number friends reach this server at (code)")
     parser.add_argument("--allow-insecure-remote", action="store_true")
     parser.add_argument("--detach", action="store_true", help="run in the background (start)")
     parser.add_argument("--max-players", type=int, help="players per room, 2-8 (default 4)")
     parser.add_argument("--max-rooms", type=int, help="rooms at once (default 128)")
     parser.add_argument("--max-waiting", type=int, help="waiting line per room, 0 turns lines off (default 16)")
     args = parser.parse_args(argv)
-    return {"start": start, "stop": stop, "restart": restart, "status": status}[args.command](args)
+    return {"start": start, "stop": stop, "restart": restart, "status": status, "code": code}[args.command](args)
 
 
 if __name__ == "__main__":

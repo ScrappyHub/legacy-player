@@ -14,6 +14,7 @@ from runtime.sync import InputFrame, LockstepCoordinator, LockstepError
 
 from .events import EventLog
 from .invites import InviteBook, InviteError
+from .throttle import FailureThrottle, wait_text
 
 
 class LobbyError(RuntimeError):
@@ -47,6 +48,7 @@ class LobbyService:
         self.vacate_after_timeouts = 3  # a seat is freed after 3x the heartbeat timeout without a word
         self.waiting_timeout = waiting_timeout
         self.invites = invite_book if invite_book is not None else InviteBook()
+        self.key_throttle = FailureThrottle(max_failures=8, window=60.0, lockout=300.0)
         self.events: dict[str, EventLog] = {}
         self.options: dict[str, dict] = {}
         self._psk: dict[str, str] = {}  # tunnel keys: memory only, never in snapshots
@@ -144,7 +146,7 @@ class LobbyService:
         priority = False
         if invite is not None:
             try:
-                session_id, priority = self.invites.redeem_ex(invite)
+                session_id, priority = self.invites.redeem_ex(invite, request.get("_peer"))
             except InviteError as exc:
                 raise LobbyError(str(exc)) from exc
             session = self.sessions.get(session_id)
@@ -946,8 +948,13 @@ class LobbyService:
     def dispatch(self, request: dict) -> dict:
         operation = request.get("operation")
         if self.access_key and operation in self.KEYED_OPERATIONS:
+            peer = request.get("_peer")
+            wait = self.key_throttle.blocked(peer)
+            if wait:
+                raise PermissionError(wait_text(wait))
             given = request.get("access_key")
             if not isinstance(given, str) or not secrets.compare_digest(given, self.access_key):
+                self.key_throttle.fail(peer)
                 raise PermissionError("This server code is out of date or not right. Ask the host for a fresh one.")
         handlers = {
             "create": self.create_session,

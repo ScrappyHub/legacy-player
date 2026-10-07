@@ -175,4 +175,5 @@ class ScrubberExtraTests(unittest.TestCase):
         s = Scrubber({"al": "<user>"})
         for raw, leak in (("C:/Games/Secret Dir/foo.iso", "Secret"), ("\\\\NAS01\\roms\\x.iso", "NAS01"), ("bob-home.duckdns.org:8780", "duckdns")):
             self.assertNotIn(leak, s.text("failed: " + raw))
-        self.assertIn("https://example.com", s.text("https://example.com/a?b=1")[:30])
+        self.assertNotIn("example.com", s.text("https://example.com/a?b=1"))      # a link may point at a friend's server: whole link goes
+        self.assertIn("github.com", s.text("see https://github.com/ScrappyHub/legacy-player/issues?q=1"))

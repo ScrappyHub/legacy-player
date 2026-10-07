@@ -1,0 +1,10 @@
+# Automatic HTTPS for the report receiver only. The shared server speaks its own encrypted protocol on 8765.
+{$REPORTS_DOMAIN} {
+	request_body {
+		max_size 64KB
+	}
+	reverse_proxy reports:8790
+	log {
+		output discard
+	}
+}

@@ -6,6 +6,8 @@ import secrets
 import time
 from collections import deque
 
+from .throttle import FailureThrottle, wait_text
+
 # Crockford base32: no I, L, O, U, so codes survive being read aloud or typed.
 ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 CODE_LENGTH = 10  # 50 bits of entropy, shown as XXXXX-XXXXX
@@ -39,7 +41,7 @@ class InviteBook:
         *,
         pepper: bytes | None = None,
         clock=time.time,
-        max_failures: int = 10,
+        max_failures: int = 40,
         failure_window: float = 60.0,
     ) -> None:
         self.pepper = pepper if pepper is not None else secrets.token_bytes(32)
@@ -48,6 +50,7 @@ class InviteBook:
         self.failure_window = failure_window
         self._records: dict[str, dict] = {}
         self._failures: deque[float] = deque()
+        self.per_address = FailureThrottle(max_failures=5, window=60.0, lockout=300.0)
 
     def _digest(self, raw: str) -> str:
         return hmac.new(self.pepper, raw.encode(), hashlib.sha256).hexdigest()
@@ -75,8 +78,14 @@ class InviteBook:
         """Consume one use of a code and return its session id."""
         return self.redeem_ex(code)[0]
 
-    def redeem_ex(self, code: str) -> tuple[str, bool]:
-        """Consume one use; return (session id, whether the code grants queue priority)."""
+    def redeem_ex(self, code: str, peer: str | None = None) -> tuple[str, bool]:
+        """Consume one use; return (session id, whether the code grants queue priority).
+
+        `peer` is the caller's network address: a few wrong guesses lock that address out for a while.
+        """
+        wait = self.per_address.blocked(peer)
+        if wait:
+            raise InviteError(wait_text(wait))
         now = self.clock()
         while self._failures and now - self._failures[0] > self.failure_window:
             self._failures.popleft()
@@ -85,7 +94,9 @@ class InviteBook:
         record = self._records.get(self._digest(normalize(code))) if isinstance(code, str) else None
         if record is None or record["uses_left"] <= 0 or record["expires_at"] < now:
             self._failures.append(now)
+            self.per_address.fail(peer)
             raise InviteError("invalid or expired invite code")
+        self.per_address.ok(peer)
         record["uses_left"] -= 1
         return record["session_id"], bool(record.get("priority", False))
 

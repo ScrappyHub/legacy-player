@@ -26,8 +26,9 @@ cd legacy-player
 Both download the release from [Releases](https://github.com/ScrappyHub/legacy-player/releases), check its SHA-256, install to
 `%LOCALAPPDATA%\Programs\LegacyPlayer`, add a Start menu shortcut and open the app. Or download the files yourself: each
 release has `LegacyPlayer-<version>-win64.zip` (the exe plus a read-me) and the bare `LegacyPlayer-<version>-win64.exe`, each
-with a `.sha256` and a combined `SHA256SUMS.txt`. The app is not code-signed yet, so Windows SmartScreen says "unknown
-publisher": More info, then Run anyway. See `docs/RELEASE.md`.
+with a `.sha256` and a combined `SHA256SUMS.txt`. Releases are signed only once a code-signing certificate has been added (see
+`docs/RELEASE.md`); until then Windows SmartScreen says "unknown publisher": More info, then Run anyway. Every release lists its
+SHA-256 hashes and carries a GitHub build attestation. See `docs/RELEASE.md`.
 
 ## What it does
 

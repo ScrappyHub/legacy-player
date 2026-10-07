@@ -85,6 +85,7 @@ async def handle_client(
                     request = json.loads(line)
                     if not isinstance(request, dict):
                         raise LobbyError("request must be a JSON object")
+                    request["_peer"] = ip              # set here, never trusted from the client (it overwrites anything sent)
                     if relay is not None and request.get("operation") == "relay" and request_count == 1:
                         # This connection becomes a raw byte pipe; it is counted by the relay, not here.
                         if connection_limit is not None:

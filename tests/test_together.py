@@ -20,8 +20,9 @@ class ServerCodeTests(unittest.TestCase):
         for bad in ["", "LP-1234", "LP-" + "U" * 18 + "!"]:
             with self.assertRaises(servercode.CodeError):
                 servercode.decode(bad)
+        self.assertEqual("example.com", servercode.decode(servercode.encode("example.com", 8765, "aa" * 8))["host"])   # names now work (LP2-)
         with self.assertRaises(servercode.CodeError):
-            servercode.encode("example.com", 8765, "aa" * 8)
+            servercode.encode("not a name!", 8765, "aa" * 8)
 
 
 class StatsAndStartTests(unittest.TestCase):

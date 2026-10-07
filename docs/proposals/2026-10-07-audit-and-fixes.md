@@ -273,4 +273,13 @@ Still true: UPnP maps "forever" until closed; the firewall rule is for any profi
 
 Release and connection audit. Fixed: autostart no longer restarts a server the player stopped or while quitting; a failed "connect by code" rolls back to the previous server, and remote servers use their own port (`server_remote_port`) instead of the local one; the router mapping renewal recomputes the local address; the firewall check matches the exact port and program; the server caps connections per address and when busy, with a TLS handshake timeout; the self-signed certificate is created under a lock; the quit/reopen path is debounced; window matching is limited to the right class; the release workflow publishes every file in `dist/release`; version examples in the docs and scripts now match `VERSION` (tested).
 
-Still open: per-address invite lockout, access-key throttling, log scrubber gaps, IPv6/hostname codes, unsigned releases, no hosted shared server or report receiver yet. Not verified on real Windows: tray behaviour, overlay, firewall elevation, UPnP, the installer and `lp` script, the GitHub release run.
+### Round 5: closing the "still open" list
+
+- Invite codes: a few wrong guesses from one address lock that address out for five minutes (IPv6 counted per /64, this computer never locked); the global limit stays as a backstop. The server sets the caller's address itself, so a client cannot pass its own.
+- Access key: eight wrong tries from an address lock it out too (`server/lobby/throttle.py`, bounded table).
+- Report scrubber: compressed IPv6 (`::1`, `fe80::1%eth0`, `[..]:port`), MAC addresses, URLs, `host:port`, `key=value` secrets, long hex strings and lower-case invite codes are removed; `LP2-` codes too.
+- Server codes: IPv6 addresses and host names now work. They use a longer `LP2-` form with a checksum (a typo is caught before connecting); plain IPv4 keeps the short `LP-` form and old codes still decode.
+- Hosted shared server and report receiver: `deploy/` has a Dockerfile, compose file (server, optional receiver, automatic HTTPS), systemd unit and README; `server.cli start --share` and `server.cli code --address ...` run it; `tools/check_deployment.py` checks a deployment the way the app reaches it. Not run on a real server.
+- Signing: `package_release.ps1` signs and time-stamps the exe when the repository secrets `WINDOWS_SIGN_PFX_BASE64` / `WINDOWS_SIGN_PFX_PASSWORD` exist, and says plainly when not. Releases also get a GitHub build attestation. A certificate still has to be bought.
+
+Still open: a signing certificate; actually renting and starting the server (then putting its code in `PUBLIC_SERVER_CODE` and the receiver address in `REPORT_URL`); the Docker/Caddy/systemd files and the signing and attestation steps are untested on real hosts. Not verified on real Windows: tray behaviour, overlay, firewall elevation, UPnP, the installer and `lp` script, the GitHub release run.

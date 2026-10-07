@@ -41,7 +41,14 @@ It writes the zip, the bare exe, their `.sha256` files and `SHA256SUMS.txt` into
 double-click `LegacyPlayer.exe`.
 
 ## First-run notes
-- The exe is not code-signed, so Windows SmartScreen says "unknown publisher": More info > Run anyway. Set `LP_SIGN_PFX`
-  and `LP_SIGN_PASS` before building to sign it.
+- Signing: the exe is signed only if you supply a code-signing certificate, which has to be bought from a certificate
+  authority (this is the one thing that cannot be done for you). On GitHub add repository secrets `WINDOWS_SIGN_PFX_BASE64`
+  (the .pfx file as base64: `[Convert]::ToBase64String([IO.File]::ReadAllBytes("cert.pfx"))`) and `WINDOWS_SIGN_PFX_PASSWORD`;
+  the next tag is then signed and time-stamped before it is zipped and hashed. Locally set `LP_SIGN_PFX` and `LP_SIGN_PASS`
+  before `build_exe.bat`. Without a certificate the release says so in its read-me and Windows SmartScreen shows "unknown
+  publisher": More info > Run anyway. A new certificate also needs time (or an EV certificate) to build SmartScreen reputation.
+- Every tagged release also gets a GitHub build-provenance attestation (where the repository supports it). Check a download:
+  `gh attestation verify LegacyPlayer-<version>-win64.exe --repo ScrappyHub/legacy-player`; and `SHA256SUMS.txt` lists the hashes.
+- Hosting the shared server and report receiver: `deploy/README.md`; check a deployment with `python tools/check_deployment.py`.
 - Data lives in `%USERPROFILE%\.legacy-player`; the log is `%LOCALAPPDATA%\LegacyPlayer\app.log`.
 - Nothing about the build has been run on Windows yet. If the workflow fails, the Actions log shows which step.

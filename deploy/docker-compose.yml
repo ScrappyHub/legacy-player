@@ -1,0 +1,47 @@
+# One small machine with a public address runs the shared server (TCP 8765) and, optionally, the report receiver
+# behind automatic HTTPS. Copy .env.example to .env, fill it in, then:  docker compose up -d --build
+services:
+  lobby:
+    build: { context: .., dockerfile: deploy/Dockerfile }
+    restart: unless-stopped
+    ports: ["8765:8765"]
+    volumes: ["lp-data:/data"]
+    healthcheck:
+      test: ["CMD", "python", "-m", "server.cli", "status", "--state-dir", "/data/state"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    mem_limit: 512m
+    pids_limit: 256
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+
+  reports:
+    profiles: ["reports"]
+    build: { context: .., dockerfile: deploy/Dockerfile }
+    restart: unless-stopped
+    command: ["python", "-m", "server.report_receiver", "--dir", "/data/reports", "--host", "0.0.0.0", "--port", "8790"]
+    environment:
+      LP_REPORT_TOKEN: ${REPORT_TOKEN:-}
+    volumes: ["lp-reports:/data/reports"]
+    mem_limit: 256m
+    pids_limit: 128
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+
+  https:
+    profiles: ["reports"]
+    image: caddy:2
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    environment:
+      REPORTS_DOMAIN: ${REPORTS_DOMAIN:?set REPORTS_DOMAIN in .env to use the report receiver}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+    depends_on: [reports]
+
+volumes:
+  lp-data:
+  lp-reports:
+  caddy-data:

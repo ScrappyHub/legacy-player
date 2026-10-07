@@ -108,7 +108,7 @@ SETTINGS_SCHEMA: dict[str, dict] = {
     "server_public_address": {
         "type": "text", "default": "", "group": "Your server",
         "label": "Address friends use to reach your server",
-        "help": "Leave blank: the app finds your public address itself when it opens the router. Only fill this in if you forward the port yourself or use a VPN address.",
+        "help": "Leave blank: the app finds your public address itself when it opens the router. Only fill this in if you forward the port yourself or use a VPN address. A host name (like home.example.org) or an IPv6 address works too; the code is then a longer LP2- one.",
     },
     "minimize_on_launch": {
         "type": "bool", "default": True, "group": "Playing",

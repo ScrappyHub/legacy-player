@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import hmac
 import json
+import os
 import re
 import threading
 import time
@@ -145,7 +146,7 @@ def main() -> None:
     parser.add_argument("--dir", default="reports")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8790)
-    parser.add_argument("--token", default=None)
+    parser.add_argument("--token", default=os.environ.get("LP_REPORT_TOKEN") or None)
     args = parser.parse_args()
     httpd = ThreadingHTTPServer((args.host, args.port), make_handler(Store(Path(args.dir)), args.token))
     print(f"Receiving reports on http://{args.host}:{args.port}/ into {args.dir}  (put HTTPS in front of it)", flush=True)

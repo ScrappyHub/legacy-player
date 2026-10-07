@@ -1,0 +1,21 @@
+# For a machine without Docker:  sudo cp this file to /etc/systemd/system/, adjust User and paths, then
+#   sudo systemctl daemon-reload && sudo systemctl enable --now legacy-player-server
+[Unit]
+Description=Legacy Player shared server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=legacyplayer
+WorkingDirectory=/opt/legacy-player
+ExecStart=/usr/bin/python3 -m server.cli start --share --port 8765 --state-dir /var/lib/legacy-player/state --replay-dir /var/lib/legacy-player/replays
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/legacy-player
+
+[Install]
+WantedBy=multi-user.target

@@ -784,12 +784,12 @@ async function viewHome(m){
 async function getStarted(raw,box){
  const v=(raw||"").trim();
  if(!v){toast("Paste a server code (LP-…) or a room invite code first","warn");return}
- if(/^LP-/i.test(v)){
+ if(/^LP2?-/i.test(v)){
   const r=await act(()=>api("server_connect",{code:v}));if(!r)return;
   if(!r.connected){toast(r.message,"warn");return}
   toast("Connected to the server");S.onlineSeen=false;pingServer();autoNetTest(0);showJoin(box);return}
  if(/^[A-Za-z0-9]{5}-[A-Za-z0-9]{5}$/.test(v)){S.joinCode=v.toUpperCase();nav("together");return}
- toast("That does not look like a server code (starts with LP-) or an invite code (like ABCDE-FGH12).","warn")}
+ toast("That does not look like a server code (starts with LP- or LP2-) or an invite code (like ABCDE-FGH12).","warn")}
 async function showJoin(box){
  const d=await act(()=>api("mp_browse"));if(!d)return;
  const state=s=>s==="active"?"In a match":s==="completed"||s==="failed"?"Finished":"In the lobby";
@@ -994,7 +994,7 @@ function viewHelp(m){
    "Other emulators keep their own folders. Under Saves you can point each console at the folder its emulator uses, and backups will copy from there. PS1, PS2 and GameCube use a memory card file that is shared by many games, so one backup holds all of them.",
    "A backup is a plain timestamped copy kept in the Legacy Player data folder. Restoring first backs up whatever is there now, so restoring can never cost you progress. Nothing is ever overwritten without a backup, and game files are never touched."),
   sec("together","Playing together (technical)","A coordination server runs on Windows, Linux, or a Raspberry Pi. Each player's emulator sends button presses; the server releases a frame only when every player's input has arrived (lockstep), and players compare state checksums to detect desync. This only works when the emulator is deterministic, so support is tiered per console and per game."),
-  sec("codes","Server codes, invite codes and names","A server code (LP-...) gets a friend to your server. A room invite code lets them into one room. Both expire or can be revoked. Your name comes with a four-character tag from the server so nobody active there shares it. The server stores only hashes of codes. Traffic is encrypted when the server runs with TLS, which internet hosting requires."),
+  sec("codes","Server codes, invite codes and names","A server code (LP-... or LP2-...) gets a friend to your server. A room invite code lets them into one room. Both expire or can be revoked. Your name comes with a four-character tag from the server so nobody active there shares it. The server stores only hashes of codes. Traffic is encrypted when the server runs with TLS, which internet hosting requires."),
   sec("notify","Notifications","You are told when someone asks to join, joins, leaves, disconnects, is removed by the host, or when the server restarts. A removed player sees the host's reason."),
   sec("server","Starting and stopping the server","Use Servers: Start, Restart and Stop. From a terminal, python -m server.cli start --detach, stop, restart, and status work the same everywhere. Stopping saves rooms; starting resumes them. A match in progress returns to the ready step so everyone re-syncs."),
   sec("match","Starting a match","NES, SNES, Game Boy, GBA, Genesis and Atari start through RetroArch netplay. GameCube and Wii open Dolphin and guide you through its NetPlay window with the room address filled in. Other consoles have rooms and invites but no match launcher yet."),

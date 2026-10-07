@@ -1,3 +1,5 @@
+> The ready-to-run kit (Docker, HTTPS proxy, systemd unit, deployment checker) is in `deploy/README.md`. This page explains the pieces.
+
 # Hosting the shared server (and the report receiver)
 
 Legacy Player falls back to a shared server when a player's own connection cannot be reached from outside (phone
@@ -27,6 +29,6 @@ Put it behind https (a reverse proxy such as Caddy), then set `REPORT_URL` in `l
 Read what arrived: `python tools/read_reports.py reports`.
 
 ## Notes
-- A server code carries an IPv4 address, so give the VPS a fixed address.
+- A server code can carry an IPv4 address (short `LP-` code) or an IPv6 address / host name (longer `LP2-` code with a checksum). A host name means the address can change without a new code.
 - Rotating the code (Make a fresh code) stops the old one working for new players only.
 - Nothing here has been run on a real VPS yet; expect to fix small things on the first try.
