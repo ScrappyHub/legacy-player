@@ -33,7 +33,7 @@ from . import overlay as overlaymod
 from . import procs
 from . import controllers, emulators, engines, pads, savefolders, saves
 from .installer import EngineInstaller, InstallError, latest_release, pick_asset
-from . import dolphinpads, firewall, gameinfo, portmap, winplace, keyboard, memprobe, netcheck, reports, selfuninstall, sysinfo
+from . import dolphinpads, dolphinpaths, firewall, gameinfo, portmap, winplace, keyboard, memprobe, netcheck, reports, selfuninstall, sysinfo
 from .covers import (CONTENT_TYPES, CoverFetcher, SYSTEMS as COVER_SYSTEMS, clear_custom_cover, cover_path,
                      custom_cover, set_custom_cover)
 from .pcscan import PcScan
@@ -2172,6 +2172,7 @@ class LauncherApp:
                 pid, reopened = running["pid"], False           # a second press must not start a second Dolphin (NetPlay refuses with a game open)
             else:
                 self._prepare_dolphin(check["exe"], game["console"])
+                dolphinpaths.add_game_folder(check["exe"], Path(game["path"]).parent)      # only while Dolphin is closed, or it would overwrite this on exit
                 pid = emulators.launch_command(dolphin_open_command(check["exe"], game["path"]))
                 reopened = True
                 # Dolphin opens at its game list and the steps are in this window (the host pastes a code back here), so the app

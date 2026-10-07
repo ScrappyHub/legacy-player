@@ -1320,8 +1320,9 @@ function launchBox(rm,host){
  const waitingForCode=dolphin&&!host&&!L.endpoint_kind;
  const label=dolphin?(host?"Open Dolphin (host)":"Open Dolphin"):(host?"Launch match (host)":"Join match");
  const go=h("button",{class:"btn good",disabled:!L.ready||waitingForCode,title:waitingForCode?"Wait for the host to share a Dolphin host code":(L.reason||""),onclick:async()=>{
-   if(dolphin){if(!L.direct_allowed){toast("Press 'Allow direct connections' above first.","warn");return}
-     if(!await ask("Dolphin NetPlay connects players to each other, so the others will learn this computer's address. Continue?"))return}
+   if(dolphin){
+     if(!await ask("Dolphin NetPlay connects players to each other, so the others will learn this computer's address. Allow that for Dolphin games and open Dolphin?",L.direct_allowed?"Open Dolphin":"Allow and open Dolphin"))return
+     if(!L.direct_allowed){const ok=await act(()=>api("settings",{key:"allow_direct_connections",value:true}));if(!ok)return;L.direct_allowed=true}}
    const body=host?(dolphin?{mode:mode.value,address:addr.value.trim(),port:(+port.value||L.default_port),expose_address:true}:{address:addr.value.trim(),port:+port.value,relay:relay.checked,expose_address:!relay.checked&&await ask("Direct connection: every guest will learn this computer's address ("+addr.value.trim()+"). Continue?")}):{expose_address:dolphin||(L.endpoint_kind==="direct"&&await ask("The host chose a direct connection: you and the host will learn each other's address. Continue?"))};
    if(!host&&!dolphin&&L.endpoint_kind==="direct"&&!body.expose_address)return;
    if(host&&!dolphin&&!relay.checked&&!body.expose_address)return;

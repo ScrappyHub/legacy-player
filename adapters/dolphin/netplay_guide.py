@@ -25,8 +25,8 @@ def build_open_command(exe: str, rom: str = "") -> list[str]:
 def steps(role: str, *, mode: str, address: str | None = None, port: int | None = None, code: str | None = None,
           game_folder: str | None = None) -> list[str]:
     # NetPlay lists games from Dolphin's own game folders, so a game outside them is "not found" for everyone.
-    ready = [f"Check the game shows in Dolphin's list. If not: Config > Paths > Add… and choose {game_folder}." if game_folder
-             else "Check the game shows in Dolphin's list. If not: Config > Paths > Add… and choose its folder.",
+    ready = [f"Legacy Player added the game's folder to Dolphin. If the game is still missing from Dolphin's list: Config > Paths > Add… and choose {game_folder}." if game_folder
+             else "Legacy Player added the game's folder to Dolphin. If the game is still missing from Dolphin's list: Config > Paths > Add… and choose its folder.",
              "Do not start the game yourself: NetPlay starts it for everyone."]
     if role == "host":
         common = ready + [
