@@ -1,5 +1,15 @@
 # Legacy Player Roadmap
 
+## Where things stand (October 2026, v0.7.0)
+
+Built: the Windows launcher app and release pipeline, library and emulator management, controllers, saves, the lobby and
+relay server, rooms, invite and server codes, automatic router opening with a shared-server fallback, opt-in problem
+reports, per-game player counts, and a Dolphin memory probe for any game.
+
+Next, in order: (1) prove real two-network play using `docs/MULTIPLAYER_TEST_PLAN.md`; (2) host a shared server and the
+report receiver (`docs/HOSTING_PUBLIC_SERVER.md`); (3) walk `docs/WINDOWS_CHECKLIST.md` on real hardware; (4) grow the
+known-games player-count list; (5) code-sign the exe. The phases below are the original plan.
+
 ## Phase 0 — Repo and spec lock
 
 Goals:

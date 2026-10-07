@@ -30,6 +30,17 @@ When documents conflict, the higher item governs. Implementation is evidence of 
 | What can make the project fail? | `docs/RISK_REGISTER.md` | Living register |
 | What did the latest audit find? | `docs/audits/AUDIT_2026-08-20.md` | Dated audit |
 
+## App, release and operations documents
+
+- `README.md` — what the app does today and how to install it.
+- `docs/RELEASE.md` — build, publish and install a release (GitHub workflow, `install.ps1`, local packaging).
+- `docs/HOSTING_PUBLIC_SERVER.md` — run a shared server and the problem-report receiver.
+- `docs/MULTIPLAYER_TEST_PLAN.md` — the cross-network test, step by step.
+- `docs/WINDOWS_CHECKLIST.md` — what to check by hand on a real Windows computer.
+- `docs/LIBRARY_AND_LAUNCHER_v1.md`, `docs/NETPLAY_BY_CONSOLE.md` — launcher design and per-console netplay status.
+- `docs/proposals/2026-10-07-audit-and-fixes.md` — October 2026 audit, fixes and follow-ups (problem reports, router opening,
+  player counts, shared-server fallback).
+
 ## Existing component documents
 
 - `docs/ARCHITECTURE.md` — original architecture overview.

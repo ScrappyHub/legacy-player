@@ -1,264 +1,105 @@
-
 # Legacy Player
 
-Self-hosted multiplayer infrastructure for legacy games.
+A self-hosted, console-like launcher for legacy games. It finds your games, starts them in the right emulator, maps your
+controllers, backs up your saves, and lets friends play together online with one server code and room invite codes.
 
-Legacy Player is a Venture Lab instrument for bringing stable online multiplayer to classic games that originally supported local-only play. It does this through emulator adapters, game-specific runtime orchestration, deterministic session synchronization, replay logging, and self-hosted server infrastructure.
+Legacy Player does not include any game content, BIOS files or emulators. You use your own legally obtained games; the app
+can download emulators from their official release pages when you ask it to.
 
-Legacy Player does **not** include game content. It is an interoperability and multiplayer runtime project.
+## Install (Windows)
 
----
+PowerShell, no administrator needed:
 
-## What this is
-
-Legacy Player is a multiplayer simulation orchestration runtime for legacy games.
-
-It is designed to support:
-
-- self-hosted online sessions
-- emulator-integrated multiplayer
-- game-specific synchronization adapters
-- deterministic replay logging
-- desync detection and diagnostics
-- memory and state inspection
-- runtime patch assistance for games that need multiplayer help
-
-Legacy Player begins with legacy games and emulator integrations, but it also serves as a multiplayer research foundation for future systems such as Clio Development Engine (CDE).
-
----
-
-## Why this exists
-
-Many older games were designed for:
-
-- couch multiplayer
-- split-screen play
-- local controller ports
-- no internet latency
-- no remote synchronization layer
-
-Some emulator netplay solutions already exist, but they are usually:
-
-- emulator-specific
-- difficult to configure
-- not self-host infrastructure oriented
-- not game-aware
-- not designed as a reusable multiplayer runtime
-
-Legacy Player exists to provide a stronger foundation:
-
-- a common session runtime
-- platform adapters
-- game packs
-- self-hostable infrastructure
-- replay and diagnostics surfaces
-
----
-
-## Core idea
-
-Legacy Player is not "one universal plugin that magically works for all games."
-
-Legacy Player is:
-
-- a common multiplayer runtime
-- plus platform adapters
-- plus game-specific strategy packs
-- plus self-host server infrastructure
-
-This lets the project scale in a disciplined way.
-
----
-
-## Project goals
-
-Legacy Player aims to provide:
-
-- self-hosted multiplayer for legacy games
-- a reusable runtime for session orchestration
-- deterministic input synchronization
-- desync detection and recovery surfaces
-- runtime patch assistance where needed
-- replay logging and spectator foundations
-- a research path toward future multiplayer systems
-
----
-
-## Initial focus
-
-Initial MVP direction:
-
-- Platform: GameCube
-- Emulator: Dolphin
-- First game class: party games
-- First flagship target: Mario Party
-
-Why this path:
-
-- strong community interest
-- discrete game phases
-- clearer synchronization boundaries
-- easier first multiplayer proof than frame-exact competitive fighters
-
----
-
-## Architecture
-
-Legacy Player consists of four major layers:
-
-1. Core runtime
-2. Platform adapters
-3. Game packs
-4. Self-hosted server infrastructure
-
-See:
-
-- `docs/ARCHITECTURE.md`
-- `docs/RUNTIME_SPEC_v1.md`
-- `docs/GAME_PACK_SPEC_v1.md`
-
----
-
-## Support tiers
-
-Legacy Player support is expected to evolve in three tiers.
-
-### Tier A — Native Sync
-
-Games that already behave well under emulator-assisted lockstep.
-
-Legacy Player adds:
-
-- session hosting
-- self-hosted relay/lobby services
-- compatibility validation
-- replay logs
-- diagnostics
-
-### Tier B — Runtime Assisted
-
-Games that mostly work but need online orchestration help.
-
-Legacy Player adds:
-
-- menu synchronization barriers
-- controller ownership remapping
-- memory/state checks
-- scene transition coordination
-- selective runtime patching
-
-### Tier C — Full Multiplayer Conversion
-
-Games that need heavy orchestration to become remotely playable.
-
-Legacy Player may add:
-
-- deep runtime assistance
-- state coordination logic
-- custom sync boundaries
-- stronger recovery/resync flows
-- specialized game pack hooks
-
-
----
-
-Long-term significance
-
-Legacy Player is not only a retro multiplayer project.
-
-It is also:
-
-a multiplayer research platform
-
-a replay and diagnostics platform
-
-a self-hosted gaming infrastructure project
-
-a precursor to future multiplayer systems in CDE
-
-By solving multiplayer outside the engine first, Legacy Player helps establish stronger multiplayer foundations for future game development.
-
-Legal position
-
-Legacy Player is an interoperability project.
-
-It does not:
-
-distribute copyrighted game data
-
-include proprietary assets
-
-ship ROMs or ISOs
-
-claim ownership of game IP
-
-require redistribution of game binaries
-
-Users are expected to use their own legally obtained game data and emulator environments.
-
-See docs/LEGAL_POSITION.md.
-
-## Current status
-
-Legacy Player has a Windows/Dolphin observation toolkit for the Mario Party 4
-`GMPE01` USA profile, an executable session and input-lockstep runtime, and a private
-self-hosted coordination server. The project does not yet provide Dolphin controller
-injection or playable remote multiplayer.
-
-Venture Lab role
-
-Legacy Player is a Venture Lab project with both product and research value.
-
-It is intended to become:
-
-a real multiplayer instrument for classic games
-
-a self-hosted community infrastructure surface
-
-a multiplayer knowledge foundation for Clio Development Engine (CDE)
-
-
----
-
-## Repository structure
-
-```text
-legacy-player/
-├─ README.md
-├─ LICENSE
-├─ .gitignore
-├─ docs/
-│  ├─ VENTURE_LAB_PITCH.md
-│  ├─ ARCHITECTURE.md
-│  ├─ RUNTIME_SPEC_v1.md
-│  ├─ GAME_PACK_SPEC_v1.md
-│  ├─ LEGAL_POSITION.md
-│  └─ ROADMAP.md
-├─ runtime/
-│  ├─ session/
-│  ├─ sync/
-│  ├─ state/
-│  ├─ patch/
-│  ├─ desync/
-│  └─ replay/
-├─ adapters/
-│  ├─ dolphin/
-│  ├─ mgba/
-│  └─ retroarch/
-├─ game_packs/
-│  ├─ mario_party_4/
-│  └─ mario_party_6/
-├─ server/
-│  ├─ lobby/
-│  ├─ relay/
-│  └─ api/
-└─ tools/
-   ├─ memory_probe/
-   ├─ replay_inspector/
-   └─ pack_builder/
+```powershell
+irm https://raw.githubusercontent.com/ScrappyHub/legacy-player/main/install.ps1 | iex
 ```
 
+It downloads the latest release from [Releases](https://github.com/ScrappyHub/legacy-player/releases), checks its SHA-256,
+installs to `%LOCALAPPDATA%\Programs\LegacyPlayer`, adds a Start menu shortcut and opens the app. Or download
+`LegacyPlayer-<version>-win64.zip` from Releases, unzip it and double-click `LegacyPlayer.exe`. The app is not code-signed
+yet, so Windows SmartScreen says "unknown publisher": More info, then Run anyway. See `docs/RELEASE.md`.
 
-## Library and launcher (proposed, Proposal 0002)
+## What it does
 
-`python -m launcher --games "<your games folder>"` (or just `python -m launcher`, then add the folder in the app) opens a local UI for your game library, favorites, controller profiles, save backups and multiplayer rooms. See `docs/LIBRARY_AND_LAUNCHER_v1.md`.
+- **Library:** scans your folders, recognises 18 consoles (NES to PS3), covers, collections, favorites, per-game settings.
+  Each game shows how many people can play it and whether it is single-player, co-op or versus.
+- **Emulators:** finds or installs them (RetroArch, Dolphin, mGBA, DuckStation, PCSX2 and others), full-screen and
+  controller options per emulator, Dolphin pad profiles written for you (and restorable).
+- **Controllers:** pad and keyboard mapping per console, up to four players.
+- **Saves:** finds each emulator's save files, one-click backups and restores.
+- **Play together:** run your own server, or join a friend's.
+  - Start the server with "Let friends connect". The app asks your router (UPnP) to open the port, adds the Windows
+    Firewall rule, and puts your public address in a short server code (`LP-...`). Friends paste the code to connect.
+  - Rooms have invite codes, approval, a waiting line and open rooms. Game traffic is encrypted between players.
+  - If your connection cannot be reached from outside (hotspot, provider-shared address), the app moves to a shared relay
+    server when one is set (see `docs/HOSTING_PUBLIC_SERVER.md`).
+- **Problem reports (opt in):** off by default. If something fails, the app asks once and shows exactly what would be sent;
+  names, IP addresses, codes and folder paths are removed first (`docs/proposals/2026-10-07-audit-and-fixes.md`).
+- **Tools:** computer specs, network check, Dolphin memory probe (any GameCube or Wii game), storage by console, a doctor
+  that checks what is missing, and an uninstaller that removes only what Legacy Player created.
+- Close the window with X and it stays in the tray with the server running; right-click the tray icon for server controls.
+
+## Honest status
+
+What is verified: the launcher, library, saves, settings, server, rooms and relay code are covered by automated tests
+(about 260) and a headless-browser click-through of every page.
+
+What is not yet verified on real hardware: the Windows pieces (tray menu, Recycle Bin move, Dolphin pad names, firewall
+rule, memory probe), opening a real router, a real shared server, and actual online play between two networks. Netplay
+quality varies by console: NES, SNES, Genesis, Game Boy and GBA are the best fit; N64, PS1 and DS are experimental;
+GameCube and Wii work per game and need a game pack (Mario Party 4 is the first). See `docs/NETPLAY_BY_CONSOLE.md`,
+`docs/WINDOWS_CHECKLIST.md` and `docs/MULTIPLAYER_TEST_PLAN.md`.
+
+## Run from source
+
+Python 3.13+ and `pip install psutil`:
+
+```powershell
+python -m launcher --games "D:\Games"       # opens the app; add folders inside it too
+python -m server.cli start --port 8765       # a standalone server (see docs/HOSTING_PUBLIC_SERVER.md)
+python -m unittest discover -s tests         # the tests
+.\build_exe.bat                              # builds dist\LegacyPlayer.exe
+powershell -File tools\package_release.ps1   # builds the release zip
+```
+
+## Repository layout
+
+```text
+launcher/     the app: library, emulators, controllers, saves, settings, tray, UI (launcher/ui/index.html)
+server/       lobby and room service, relay, admin CLI, problem-report receiver
+adapters/     emulator adapters (Dolphin, RetroArch) and netplay launch logic
+runtime/      session, sync, state, desync and replay engine
+frontend/     input and controller delivery
+game_packs/   per-game data (Mario Party 4 first)
+tools/        memory probe, release packaging, report reader, Windows self-check, contrast check
+docs/         specs, plans, decisions, audits, release and test guides
+tests/        automated tests
+```
+
+## How it is designed
+
+Legacy Player is a common multiplayer runtime plus platform adapters plus per-game packs plus self-hostable
+infrastructure. It is not one plugin that magically works for every game. Support comes in tiers:
+
+- **Tier A, native sync:** games that already work under emulator lockstep. Legacy Player adds hosting, rooms,
+  compatibility checks, diagnostics.
+- **Tier B, runtime assisted:** games that need menu barriers, controller remapping or state checks.
+- **Tier C, full conversion:** games that need heavy orchestration to become remotely playable.
+
+Read `docs/ARCHITECTURE.md`, `docs/RUNTIME_SPEC_v1.md` and `docs/GAME_PACK_SPEC_v1.md`; the documentation index is
+`docs/PROJECT_DOCUMENTATION_INDEX.md`.
+
+## Legal position
+
+Legacy Player is an interoperability project. It does not distribute copyrighted game data, proprietary assets, ROMs,
+ISOs or BIOS files, claim ownership of any game, or require redistribution of game binaries. Users bring their own legally
+obtained games and emulator environments. See `docs/LEGAL_POSITION.md`.
+
+## Venture Lab role
+
+Legacy Player is a Venture Lab project with product and research value: a real multiplayer instrument for classic games,
+self-hosted community infrastructure, and a multiplayer knowledge base for the Clio Development Engine (CDE).
+
+## License
+
+See `LICENSE`.
