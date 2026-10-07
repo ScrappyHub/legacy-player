@@ -55,5 +55,44 @@ class PrivateLaunchTests(unittest.TestCase):
         self.assertIn("Tailscale", str(cm.exception))
 
 
+
+class AutomaticChoiceTests(unittest.TestCase):
+    def setUp(self):
+        from tests.test_app_actions import make_app
+        self.app, _ = make_app()
+        self.room = {"role": "host", "me": "h", "session": {"participants": {"h": {}, "g": {}}},
+                     "stats": {"people": {"g": {"private_address": "100.64.0.9"}}}}
+        self.up = {"installed": True, "running": True, "address": "100.64.0.1"}
+
+    def pick(self, on=True, link=None, reach=True, room=None):
+        self.app.catalog.data["settings"] = {**self.app.catalog.settings(), "use_private_link": on}
+        with mock.patch("launcher.privatelink.status", return_value=link or self.up), \
+             mock.patch("launcher.privatelink.can_reach", return_value=reach):
+            return self.app._pick_connection(room or self.room)
+
+    def test_everyone_ready_uses_private(self):
+        self.assertEqual(self.pick(), ("private", None))
+
+    def test_each_failure_falls_back_with_a_reason(self):
+        for kwargs in ({"on": False}, {"link": {"installed": False, "running": False, "address": None}}, {"reach": False},
+                       {"room": {**self.room, "stats": {"people": {"g": {}}}}},
+                       {"room": {**self.room, "session": {"participants": {"h": {}}}}}):
+            mode, note = self.pick(**kwargs)
+            self.assertEqual(mode, "traversal", kwargs)
+            self.assertTrue(note)
+
+    def test_guest_never_picks(self):
+        self.assertEqual(self.app._pick_connection({**self.room, "role": "guest"}), ("traversal", None))
+
+    def test_server_only_accepts_tailscale_addresses(self):
+        from server.lobby.service import LobbyError, LobbyService
+        svc = LobbyService.__new__(LobbyService)
+        svc._authorized = lambda r: (mock.Mock(session_id="s"), "p")
+        svc.stats, svc.established, svc.clock = {}, set(), lambda: 1.0
+        self.assertTrue(svc.report_stats({"private_address": "100.70.1.1"})["ok"])
+        with self.assertRaises(LobbyError):
+            svc.report_stats({"private_address": "8.8.8.8"})
+
+
 if __name__ == "__main__":
     unittest.main()

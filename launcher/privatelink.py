@@ -12,6 +12,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 
 DOWNLOAD_PAGE = "https://tailscale.com/download"
 _CGNAT = ipaddress.ip_network("100.64.0.0/10")
@@ -35,6 +36,30 @@ def find_tailscale() -> str | None:
                 if os.path.isfile(p):
                     return p
     return None
+
+
+_cache: dict = {"at": 0.0, "value": None}
+
+
+def cached_status(max_age: float = 15.0) -> dict:
+    """status() without starting a program on every poll."""
+    now = time.monotonic()
+    if _cache["value"] is None or now - _cache["at"] > max_age:
+        _cache["value"], _cache["at"] = status(), now
+    return _cache["value"]
+
+
+def can_reach(address: str) -> bool:
+    """Whether this computer can reach that private address over Tailscale right now (one quick ping)."""
+    exe = find_tailscale()
+    if not exe or not is_private_link_address(address):
+        return False
+    try:
+        flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        r = subprocess.run([exe, "ping", "-c", "1", "--timeout", "4s", address], capture_output=True, text=True, timeout=8, creationflags=flags)
+        return r.returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
 
 
 def status() -> dict:

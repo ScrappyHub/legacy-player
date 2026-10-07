@@ -96,6 +96,11 @@ SETTINGS_SCHEMA: dict[str, dict] = {
         "label": "Allow direct connections (reveals your address)",
         "help": "Off (recommended): matches always go through the server relay, so other players never learn your IP address. On: lets a host choose a direct connection, which hands the host's address to every guest. Only turn on for a home network or a VPN such as Tailscale.",
     },
+    "use_private_link": {
+        "type": "bool", "default": False, "group": "Privacy",
+        "label": "Use an encrypted private link for Dolphin when everyone has Tailscale",
+        "help": "Dolphin online play is not encrypted by itself. With this on, and Tailscale (a separate free service, tailscale.com) installed and signed in, Legacy Player tells the room your private Tailscale address (never your home address) and, when the host picks Automatic, plays over it if every player has done the same and can be reached. Otherwise it falls back to the normal connection.",
+    },
     "server_host": {
         "type": "text", "default": "127.0.0.1", "group": "Multiplayer",
         "label": "Server address",

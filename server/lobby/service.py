@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import re
 import secrets
 import time
@@ -853,6 +854,15 @@ class LobbyService:
             if isinstance(value, bool) or not isinstance(value, (int, float)) or value != value or not 0 <= value <= limit:
                 raise LobbyError(f"{key} must be a number from 0 to {int(limit)}")
             clean[key] = round(float(value), 1)
+        private = request.get("private_address")
+        if private is not None:
+            try:
+                ok = ipaddress.ip_address(str(private)) in ipaddress.ip_network("100.64.0.0/10")
+            except ValueError:
+                ok = False
+            if not ok:
+                raise LobbyError("private_address must be a 100.x Tailscale address")
+            clean["private_address"] = str(private)
         in_match = request.get("in_match")
         if in_match is not None:
             if not isinstance(in_match, bool):

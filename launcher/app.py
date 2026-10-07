@@ -487,6 +487,28 @@ class LauncherApp:
     def api_probe_cancel(self, body: dict) -> dict:
         return self.memprobe.cancel()
 
+    def _pick_connection(self, room: dict) -> tuple[str, str | None]:
+        """Automatic: the private link only when this host and every guest turned it on, have Tailscale running and can be
+        reached over it. Otherwise the normal traversal connection, with the reason."""
+        if room["role"] != "host":
+            return "traversal", None
+        if not self.catalog.settings().get("use_private_link"):
+            return "traversal", "Private link is off in Settings > Privacy, so the normal connection is used."
+        link = privatelink.status()
+        if not link["installed"] or not link["address"]:
+            return "traversal", "Tailscale is not installed or not signed in on this computer, so the normal connection is used."
+        people = ((room.get("stats") or {}).get("people")) or {}
+        others = [pid for pid in ((room.get("session") or {}).get("participants") or {}) if pid != room["me"]]
+        if not others:
+            return "traversal", "Nobody else is in the room yet, so the normal connection is used."
+        for pid in others:
+            addr = (people.get(pid) or {}).get("private_address")
+            if not addr:
+                return "traversal", "Not everyone has the private link on (they need Tailscale and the setting), so the normal connection is used."
+            if not privatelink.can_reach(addr):
+                return "traversal", "Tailscale could not reach every player (the host may need to share this computer with them), so the normal connection is used."
+        return "private", None
+
     def api_private_link(self, body: dict) -> dict:
         """Is Tailscale installed and connected? Read only."""
         return privatelink.status()
@@ -1928,7 +1950,8 @@ class LauncherApp:
         if ok and room["role"] == "guest" and session.get("state") not in {"ready-barrier", "active"}:
             ok, reason = False, "Waiting for the host to check that everyone matches."
         engine = check.get("engine") or ("dolphin" if game["console"] in DOLPHIN_CONSOLES else "retroarch")
-        return {"ready": ok, "reason": reason, "steps": check.get("steps", []), "engine": engine, "suggested_address": self._public_or_lan_address(), "address_is_home_only": ipaddress_is_private(self._public_or_lan_address()), "private_link": privatelink.status() if engine == "dolphin" else None,
+        return {"ready": ok, "reason": reason, "steps": check.get("steps", []), "engine": engine, "suggested_address": self._public_or_lan_address(), "address_is_home_only": ipaddress_is_private(self._public_or_lan_address()), "private_link": privatelink.cached_status() if engine == "dolphin" else None,
+                "private_link_on": bool(self.catalog.settings().get("use_private_link")),
                 "relay_available": netplay_tunnel.available() and engine == "retroarch",
                 "direct_allowed": self.catalog.settings()["allow_direct_connections"],
                 "endpoint_kind": (room.get("session") or {}).get("endpoint_kind"),
@@ -1972,7 +1995,12 @@ class LauncherApp:
         """Tell the room our own numbers: ping to the server and the match tunnel's speeds. Numbers only."""
         rates = netplay_tunnel.METER.rates() if self.tunnel is not None else {}
         try:
-            self._call({"operation": "report_stats", "ping_ms": ping_ms, "in_match": bool((self.room or {}).get("launched")), **rates, **self._auth()})
+            extra = {}
+            if self.catalog.settings().get("use_private_link"):
+                link = privatelink.cached_status()
+                if link.get("address"):
+                    extra["private_address"] = link["address"]
+            self._call({"operation": "report_stats", "ping_ms": ping_ms, "in_match": bool((self.room or {}).get("launched")), **rates, **extra, **self._auth()})
         except AppError:
             pass
 
@@ -2172,9 +2200,11 @@ class LauncherApp:
 
     def _launch_dolphin(self, room: dict, game: dict, check: dict, body: dict) -> dict:
         mode = body.get("mode", "traversal")
-        if mode not in {"traversal", "direct", "private"}:
-            raise AppError("mode must be traversal, direct or private")
-        private_address = None
+        if mode not in {"traversal", "direct", "private", "auto"}:
+            raise AppError("mode must be traversal, direct, private or auto")
+        private_address, fallback_note = None, None
+        if mode == "auto":
+            mode, fallback_note = self._pick_connection(room)
         if mode == "private":
             link = privatelink.status()
             if not link["installed"]:
@@ -2227,6 +2257,8 @@ class LauncherApp:
             raise AppError(f"Could not start Dolphin: {exc}") from exc
         self.catalog.record_play(game["id"])
         room["launched"] = True
+        if fallback_note:
+            guide = [fallback_note] + guide
         room["dolphin"] = {"steps": guide, "needs_code": room["role"] == "host" and mode == "traversal"}      # the screen keeps showing them
         return {"launched": game["title"], "role": room["role"], "pid": pid, "engine": "dolphin", "opened": reopened,
                 "steps": guide, "needs_code": room["role"] == "host" and mode == "traversal"}
