@@ -408,19 +408,22 @@ function redrawNet(){const b=$("#netbox");if(b)drawNetCheck(b)}
 
 /* ---------- petting Martin ---------- */
 const MEOWS=["meow!","purr purr","mrrp?","nya~","*purrrr*","meow meow","mew!","prrrr...","more pets pls","*headbonk*","mrow!","*slow blink*","I love it here","nice to see you","*kneads happily*"];
-let pet={el:null,last:0,timer:null,n:0};
+let pet={el:null,last:0,timer:null,n:0,raf:0};
+/* The bubble belongs to the cat that was petted: it follows that cat while it is visible (scrolling, resizing) and goes away by itself. */
+function placeBubble(){const b=$("#bubble");if(!b)return;if(!pet.el||!pet.el.isConnected){b.remove();return}
+ const r=pet.el.getBoundingClientRect();const off=r.bottom<0||r.top>innerHeight||r.right<0||r.left>innerWidth;b.style.visibility=off?"hidden":"visible";
+ const w=b.offsetWidth||90;let left=r.right+8;if(left+w>innerWidth-6)left=Math.max(6,r.left-w-8);
+ b.style.left=left+"px";b.style.top=Math.max(6,r.top-26)+"px";pet.raf=requestAnimationFrame(placeBubble)}
 function say(text){let b=$("#bubble");if(!b){b=h("div",{id:"bubble",role:"status"});document.body.append(b)}
  if(!pet.el||!pet.el.isConnected)pet.el=document.querySelector("#logomartin .martin");if(!pet.el)return;
- const r=pet.el.getBoundingClientRect();b.textContent=text;b.style.animation="none";void b.offsetWidth;b.style.animation="";
- b.style.left=Math.max(6,Math.min(innerWidth-210,r.right+8))+"px";b.style.top=Math.max(6,r.top-22)+"px"}
+ b.textContent=text;b.style.animation="none";void b.offsetWidth;b.style.animation="";
+ cancelAnimationFrame(pet.raf);placeBubble();clearTimeout(pet.timer);pet.timer=setTimeout(()=>{cancelAnimationFrame(pet.raf);const x=$("#bubble");if(x)x.remove()},3200)}
 function nextMeow(){let t;do{t=MEOWS[Math.floor(Math.random()*MEOWS.length)]}while(t===pet.text&&MEOWS.length>1);pet.text=t;return t}
+/* a bubble only appears right after a pet, never on its own */
 document.addEventListener("click",e=>{const m=e.target.closest&&e.target.closest(".martin");if(!m||m.closest("#boot"))return;
  pet.el=m;pet.last=Date.now();pet.n++;m.classList.remove("pet");void m.getBoundingClientRect();m.classList.add("pet");
  const r=m.getBoundingClientRect();const hrt=pixels(AVATARS.heart.rows,18,"");hrt.classList.add("petheart");hrt.style.left=(r.left+r.width/2-9+(Math.random()*30-15))+"px";hrt.style.top=(r.top+4)+"px";document.body.append(hrt);setTimeout(()=>hrt.remove(),1000);
- say(pet.n%7===0?"you're the best!":nextMeow());
- clearInterval(pet.timer);
- /* after a pet he keeps chatting, a new line every 10 seconds, for about a minute */
- pet.timer=setInterval(()=>{if(Date.now()-pet.last>62000){clearInterval(pet.timer);const b=$("#bubble");if(b)b.remove();return}say(nextMeow())},10000)});
+ say(pet.n%7===0?"you're the best!":nextMeow())});
 
 /* the little rose is also the tab icon */
 {const l=document.createElement("link");l.rel="icon";const rows=AVATARS.rose.rows;let r="";rows.forEach((row,y)=>[...row].forEach((c,x)=>{if(c!==".")r+=`<rect x="${x}" y="${y}" width="1" height="1" fill="${PAL[c]}"/>`}));
@@ -1600,7 +1603,7 @@ async function viewSetup(m){
      h("div",{class:"decor win"},pixels(WINDOW,150)),h("div",{class:"decor dip"},pixels(DIPLOMA,92)),h("div",{class:"decor sign"},pixels(CROSS,40)),h("div",{class:"decor plant"},pixels(PLANT,64)),h("div",{class:"decor books"},pixels(BOOKS,130))),
     h("div",{class:"deskzone"},say,spot,h("div",{class:"desk"},h("span",{class:"plate"},"DOC"),h("span",{class:"deskcat"},martin(52)))),h("div",{class:"fxlayer"}),start),
    h("div",{class:"clip"},h("h3",{style:"margin:0 0 10px"},"Today's check-up"),report)),
-  dr.issues.some(i=>!i.dismissed)||dr.issues.some(i=>i.dismissed)?h("h3",{class:"sect"},"Case files"):null,caseCards(dr,refresh),
+  dr.issues.length?h("h3",{class:"sect"},"Case files"):"",caseCards(dr,refresh),
   h("h3",{class:"sect"},"In the waiting room: your emulators"),emulatorCards(dr),
   h("h3",{class:"sect"},"The supply cabinet"),supplies);
  viewSupplies(supplies);
