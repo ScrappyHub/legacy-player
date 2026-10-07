@@ -271,6 +271,28 @@ def close_titled(fragment: str) -> bool:
     return bool(wins)
 
 
+def _make_overlay_like(hwnd) -> None:
+    """Make a browser app window look like an in-game overlay: no title bar or sizing border, no taskbar button,
+    rounded corners where Windows supports them. Everything is best effort; the window still works if any step fails."""
+    import ctypes
+    user32 = _user32()
+    GWL_STYLE, GWL_EXSTYLE = -16, -20
+    WS_CAPTION, WS_THICKFRAME, WS_SYSMENU, WS_MINIMIZEBOX, WS_MAXIMIZEBOX = 0x00C00000, 0x00040000, 0x00080000, 0x00020000, 0x00010000
+    WS_EX_TOOLWINDOW, WS_EX_APPWINDOW = 0x00000080, 0x00040000
+    try:
+        style = user32.GetWindowLongW(hwnd, GWL_STYLE)
+        user32.SetWindowLongW(hwnd, GWL_STYLE, style & ~(WS_CAPTION | WS_THICKFRAME | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX))
+        ex = user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
+        user32.SetWindowLongW(hwnd, GWL_EXSTYLE, (ex | WS_EX_TOOLWINDOW) & ~WS_EX_APPWINDOW)
+    except Exception:
+        pass
+    try:
+        pref = ctypes.c_int(2)                                       # DWMWCP_ROUND
+        ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, 33, ctypes.byref(pref), ctypes.sizeof(pref))
+    except Exception:
+        pass
+
+
 def pin_titled(fragment: str, mon: dict | None, wait: float = 12.0, margin: int = 24) -> None:
     """Wait for the overlay window, put it in the top-right corner of the monitor and keep it above full-screen games."""
     def run() -> None:
@@ -284,7 +306,8 @@ def pin_titled(fragment: str, mon: dict | None, wait: float = 12.0, margin: int 
                 x, y = w["x"], w["y"]
                 if mon:
                     x, y = mon["x"] + mon["w"] - w["w"] - margin, mon["y"] + margin
-                user32.SetWindowPos(w["hwnd"], -1, x, y, 0, 0, 0x0001 | 0x0040)   # HWND_TOPMOST, keep size, show
+                _make_overlay_like(w["hwnd"])
+                user32.SetWindowPos(w["hwnd"], -1, x, y, 0, 0, 0x0001 | 0x0040 | 0x0020)   # HWND_TOPMOST, keep size, show, redo the frame
                 _to_front(w["hwnd"])
                 user32.SetWindowPos(w["hwnd"], -1, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0040)   # stay on top
                 return

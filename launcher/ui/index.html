@@ -206,7 +206,7 @@ body.busy .brand .martin,.hop{animation:hop .55s ease-in-out infinite}
 .tipwrap .startip{position:absolute;top:100%;right:0;margin-top:10px;z-index:60;display:none}
 .tipwrap.off:hover .startip,.tipwrap.off:focus-within .startip,.tipwrap.show .startip{display:flex}
 .tipwrap .startip::before{content:"";position:absolute;left:0;right:0;top:-12px;height:12px}
-.ovl{padding:14px;max-width:420px;margin:0 auto}
+.ovl{padding:14px;max-width:420px;margin:0 auto;border:1px solid var(--line);min-height:100vh;box-sizing:border-box}
 .startip{display:flex;gap:10px;align-items:center;width:max-content;max-width:300px}
 .startip .bub{position:relative;background:#fff6c8;color:#2b3157;font:700 12px/1.45 ui-monospace,Consolas,monospace;padding:10px 12px;box-shadow:0 -4px #2b3157,0 4px #2b3157,-4px 0 #2b3157,4px 0 #2b3157;display:flex;flex-direction:column;gap:8px;align-items:flex-start}
 .startip .bub .btn{font:600 12px system-ui,sans-serif;padding:4px 10px}
@@ -514,7 +514,7 @@ async function overlayInit(){
   const idx=[...root.querySelectorAll("button")].indexOf(document.activeElement);
   const how=[d.hotkey?d.hotkey.replace(/\+/g," + "):"",(d.pad||[]).length?"hold the controller combo":""].filter(Boolean).join(" or ");
   root.replaceChildren(
-   h("h2",{style:"margin:0 0 4px"},"Legacy Player"),
+   h("div",{class:"row"},h("h2",{class:"grow",style:"margin:0 0 4px"},"Legacy Player"),h("button",{class:"btn small",title:"Close the overlay (Esc)","aria-label":"Close overlay",onclick:closeIt},"✕")),
    h("div",{class:"small muted"},how?"Press "+how+" again to close this.":"Close this with the button below."),
    h("div",{class:"card",style:"margin:10px 0"},d.game?h("div",{},h("b",{},d.game.title),h("div",{class:"small muted"},"in "+d.game.emulator)):h("div",{class:"muted"},"No game was started from Legacy Player.")),
    h("button",{class:"btn primary",style:"width:100%;margin:4px 0",onclick:closeIt},d.game?"Back to the game":"Close overlay"),
