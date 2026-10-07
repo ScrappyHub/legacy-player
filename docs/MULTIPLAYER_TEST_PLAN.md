@@ -19,9 +19,11 @@ hotspot computer only connects *out*. So:
 2. Share the server code. The friend pastes it into Connect to a server.
 3. Both: Settings > Privacy > Problem reports > "Ask me each time", so a failure produces a report you can read.
 
-What can still need a manual step: a router with UPnP switched off, or an internet provider that shares one public address
-between customers (the app says which). Then use Tailscale on both computers, or a relay (`server/relay`) on a machine
-with a public address; the app does not yet switch to a relay by itself.
+Windows Firewall: after Start the app offers to add a firewall rule for every network type (one Windows approval box).
+"Test my router" (Servers page) opens the port and closes it again, so you can see whether the router cooperates.
+
+If the router cannot be opened (UPnP off, or a provider-shared address), the app moves you to the shared server by itself
+when one is set (see `docs/HOSTING_PUBLIC_SERVER.md`); otherwise it says so, and Tailscale on both computers still works.
 
 ## What to check, in order
 1. Network page on each side: address kind (home / hotspot-style / CGNAT) and the connectivity test result.

@@ -114,6 +114,16 @@ SETTINGS_SCHEMA: dict[str, dict] = {
         "label": "Open my router for friends automatically",
         "help": "When you let friends connect, ask your home router (UPnP) to forward the server port, and close it again when the server stops. Turn off if you set up the router yourself.",
     },
+    "server_use_fallback": {
+        "type": "bool", "default": True, "group": "Your server",
+        "label": "Use a shared server when mine can't be reached",
+        "help": "If your internet connection can't be reached from outside (a phone hotspot, or a provider that shares addresses), meet friends on a shared relay server instead. Game traffic stays encrypted between players.",
+    },
+    "fallback_server_code": {
+        "type": "text", "default": "", "group": "Your server", "optional": True, "max": 60,
+        "label": "Shared server code (optional)",
+        "help": "A server code for the shared server to fall back to. Blank uses the one built into Legacy Player, if there is one.",
+    },
     "server_max_players": {
         "type": "int", "default": 4, "min": 2, "max": 8, "group": "Your server",
         "label": "Players per room", "help": "Applies when you start the server from this app. Rooms can choose fewer.",

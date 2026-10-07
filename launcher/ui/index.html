@@ -1178,7 +1178,11 @@ async function viewServers(m){
  // 1. your server
  const share=h("input",{type:"checkbox",id:"srvshare"});
  share.checked=V.server_host!=="127.0.0.1"?false:(V.server_tls||!st.online);
- const srvAct=async action=>{const r=await act(()=>api("server_control",{action,share:share.checked}));if(r){toast(r.message+(r.reach&&r.reach.message&&action!=="stop"?" "+r.reach.message:""),r.reach&&r.reach.state&&r.reach.state!=="mapped"&&action!=="stop"?"warn":"");go()}};
+ const fwAsk=async()=>{const f=await api("firewall_status");if(!f.supported||f.allowed)return;
+  if(await ask("Windows Firewall has no rule for your server yet, so friends on other networks may be blocked. Legacy Player can add it now. Windows will show one approval box; press Yes there.","Add the rule")){const r=await act(()=>api("firewall_allow",{consent:true}));if(r)toast(r.message,r.allowed?"":"warn")}};
+ const routerTest=async()=>{const r=await act(()=>api("router_test"));if(!r)return;
+  toast(r.state==="mapped"?"Your router opens ports for Legacy Player. Friends can use your server code.":r.message+(r.fallback_available?" A shared server will be used instead.":""),r.state==="mapped"?"":"warn")};
+ const srvAct=async action=>{const r=await act(()=>api("server_control",{action,share:share.checked}));if(r){if(action!=="stop"&&share.checked)setTimeout(fwAsk,400);toast(r.message+(r.reach&&r.reach.message&&action!=="stop"?" "+r.reach.message:""),r.reach&&r.reach.state&&r.reach.state!=="mapped"&&action!=="stop"?"warn":"");go()}};
  const num=(key,min,max)=>h("input",{type:"number",value:V[key],min,max,style:"width:90px","aria-label":key});
  const players=num("server_max_players",2,8),rooms=num("server_max_rooms",1,10000),line=num("server_max_waiting",0,500);
  const pub=h("input",{type:"text",value:V.server_public_address||"",placeholder:"leave blank: found automatically",style:"width:min(380px,100%)","aria-label":"Address friends use"});
@@ -1191,7 +1195,8 @@ async function viewServers(m){
   h("p",{class:"small muted"},whyInline("What is it?","A small program that keeps rooms and invite codes. It keeps your rooms when you stop it and brings them back when you start it again. It runs on this computer while Legacy Player is open."),st.message?" "+st.message:""),
   st.online?h("div",{class:"inbanner ok"},"Your server is running. Closing this window with X keeps Legacy Player in the tray (notification area) so it stays managed; right-click the tray icon to stop it, copy a fresh server code or exit."):"",
   h("div",{class:"row"},h("button",{class:"btn primary",onclick:()=>srvAct("start")},"Start"),h("button",{class:"btn",onclick:()=>srvAct("restart")},"Restart"),h("button",{class:"btn",onclick:()=>srvAct("stop")},"Stop"),
-   h("label",{class:"small"},share," Let friends connect (encrypted with this app's own certificate)")),
+   h("label",{class:"small"},share," Let friends connect (encrypted with this app's own certificate)"),
+   h("button",{class:"btn",title:"Opens the server port on your router and closes it again, to see if friends can reach you.",onclick:routerTest},"Test my router"),h("button",{class:"btn",onclick:fwAsk},"Check Windows Firewall")),
   h("h3",{style:"margin-top:16px"},whyInline("Limits","Players per room is the most any room may hold. Rooms is how many your server will keep. Waiting line is how many people can queue for a full room (0 turns lines off). They apply the next time the server starts.")),
   h("div",{class:"fieldrow"},fld("Players per room",players),fld("Rooms",rooms),fld("Waiting line",line)),
   h("div",{class:"fieldrow",style:"margin-top:10px"},fld("Address friends use",pub)),

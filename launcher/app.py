@@ -31,11 +31,11 @@ from adapters.retroarch import tunnel as netplay_tunnel
 
 from . import controllers, emulators, engines, pads, savefolders, saves
 from .installer import EngineInstaller, InstallError, latest_release, pick_asset
-from . import dolphinpads, gameinfo, keyboard, memprobe, netcheck, reports, selfuninstall, sysinfo
+from . import dolphinpads, firewall, gameinfo, portmap, keyboard, memprobe, netcheck, reports, selfuninstall, sysinfo
 from .covers import (CONTENT_TYPES, CoverFetcher, SYSTEMS as COVER_SYSTEMS, clear_custom_cover, cover_path,
                      custom_cover, set_custom_cover)
 from .pcscan import PcScan
-from .version import REPO, VERSION
+from .version import PUBLIC_SERVER_CODE, REPO, VERSION
 from .setup import Setup, SetupError
 from .catalog import SETTINGS_SCHEMA, Catalog, CatalogError
 from .consoles import BY_ID, CONSOLES
@@ -149,6 +149,7 @@ class LauncherApp:
         self.api_lock = threading.RLock()        # one ordinary API call at a time (the web layer takes it)
         self.memprobe = memprobe.MemProbe(self.data_dir)
         self.port_map: dict = {}
+        self.fallback_active = False
         self.reports = reports.ReportCenter(self.data_dir, lambda: self.catalog.settings(), lambda k, v: self.catalog.set_setting(k, v), self._report_context)
         self._scan_lock = threading.Lock()       # one disk walk at a time (rescan)
         self._server_op_lock = threading.Lock()  # starting/stopping the server: one at a time, outside api_lock
@@ -2000,7 +2001,7 @@ class LauncherApp:
 
     # window lifetime (used by the packaged app so it quits when its window closes) ----------
     # calls that need no global lock: quick reads, or slow work that only touches its own cache
-    UNLOCKED = frozenset({"ping", "bye", "status", "specs", "server_status", "network_last", "server_control", "rescan", "scan_everything"})
+    UNLOCKED = frozenset({"router_test", "firewall_allow", "ping", "bye", "status", "specs", "server_status", "network_last", "server_control", "rescan", "scan_everything"})
 
     def api_ping(self, body: dict) -> dict:
         self.last_ping, self.bye_at, self.tray_mode = time.time(), 0.0, False
@@ -2122,20 +2123,61 @@ class LauncherApp:
                 "log": str(args.state_dir / "server.log"), "fingerprint": self.server_fingerprint(),
                 "limits": {"players": args.max_players, "rooms": args.max_rooms, "waiting": args.max_waiting}, "reach": reach}
 
+    def _fallback_code(self) -> str:
+        s = self.catalog.settings()
+        if not s.get("server_use_fallback", True):
+            return ""
+        return (s.get("fallback_server_code") or PUBLIC_SERVER_CODE or "").strip()
+
     def _manage_router(self, action: str, code: int, share: bool, port: int) -> dict | None:
-        """Open the server port on the home router when sharing starts; close it when the server stops."""
-        from . import portmap
+        """Open the server port on the home router when sharing starts (and close it when the server stops). When the
+        router cannot be opened, meet friends on the shared server instead, if one is set."""
         old = self.port_map
-        if action in {"stop", "restart"} and code == 0 and old.get("state") == "mapped":
-            portmap.close_port(old.get("port", port), old.get("location", ""))
-            self.port_map = {}
+        if action in {"stop", "restart"} and code == 0:
+            if old.get("state") == "mapped":
+                portmap.close_port(old.get("port", port), old.get("location", ""))
+            was_fallback = self.fallback_active
+            self.port_map, self.fallback_active = {}, False
+            if was_fallback:
+                with self.api_lock:
+                    self.api_server_connect({"local": True})
         if action in {"start", "restart"} and code == 0 and share and self.catalog.settings().get("server_auto_open", True):
             self.port_map = portmap.open_port(port)
-            if self.port_map["state"] != "mapped":
-                self.reports.capture("router-not-opened", None, self.port_map["message"],
-                                     {"state": self.port_map["state"], "kind": self.port_map.get("kind", "")})
+            if self.port_map["state"] == "mapped":
+                self.fallback_active = False
+                return self.port_map
+            self.reports.capture("router-not-opened", None, self.port_map["message"],
+                                 {"state": self.port_map["state"], "kind": self.port_map.get("kind", "")})
+            fallback = self._fallback_code()
+            if fallback:
+                try:
+                    with self.api_lock:
+                        joined = self.api_server_connect({"code": fallback})
+                except AppError as exc:
+                    joined = {"connected": False, "message": str(exc)}
+                self.fallback_active = bool(joined.get("connected"))
+                self.port_map = {**self.port_map, "fallback": self.fallback_active,
+                                 "message": ("Your connection can't be reached from outside, so Legacy Player moved you to the shared server. "
+                                             "Give friends the code shown under Invite friends; room invite codes work as usual.")
+                                 if self.fallback_active else self.port_map["message"] + " The shared server did not answer either."}
             return self.port_map
         return self.port_map or None
+
+    def api_router_test(self, body: dict) -> dict:
+        """Does this router let the app open a port? Opens the server port and closes it again straight away."""
+        port = self.catalog.settings()["server_port"]
+        result = portmap.open_port(port)
+        if result["state"] == "mapped" and not (self.port_map.get("state") == "mapped"):
+            portmap.close_port(port, result["location"])
+        return {**result, "fallback_available": bool(self._fallback_code())}
+
+    def api_firewall_status(self, body: dict) -> dict:
+        return firewall.status(self.catalog.settings()["server_port"])
+
+    def api_firewall_allow(self, body: dict) -> dict:
+        if not body.get("consent"):
+            raise AppError("Windows will ask you to approve this change. Press the button again to continue.")
+        return firewall.allow(self.catalog.settings()["server_port"])
 
     def api_server_code(self, body: dict) -> dict:
         """The short code a friend types to reach the server this app shares. `refresh` makes a fresh one: the old
@@ -2147,6 +2189,11 @@ class LauncherApp:
         if not cert.exists():
             raise AppError("Start the server with 'Let friends connect' on first; that makes its certificate.")
         state = self.data_dir / "server"
+        s = self.catalog.settings()
+        if self.fallback_active and self._fallback_code():
+            return {"code": self._fallback_code(), "address": s["server_host"], "port": s["server_port"], "fingerprint": s.get("server_fingerprint"),
+                    "rotated": False, "reach": "Your own connection can't be reached from outside, so you and your friends meet on the shared server. This is its code.",
+                    "reach_state": "fallback"}
         rotated = False
         if body.get("refresh"):
             try:

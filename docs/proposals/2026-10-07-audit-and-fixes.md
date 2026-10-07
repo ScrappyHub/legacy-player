@@ -153,3 +153,13 @@ taking turns) with a source: set by you (game page), the built-in list of known 
 when the title is unknown (labelled as a guess). Hosting a game known to be single-player is refused with a plain
 message; room seats are capped to the game's count; the host page shows the count and limits the choices. The built-in
 list is short and should be extended.
+
+## Follow-up: shared-server fallback, firewall rule, router test
+
+- `launcher/app.py _manage_router`: if the router cannot be opened and a shared server is set (`PUBLIC_SERVER_CODE` or the
+  "Shared server code" setting), the app connects to it by itself, the server code it shows is the shared server's, and
+  Stop returns it to its own server. With none set, it just explains. **No shared server exists yet**; see
+  `docs/HOSTING_PUBLIC_SERVER.md`.
+- `launcher/firewall.py`: after Start with "Let friends connect", the app offers to add a Windows Firewall rule (all network
+  types) and asks Windows for the one approval it needs. Untested on Windows (command construction only).
+- "Test my router" opens the server port and closes it again. Untested on a real router.
