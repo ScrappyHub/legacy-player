@@ -1,6 +1,11 @@
 # Proposal 0005: Playing across countries, and volunteer relay nodes
 
-Status: proposed, nothing here is built beyond "what works today".
+Status: **volunteer nodes declined by the owner (2026-10-07); not planned.** Nothing here is built beyond "what works today".
+
+Decision: the current structure (a player-run or community server with the encrypted relay, and the Server Info
+network check to choose who hosts) is kept as the strongest option. Volunteer machines would add trust,
+abuse and legal exposure for little gain. Phase 1 (a list of community servers) and Phase 4 (optional direct
+hole-punching) stay as ideas only, to be reopened by the owner, not scheduled.
 Depends on: 0004 (relay mode, TLS-PSK match tunnel, open rooms and waiting lines).
 
 ## Goal
