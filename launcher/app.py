@@ -37,9 +37,29 @@ NO_NETPLAY = {
     "psp": "PSP games with multiplayer use PPSSPP's ad hoc mode (Settings > Networking, built-in PRO ad hoc server on the host). It is direct player-to-player; the app's relay cannot carry it.",
     "xbox": "xemu has no netplay. System Link works only on one home network.",
     "x360": "Xenia has no netplay.",
-    "ps3": "RPCS3 has no netplay. Some games' online modes work through RPCN, RPCS3's own service.",
-    "3ds": "Azahar has no netplay; local-wireless games can meet over its own room server.",
+    "ps3": "RPCS3 has no netplay. Some games' online modes work through RPCN, RPCS3's own service; follow the steps below.",
+    "3ds": "Legacy Player cannot start 3DS matches itself. Azahar has its own multiplayer rooms; follow the steps below (they show your address to the others, so a VPN is safer).",
     "gamecube": "GameCube uses Dolphin NetPlay (guided).", "wii": "Wii uses Dolphin NetPlay (guided).",
+}
+
+
+NETPLAY_STEPS = {
+    "psp": [
+        "Everyone: open PPSSPP, then Settings > Networking and turn on Enable networking / WLAN.",
+        "Each player needs a different MAC address: Settings > Networking > Change Mac Address, press Randomize on every computer.",
+        "Host: turn on Enable built-in PRO ad hoc server. Then tell the others this computer's address, ideally a VPN address such as Tailscale, because PPSSPP ad hoc is direct and shows addresses.",
+        "Guests: Settings > Networking > Change PRO ad hoc server IP address, and type the host's address.",
+        "Everyone: start the same game, choose its Ad hoc / Wireless / Local multiplayer menu, and join each other from there.",
+    ],
+    "3ds": [
+        "Everyone: use Azahar 2120 or newer, and the same game file.",
+        "Host: Multiplayer > Create Room, pick the game, choose a port, and send guests the room address (shows your address; a VPN is safer).",
+        "Guests: Multiplayer > Direct Connect to Room, type the host's address, then start the same game.",
+    ],
+    "ps3": [
+        "Everyone: RPCS3 > Configuration > Network: set Network status to Connected and PSN status to RPCN.",
+        "Create an RPCN account once (Configuration > Network > Configure RPCN), then start a game that has online play and use its own online menu.",
+    ],
 }
 
 
@@ -269,7 +289,8 @@ class LauncherApp:
                 return {"ready": False, "engine": "dolphin", "reason": f"Extract this {game['extension']} archive first."}
             return {"ready": True, "engine": "dolphin", "reason": "", "exe": exe}
         if game["console"] not in CORES:
-            return {"ready": False, "reason": NO_NETPLAY.get(game["console"], f"{BY_ID[game['console']].name} has no netplay launcher yet.")}
+            return {"ready": False, "reason": NO_NETPLAY.get(game["console"], f"{BY_ID[game['console']].name} has no netplay launcher yet."),
+                    "steps": NETPLAY_STEPS.get(game["console"], [])}
         if game["is_archive"] and not (game["extension"] == ".zip"):
             return {"ready": False, "reason": f"Extract this {game['extension']} archive first."}
         found = emulators.find_emulators(self._search_roots(), self.catalog.data["emulator_paths"])
@@ -819,7 +840,7 @@ class LauncherApp:
         if ok and room["role"] == "guest" and session.get("state") not in {"ready-barrier", "active"}:
             ok, reason = False, "Waiting for the host to check that everyone matches."
         engine = check.get("engine") or ("dolphin" if game["console"] in DOLPHIN_CONSOLES else "retroarch")
-        return {"ready": ok, "reason": reason, "engine": engine, "suggested_address": detect_lan_address(),
+        return {"ready": ok, "reason": reason, "steps": check.get("steps", []), "engine": engine, "suggested_address": detect_lan_address(),
                 "relay_available": netplay_tunnel.available() and engine == "retroarch",
                 "direct_allowed": self.catalog.settings()["allow_direct_connections"],
                 "endpoint_kind": (room.get("session") or {}).get("endpoint_kind"),

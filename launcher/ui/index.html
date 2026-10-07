@@ -271,6 +271,7 @@ function drawRoom(box){const r=S.room;if(!r){box.replaceChildren();return}
    h("button",{class:"btn bad",onclick:async()=>{await act(()=>api("mp_leave"));S.room=null;go()}},host?"Close room":"Leave")),
   h("h3",{},whyInline("Start the match","This opens RetroArch with its built-in netplay. The host starts first and everyone else connects to the host's address. Legacy Player handles the room, the code and the address; RetroArch keeps the game in sync. Everyone needs RetroArch with the same core, and the same game file version.")),
   launchBox(rm,host),
+  (rm.launch&&rm.launch.steps&&rm.launch.steps.length)?h("div",{class:"card"},h("h3",{},"How to play this together"),h("p",{class:"small muted"},rm.launch.reason),h("ol",{class:"small"},...rm.launch.steps.map(t=>h("li",{},t)))):null,
   rm.problem?h("p",{class:"bad small"},rm.problem):null,
   h("h3",{},"Activity"),h("div",{class:"feed"},...rm.events.slice().reverse().map(e=>h("div",{class:e.level==="warn"?"warn":""},e.text)))))}
 function launchBox(rm,host){

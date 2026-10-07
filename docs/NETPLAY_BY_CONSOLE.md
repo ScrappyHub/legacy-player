@@ -21,3 +21,18 @@ extra ping on loopback.
 
 When direct connections are allowed (Settings > Privacy), the host can untick *Relay* at
 launch; both the host and each guest must confirm, because addresses are exchanged.
+
+## Known limits
+
+- **RetroArch still listens on its port on every network interface in relay mode.** RetroArch has no bind
+  option. Guests only ever reach the match through the relay, so keep that port (55435 by default) closed at
+  your router and firewall; opening it would let people connect around the relay and see your address.
+- **Step guides** for PSP, 3DS and PS3 are shown in Play Together when those games are in the room (the
+  emulators run these modes themselves; Legacy Player cannot start them).
+- **Pad profiles** (identify and map) are applied to RetroArch only. Other emulators keep their own controller
+  settings; set the pad inside the emulator once.
+- **Waiting while you play:** you can play any game in any emulator while you hold a place in line; when a seat
+  opens you get a notice, and *It's my turn: switch* closes your current game politely (the emulator saves like
+  clicking X) and joins. A background pre-loaded spectator was tried with real RetroArch: it can connect without
+  taking a seat (netplay_start_as_spectator), but RetroArch cannot be switched from watching to playing without a
+  keypress inside its window, so a fresh launch at switch time is used instead.
