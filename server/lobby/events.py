@@ -24,6 +24,9 @@ EVENT_KINDS = frozenset(
         "waitlist_dropped",
         "slot_opened",
         "capacity_changed",
+        "start_requested",
+        "start_consented",
+        "game_changed",
     }
 )
 

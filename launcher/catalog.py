@@ -59,6 +59,11 @@ SETTINGS_SCHEMA: dict[str, dict] = {
         "type": "int", "default": 8765, "min": 1, "max": 65535, "group": "Multiplayer",
         "label": "Server port", "help": "The network port the server listens on.",
     },
+    "server_public_address": {
+        "type": "text", "default": "", "group": "Your server",
+        "label": "Address friends use to reach your server",
+        "help": "Blank means this computer's home-network address, which works on the same network or a VPN such as Tailscale. For friends on the internet, enter your public IPv4 address and forward the server port on your router. Needed only for the short server code.",
+    },
     "server_max_players": {
         "type": "int", "default": 4, "min": 2, "max": 8, "group": "Your server",
         "label": "Players per room", "help": "Applies when you start the server from this app. Rooms can choose fewer.",

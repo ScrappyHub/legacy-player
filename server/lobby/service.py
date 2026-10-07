@@ -52,6 +52,7 @@ class LobbyService:
         self._psk: dict[str, str] = {}  # tunnel keys: memory only, never in snapshots
         self.pending: dict[str, dict[str, dict]] = {}
         self.removed: dict[tuple[str, str], str] = {}
+        self.stats: dict[tuple[str, str], dict] = {}
         self.last_seen: dict[tuple[str, str], float] = {}
         self.disconnected: set[tuple[str, str]] = set()
         self.max_sessions = max_sessions
@@ -474,6 +475,7 @@ class LobbyService:
                 raise LobbyError(str(exc)) from exc
         self.credentials.pop((sid, participant_id), None)
         self.last_seen.pop((sid, participant_id), None)
+        self.stats.pop((sid, participant_id), None)
         self.disconnected.discard((sid, participant_id))
         self.removed[(sid, participant_id)] = (
             f"kicked from session: {reason}" if kind == "participant_kicked" else "you left the session"
@@ -784,7 +786,83 @@ class LobbyService:
     def status(self, request: dict) -> dict:
         session, _ = self._authorized(request)
         endpoint = self.options.get(session.session_id, {}).get("endpoint")
-        return {"session": {**session.as_dict(), "endpoint_kind": endpoint["kind"] if endpoint else None}}
+        return {"session": {**session.as_dict(), "endpoint_kind": endpoint["kind"] if endpoint else None},
+                "stats": self._stats_view(session), "start": self._start_view(session)}
+
+    # live numbers and "start together" -------------------------------------
+    _STAT_LIMITS = {"ping_ms": 60000.0, "rx_kbps": 10_000_000.0, "tx_kbps": 10_000_000.0, "updates_per_s": 1000.0}
+
+    def report_stats(self, request: dict) -> dict:
+        """A member reports its own measurements. Only numbers are accepted; nothing about the machine."""
+        session, participant_id = self._authorized(request)
+        clean: dict[str, float] = {}
+        for key, limit in self._STAT_LIMITS.items():
+            value = request.get(key)
+            if value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or value != value or not 0 <= value <= limit:
+                raise LobbyError(f"{key} must be a number from 0 to {int(limit)}")
+            clean[key] = round(float(value), 1)
+        clean["at"] = self.clock()
+        self.stats[(session.session_id, participant_id)] = clean
+        return {"ok": True}
+
+    def _stats_view(self, session: Session) -> dict:
+        now = self.clock()
+        people: dict[str, dict] = {}
+        for pid in session.participants:
+            row = self.stats.get((session.session_id, pid))
+            if row and now - row["at"] < 30:
+                people[pid] = {k: v for k, v in row.items() if k != "at"}
+        average = {}
+        for key in self._STAT_LIMITS:
+            values = [r[key] for r in people.values() if key in r]
+            if values:
+                average[key] = round(sum(values) / len(values), 1)
+        return {"people": people, "average": average}
+
+    def set_game(self, request: dict) -> dict:
+        """Host picks (or changes) the game the room will play. Guests are told and must re-confirm."""
+        session, host = self._authorized(request)
+        self._require_host(session, host)
+        profile = self._profile(request)
+        title = str(request.get("title", ""))[:120]
+        session.participants[host].profile = profile
+        self.options[session.session_id]["title"] = title
+        self.options[session.session_id].pop("start", None)
+        self.events[session.session_id].emit("game_changed", title=title or profile.get("game_id", ""))
+        return {"session": session.as_dict()}
+
+    def announce_start(self, request: dict) -> dict:
+        """Host says "start now". Nothing launches for anyone else until they agree."""
+        session, host = self._authorized(request)
+        self._require_host(session, host)
+        options = self.options[session.session_id]
+        number = options.get("start", {}).get("id", 0) + 1
+        options["start"] = {"id": number, "title": str(request.get("title", options.get("title", "")))[:120],
+                            "at": self.clock(), "consented": [host]}
+        self.events[session.session_id].emit("start_requested", title=options["start"]["title"], start_id=number)
+        return {"start": self._start_view(session)}
+
+    def consent_start(self, request: dict) -> dict:
+        session, participant_id = self._authorized(request)
+        start = self.options[session.session_id].get("start")
+        if not start:
+            raise LobbyError("the host has not asked to start yet")
+        if request.get("start_id") != start["id"]:
+            raise LobbyError("that start request is out of date")
+        if participant_id not in start["consented"]:
+            start["consented"].append(participant_id)
+            self.events[session.session_id].emit("start_consented", participant_id=participant_id)
+        return {"start": self._start_view(session)}
+
+    def _start_view(self, session: Session) -> dict | None:
+        start = self.options.get(session.session_id, {}).get("start")
+        if not start:
+            return None
+        present = [p for p in start["consented"] if p in session.participants]
+        return {"id": start["id"], "title": start["title"], "consented": present,
+                "waiting_on": [p for p in session.participants if p not in present]}
 
     def dispatch(self, request: dict) -> dict:
         operation = request.get("operation")
@@ -814,6 +892,10 @@ class LobbyService:
             "set_endpoint": self.set_endpoint,
             "get_endpoint": self.get_endpoint,
             "events": self.poll_events,
+            "report_stats": self.report_stats,
+            "announce_start": self.announce_start,
+            "consent_start": self.consent_start,
+            "set_game": self.set_game,
         }
         try:
             handler = handlers[operation]

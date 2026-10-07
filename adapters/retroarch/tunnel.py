@@ -18,6 +18,7 @@ import secrets
 import socket
 import ssl
 import threading
+import time
 
 IDENTITY = "legacy-player"
 CIPHERS = "PSK-AES256-GCM-SHA384:PSK-CHACHA20-POLY1305:PSK-AES128-GCM-SHA256"
@@ -52,9 +53,43 @@ def _context(server: bool, key: str) -> ssl.SSLContext:
     return context
 
 
-def _pipe(a: socket.socket, b: socket.socket) -> None:
+class Meter:
+    """Counts bytes and messages through the tunnel so the app can show speeds. Numbers only."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self.rx = self.tx = self.msgs = 0
+        self._last = (time.monotonic(), 0, 0, 0)
+
+    def add(self, direction: str, size: int) -> None:
+        with self._lock:
+            if direction == "rx":
+                self.rx += size
+            else:
+                self.tx += size
+            self.msgs += 1
+
+    def rates(self) -> dict:
+        """Kilobits per second and messages per second since the previous call."""
+        with self._lock:
+            now = time.monotonic()
+            t0, rx0, tx0, m0 = self._last
+            span = max(now - t0, 0.001)
+            out = {"rx_kbps": round((self.rx - rx0) * 8 / 1000 / span, 1),
+                   "tx_kbps": round((self.tx - tx0) * 8 / 1000 / span, 1),
+                   "updates_per_s": round((self.msgs - m0) / span, 1)}
+            self._last = (now, self.rx, self.tx, self.msgs)
+            return out
+
+
+METER = Meter()
+
+
+def _pipe(a: socket.socket, b: socket.socket, direction: str = "") -> None:
     try:
         while data := a.recv(65536):
+            if direction:
+                METER.add(direction, len(data))
             b.sendall(data)
     except OSError:
         pass
@@ -128,8 +163,10 @@ class Tunnel:
                     except OSError:
                         pass
             return
-        threading.Thread(target=_pipe, args=(conn, upstream), daemon=True).start()
-        _pipe(upstream, conn)
+        outward = "tx" if self.mode == "guest" else "rx"
+        inward = "rx" if self.mode == "guest" else "tx"
+        threading.Thread(target=_pipe, args=(conn, upstream, outward), daemon=True).start()
+        _pipe(upstream, conn, inward)
         for s in (conn, upstream):
             try:
                 s.close()
@@ -210,8 +247,8 @@ class RelayHost:
                 except OSError:
                     pass
                 continue
-            threading.Thread(target=_pipe, args=(conn, upstream), daemon=True).start()
-            _pipe(upstream, conn)
+            threading.Thread(target=_pipe, args=(conn, upstream, "rx"), daemon=True).start()
+            _pipe(upstream, conn, "tx")
             for s in (conn, upstream):
                 try:
                     s.close()

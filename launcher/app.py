@@ -66,6 +66,9 @@ EVENT_TEXT = {
     "session_created": "Room created.",
     "invite_created": "A new invite code was made.",
     "invites_revoked": "All invite codes were cancelled.",
+    "start_requested": "The host wants to start {title}. Say yes below and it opens for you.",
+    "start_consented": "{participant_id} agreed to start.",
+    "game_changed": "The host picked a different game: {title}. Check you have it.",
 }
 
 
@@ -768,7 +771,11 @@ class LauncherApp:
                 for event in res["events"]:
                     r["last_seq"] = max(r["last_seq"], event["seq"])
                     new_events.append(describe_event(event))
-                r["session"] = self._call({"operation": "status", **self._auth()})["session"]
+                t0 = time.monotonic()
+                status = self._call({"operation": "status", **self._auth()})
+                ping_ms = round((time.monotonic() - t0) * 1000, 1)
+                r["session"], r["stats"], r["start"] = status["session"], status.get("stats"), status.get("start")
+                self._report_stats(ping_ms)
                 if r["role"] == "host":
                     listing = self._call({"operation": "list_waiting", **self._auth()})
                     r["waitlist"], r["max_players"] = listing["waiting"], listing["capacity"]
@@ -786,12 +793,14 @@ class LauncherApp:
             for name, p in (session.get("participants") or {}).items()
         ]
         return {"room": {
-            "role": r["role"], "game": r["game"], "console": r["console"], "state": session.get("state", "waiting for host"),
+            "role": r["role"], "game": r["game"], "game_id": r["game_id"], "console": r["console"], "state": session.get("state", "waiting for host"),
             "failure": session.get("failure_reason"), "invite_code": r["invite_code"], "invite_expires_at": r["invite_expires_at"],
             "members": members, "events": r["events"], "new_events": new_events, "problem": r["problem"],
             "waiting_for_host": bool(r["waiting"]) and not r.get("queue"), "approval": r["approval"],
             "queue": r.get("queue"), "waitlist": r.get("waitlist") or [], "max_players": r.get("max_players"),
             "open": r.get("open", False),
+            "stats": self._stats_for_ui(r),
+            "start": self._start_for_ui(r),
             "pending": self._pending_requests(r),
             "launch": self._room_launch_state(r, session),
             "relay_errors": list(getattr(self.tunnel, "errors", []) or [])[-3:],
@@ -848,6 +857,60 @@ class LauncherApp:
 
     def api_mp_kick(self, body: dict) -> dict:
         return self._host_action(body, "kick", target_id=str(body.get("target")), reason=str(body.get("reason") or "removed by host"))
+
+    def _report_stats(self, ping_ms: float) -> None:
+        """Tell the room our own numbers: ping to the server and the match tunnel's speeds. Numbers only."""
+        rates = netplay_tunnel.METER.rates() if self.tunnel is not None else {}
+        try:
+            self._call({"operation": "report_stats", "ping_ms": ping_ms, **rates, **self._auth()})
+        except AppError:
+            pass
+
+    def _stats_for_ui(self, room: dict) -> dict:
+        stats = room.get("stats") or {"people": {}, "average": {}}
+        return {"people": stats.get("people", {}), "average": stats.get("average", {}),
+                "playing": self.tunnel is not None}
+
+    def _start_for_ui(self, room: dict) -> dict | None:
+        start = room.get("start")
+        if not start:
+            return None
+        game = self.games.get(room["game_id"])
+        mine = room["me"] in start["consented"]
+        return {**start, "mine": mine, "have_game": game is not None,
+                "ask_me": room["role"] == "guest" and not mine}
+
+    def api_mp_game(self, body: dict) -> dict:
+        """Host: pick a different game for the room. Guests are told and must have it too."""
+        room = self.room
+        if room is None or room["role"] != "host":
+            raise AppError("Only the host can change the game.")
+        game = self._game(body)
+        self._call({"operation": "set_game", "profile": self._profile(game), "title": game["title"], **self._auth()})
+        room.update(game_id=game["id"], game=game["title"], console=game["console"])
+        return self.api_mp_state({})
+
+    def api_mp_start(self, body: dict) -> dict:
+        """Host: ask everyone to start. Needs the host's own yes; guests each say yes for themselves."""
+        room = self.room
+        if room is None or room["role"] != "host":
+            raise AppError("Only the host can start the game.")
+        if not body.get("consent"):
+            raise AppError("Confirm that you want to start this game with everyone in the room.")
+        self._call({"operation": "validate", **self._auth()})        # same game and region for everyone
+        self._call({"operation": "announce_start", "title": room["game"], **self._auth()})
+        return self.api_mp_state({})
+
+    def api_mp_consent(self, body: dict) -> dict:
+        """Guest: agree to the host's start request. Only with consent=true; then, if asked, open the game and connect."""
+        room = self.room
+        if room is None:
+            raise AppError("You are not in a room.")
+        if not body.get("consent"):
+            raise AppError("Say yes first: nothing opens on your computer without your agreement.")
+        start = room.get("start") or {}
+        self._call({"operation": "consent_start", "start_id": body.get("start_id", start.get("id")), **self._auth()})
+        return self.api_mp_state({})
 
     def api_mp_lock(self, body: dict) -> dict:
         return self._host_action(body, "validate")
@@ -1102,6 +1165,42 @@ class LauncherApp:
         return {"message": message, "running": cli._is_running(args.state_dir), "shared": bool(body.get("share")),
                 "log": str(args.state_dir / "server.log"), "fingerprint": self.server_fingerprint(),
                 "limits": {"players": args.max_players, "rooms": args.max_rooms, "waiting": args.max_waiting}}
+
+    def api_server_code(self, body: dict) -> dict:
+        """The short code a friend types to reach the server this app shares."""
+        from . import servercode
+        from server.selfsigned import fingerprint_of
+        cert = self.data_dir / "server" / "tls" / "cert.pem"
+        if not cert.exists():
+            raise AppError("Start the server with 'Let friends connect' on first; that makes its certificate.")
+        s = self.catalog.settings()
+        address = str(body.get("address") or s["server_public_address"] or detect_lan_address()).strip()
+        try:
+            code = servercode.encode(address, s["server_port"], fingerprint_of(cert))
+        except servercode.CodeError as exc:
+            return {"code": None, "address": address, "port": s["server_port"], "error": str(exc),
+                    "fingerprint": self.server_fingerprint()}
+        return {"code": code, "address": address, "port": s["server_port"], "fingerprint": self.server_fingerprint(),
+                "reach": "Friends on your home network or VPN can use it as it is. For friends on the internet, put your public address in Settings > Your server and forward port %d on your router." % s["server_port"]}
+
+    def api_server_connect(self, body: dict) -> dict:
+        """Point this app at a friend's server using their short code (or leave it at this computer)."""
+        from . import servercode
+        if body.get("local"):
+            for key, value in (("server_host", "127.0.0.1"), ("server_tls", False), ("server_fingerprint", "-")):
+                self.catalog.set_setting(key, value)
+            return {"connected": self.api_server_status({}).get("online", False), "host": "this computer"}
+        try:
+            found = servercode.decode(str(body.get("code", "")))
+        except servercode.CodeError as exc:
+            raise AppError(str(exc)) from exc
+        for key, value in (("server_host", found["host"]), ("server_port", found["port"]),
+                           ("server_tls", True), ("server_fingerprint", found["fingerprint"])):
+            self.catalog.set_setting(key, value)
+        status = self.api_server_status({})
+        if not status.get("online"):
+            return {"connected": False, "host": found["host"], "message": status.get("message") or "That server did not answer. Check the code, and that the host has started it with 'Let friends connect'."}
+        return {"connected": True, "host": found["host"]}
 
     def api_server_status(self, body: dict) -> dict:
         try:

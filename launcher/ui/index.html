@@ -20,6 +20,7 @@ h2{margin:.2em 0 .6em;font-size:1.3rem}h3{margin:1em 0 .4em;font-size:1.02rem}
 .btn{background:var(--panel2);border:1px solid var(--line);padding:8px 14px;border-radius:10px;cursor:pointer}
 .btn:hover{border-color:var(--accent)}.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
 .btn.good{background:var(--accent2);border-color:var(--accent2);color:#04251c}.btn.bad{border-color:var(--bad);color:var(--bad)}
+.modal{position:fixed;inset:0;background:#000a;display:flex;align-items:center;justify-content:center;z-index:99}.modalbox{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px;max-width:460px;width:90%}
 .btn:disabled{opacity:.45;cursor:not-allowed}
 input[type=text],input[type=number],input[type=search],select{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:8px 10px;min-width:0}
 .chips{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
@@ -72,16 +73,17 @@ function h(tag,attrs,...kids){const e=document.createElement(tag);for(const[k,v]
 async function api(name,body={}){const r=await fetch("/api/"+name,{method:"POST",headers:{"Content-Type":"application/json","X-LP-Token":TOKEN},body:JSON.stringify(body)});
  const j=await r.json();if(!r.ok)throw new Error(j.error||"Request failed");return j}
 function toast(text,level){const t=h("div",{class:"toast "+(level||"")},text);$("#toasts").append(t);setTimeout(()=>t.remove(),level==="warn"?9000:5000)}
+function ask(text,yes){return new Promise(res=>{const done=v=>{ov.remove();res(v)};const ov=h("div",{class:"modal",role:"dialog","aria-modal":"true"},h("div",{class:"modalbox"},h("p",{},text),h("div",{class:"row",style:"justify-content:flex-end;gap:8px"},h("button",{class:"btn",onclick:()=>done(false)},"Cancel"),h("button",{class:"btn primary",onclick:()=>done(true)},yes||"OK"))));document.body.append(ov);ov.querySelector(".primary").focus()})}
 async function act(fn,ok){try{const r=await fn();if(ok)toast(ok);return r}catch(e){toast(e.message,"err")}}
 function why(text){const box=h("div",{class:"why",hidden:true},text);const b=h("button",{class:"i","aria-label":"What is this?",title:"What is this?",onclick:()=>{box.hidden=!box.hidden}},"i");return[b,box]}
 function whyInline(label,text){const[b,box]=why(text);return h("span",{},label,b,box)}
 const NETPLAY={strong:"Good fit",["per-game"]:"Needs a game pack","experimental":"Experimental","not-practical":"Not practical yet"};
 
 const S={tab:"library",console:null,q:"",fav:false,sort:"title",lib:null,settings:null,room:null,online:null,lastNotice:null};
-const TABS=[["library","Library"],["together","Play Together"],["console","Console mode"],["setup","Setup"],["engines","Engines"],["controllers","Controllers"],["saves","Saves"],["emulators","Emulators"],["settings","Settings"],["credits","Credits"],["help","How it works"]];
+const TABS=[["library","Library"],["together","Play Together"],["servers","Servers"],["console","Console mode"],["setup","Setup"],["engines","Engines"],["controllers","Controllers"],["saves","Saves"],["emulators","Emulators"],["settings","Settings"],["credits","Credits"],["help","How it works"]];
 
 function renderNav(){const n=$("#nav");n.replaceChildren(...TABS.map(([id,l])=>h("button",{class:S.tab===id?"on":"",onclick:()=>{S.tab=id;go()}},l+(id==="together"&&S.room?" ●":""))))}
-async function go(){renderNav();const m=$("#main");m.replaceChildren();({library:viewLibrary,together:viewTogether,console:viewConsole,setup:viewSetup,engines:viewEngines,controllers:viewControllers,saves:viewSaves,emulators:viewEmulators,settings:viewSettings,credits:viewCredits,welcome:viewWelcome,help:viewHelp})[S.tab](m)}
+async function go(){renderNav();const m=$("#main");m.replaceChildren();({library:viewLibrary,together:viewTogether,servers:viewServers,console:viewConsole,setup:viewSetup,engines:viewEngines,controllers:viewControllers,saves:viewSaves,emulators:viewEmulators,settings:viewSettings,credits:viewCredits,welcome:viewWelcome,help:viewHelp})[S.tab](m)}
 
 /* ---------- Library ---------- */
 async function viewLibrary(m){
@@ -125,11 +127,11 @@ async function openGame(id){
  const close=()=>{scrim.remove();dr.remove()};
  const scrim=h("div",{class:"scrim",onclick:close});
  const launchBtn=h("button",{class:"btn good",disabled:!g.launch.ready,onclick:async()=>{
-   if(S.settings&&S.settings.confirm_launch&&!confirm("Open "+g.title+" in "+g.launch.emulator+"?"))return;
+   if(S.settings&&S.settings.confirm_launch&&!await ask("Open "+g.title+" in "+g.launch.emulator+"?"))return;
    const r=await act(()=>api("launch",{id}));if(r){S.running={title:r.launched}}if(r)toast("Opening "+r.launched+" in "+r.emulator+"…")}},"▶ Play");
  const backups=h("div",{});
  const drawBackups=()=>backups.replaceChildren(...(g.backups.length?g.backups.map(b=>h("div",{class:"row small"},h("span",{class:"grow"},b.backup+" ("+b.files+" file"+(b.files===1?"":"s")+")"),
-   h("button",{class:"btn",onclick:async()=>{if(confirm("Restore this backup? Your current saves are backed up first.")){const r=await act(()=>api("restore",{id,backup:b.backup}));if(r)toast("Restored "+r.restored+" file(s)")}}},"Restore"))):[h("span",{class:"muted small"},"No backups yet.")]));drawBackups();
+   h("button",{class:"btn",onclick:async()=>{if(await ask("Restore this backup? Your current saves are backed up first.")){const r=await act(()=>api("restore",{id,backup:b.backup}));if(r)toast("Restored "+r.restored+" file(s)")}}},"Restore"))):[h("span",{class:"muted small"},"No backups yet.")]));drawBackups();
  const dr=h("aside",{class:"drawer",role:"dialog","aria-label":g.title},
   h("div",{class:"row"},h("h2",{class:"grow"},g.title),h("button",{class:"btn",onclick:close,"aria-label":"Close"},"✕")),
   h("div",{class:"muted"},g.console_name+(g.region?" · "+g.region:"")+" · "+g.size_mb+" MB"),
@@ -159,20 +161,9 @@ async function viewTogether(m){
  const st=await pingServer();
  m.append(h("h2",{},"Play Together"),
   h("div",{class:"why"},"A room is a private lobby on a server you or a friend runs. People join with a short invite code. Nobody else can see it."));
- const share=h("input",{type:"checkbox",id:"srvshare"});
- const srvAct=async(action)=>{const r=await act(()=>api("server_control",{action,share:share.checked}));if(r){toast(r.message);go()}};
- m.append(h("div",{class:"panel"},
-  st.online?h("b",{class:"good"},"The multiplayer server is running. "):h("b",{class:"bad"},"The multiplayer server is not running. "),
-  h("div",{class:"small muted"},whyInline("What is the server?","The server is a small program that keeps rooms and invite codes. One person runs it (you can run it here); everyone else just sets its address in Settings. It keeps your rooms when you stop it and restores them when you start it again.")," ",st.message||""),
-  h("div",{class:"row",style:"margin-top:8px"},
-   h("button",{class:"btn primary",onclick:()=>srvAct("start")},"Start server"),
-   h("button",{class:"btn",onclick:()=>srvAct("restart")},"Restart"),
-   h("button",{class:"btn",onclick:()=>srvAct("stop")},"Stop"),
-   h("label",{class:"small"},share," Let friends connect (always encrypted with this app's own certificate)")),
-  h("div",{id:"srvinfo",class:"small muted",style:"margin-top:6px"})));
- (async()=>{const info=await api("server_control",{action:"status",share:true}).catch(()=>null);const el=$("#srvinfo");if(!el||!info)return;
-   el.replaceChildren(info.fingerprint?h("div",{},"Friends set your address and this fingerprint in Settings > Multiplayer: ",h("span",{class:"code"},info.fingerprint),h("button",{class:"btn",onclick:()=>{navigator.clipboard&&navigator.clipboard.writeText(info.fingerprint);toast("Copied")}},"Copy")):null,
-    h("div",{},"Limits when started here: "+info.limits.players+" players per room, "+info.limits.rooms+" rooms, waiting line "+info.limits.waiting+" (change in Settings > Your server)"))})();
+ m.append(h("div",{class:"panel"},st.online?h("b",{class:"good"},"Server: "+(S.settings&&S.settings.server_host!=="127.0.0.1"?S.settings.server_host:"your own")+" (online). "):h("b",{class:"bad"},"The server is not running. "),
+  h("button",{class:"btn",onclick:()=>{S.tab="servers";go()}},"Open Servers")," ",h("span",{class:"small muted"},"Start, share or connect to a server there.")));
+ S.allGames=(await api("library",{})).games;
  const s=await api("mp_state");S.room=s.room;S.waits=s.waits||[];
  if(s.notice)toast(s.notice,s.level);(s.wait_events||[]).forEach(e=>toast(e.text,e.level));
  const waitsBox=h("div",{id:"waits"});m.append(waitsBox);drawWaits(waitsBox);
@@ -193,7 +184,6 @@ async function viewTogether(m){
    h("h3",{},whyInline("Join a friend","Ask the host for their code. Codes expire in 15 minutes and can be revoked. They travel encrypted only if the server uses TLS, which is required for internet play.")),
    h("div",{class:"row"},code,h("button",{class:"btn good",onclick:async()=>{const r=await act(()=>api("mp_join",{id:sel.value,invite_code:code.value}));if(r){S.room=r.room;go();poll()}}},"Join"))));
  }
- if(st.online){const bb=h("div",{id:"browse"});m.append(bb);drawBrowse(bb)}
 }
 async function drawBrowse(box){
  const d=await api("mp_browse").catch(()=>null);if(!d)return;
@@ -211,12 +201,45 @@ function drawWaits(box){const w=S.waits||[];if(!w.length){box.replaceChildren();
  box.replaceChildren(h("div",{class:"panel"},h("h3",{},"You are in line for"),...w.map(x=>h("div",{class:"row"},h("b",{},x.game),
   x.ready?h("span",{class:"badge good"},"your spot is ready"):x.pending?h("span",{class:"badge"},"waiting for the host to approve"):h("span",{class:"badge"},"number "+(x.position||"?")+" in line"),
   x.ready?h("button",{class:"btn primary",onclick:async()=>{
-     const cur=(S.room&&S.room.running)||S.running;const closeGame=cur?confirm("Close "+cur.title+" first? Save your game, then press OK; the emulator is asked to close normally (it writes its saves like when you click X). Cancel keeps it running."):false;
+     const cur=(S.room&&S.room.running)||S.running;const closeGame=cur?await ask("Close "+cur.title+" first? Save your game, then press OK; the emulator is asked to close normally (it writes its saves like when you click X). Cancel keeps it running."):false;
      const r=await act(()=>api("mp_switch",{session_id:x.session_id,close_game:closeGame,auto_join:true}));if(r){S.room=r.room;S.waits=r.waits;
       if(r.joined_match)toast("Joined "+r.joined_match.launched+(r.joined_match.relay?" through the relay":""));else if(r.join_note)toast(r.join_note);go();poll()}}},"It's my turn: switch"):null,
   h("button",{class:"btn",onclick:async()=>{const r=await act(()=>api("mp_cancel_wait",{session_id:x.session_id}));if(r){S.waits=r.waits;go()}}},"Leave line"))),
   h("div",{class:"row",style:"margin-top:8px"},h("button",{class:"btn",onclick:()=>{const t=$("#warmup");if(t)warmupTrack(t)}},"Drive the warm-up track while you wait"),h("span",{class:"small muted"},"or keep playing anything in your library; your place in line is kept.")),
   h("div",{id:"warmup"})));
+}
+
+function fmtRate(k){return k==null?"–":k>=1000?(k/1000).toFixed(1)+" Mbps":Math.round(k)+" kbps"}
+function fmtMs(v){return v==null?"–":Math.round(v)+" ms"}
+function statsTable(rm){
+ const st=rm.stats||{people:{},average:{}};const rows=rm.members.map(p=>{const x=st.people[p.name]||{};return h("tr",{},h("td",{},p.name+(p.me?" (you)":"")),h("td",{},fmtMs(x.ping_ms)),h("td",{},fmtRate(x.rx_kbps)),h("td",{},fmtRate(x.tx_kbps)),h("td",{},x.updates_per_s==null?"–":x.updates_per_s))});
+ const a=st.average||{};
+ return h("div",{style:"margin:10px 0"},h("h3",{},whyInline("Connection","Ping is the round trip from each player to the server, measured by their own app. Download and upload are the match traffic that player's app is carrying right now (zero until the game starts). Updates per second is how often match data arrives, close to the frame rate when a game is running. Only these numbers are shared; nothing about anyone's computer or location.")),
+  h("table",{},h("thead",{},h("tr",{},h("th",{},"Player"),h("th",{},"Ping"),h("th",{},"Download"),h("th",{},"Upload"),h("th",{title:"How often match data arrives; about the frame rate during a game"},"Updates/s"))),
+   h("tbody",{},...rows,h("tr",{class:"avg"},h("td",{},h("b",{},"Average")),h("td",{},h("b",{},fmtMs(a.ping_ms))),h("td",{},h("b",{},fmtRate(a.rx_kbps))),h("td",{},h("b",{},fmtRate(a.tx_kbps))),h("td",{},h("b",{},a.updates_per_s==null?"–":a.updates_per_s))))));
+}
+function startBox(rm,host,box){
+ const st=rm.start;const L=rm.launch||{};
+ const body=h("div",{class:"panel",style:"margin:10px 0"});
+ if(host){
+  const games=S.allGames||[];
+  const sel=h("select",{"aria-label":"Game for this room"},...games.map(g=>h("option",{value:g.id,selected:g.id===rm.game_id},g.title+" ("+consoleName(g.console)+")")));
+  body.append(h("h3",{},"Game and start"),
+   h("div",{class:"row"},sel,h("button",{class:"btn",title:"Everyone has to have the new game too",onclick:async()=>{const x=await act(()=>api("mp_game",{id:sel.value}),"Game changed. Guests are told.");if(x){S.room=x.room;drawRoom(box)}}},"Change game")),
+   h("p",{class:"small muted"},"Pressing Start asks everyone in the room to open "+rm.game+" and connect. Nothing opens on a guest's computer until that guest says yes."),
+   h("div",{class:"row"},h("button",{class:"btn good",disabled:rm.members.length<2||!L.ready&&!!L.reason&&rm.state==="waiting"&&false,onclick:async()=>{
+     if(!await ask("Start "+rm.game+" for everyone in this room? Each person will be asked to agree, and it opens on your computer now.","Start"))return;
+     const x=await act(()=>api("mp_start",{consent:true}));if(!x)return;S.room=x.room;drawRoom(box);
+     if(L.engine!=="dolphin"){const r=await act(()=>api("mp_launch",{relay:true,port:L.default_port}));if(r){toast("Opened "+r.launched+". Waiting for the others.")}}else toast("Open Dolphin below to host.")}},"Start for everyone")),
+   st?h("div",{class:"small",style:"margin-top:8px"},"Agreed so far: "+st.consented.join(", ")+(st.waiting_on.length?". Still deciding: "+st.waiting_on.join(", ")+".":". Everyone agreed.")):null);
+ }else if(st&&st.ask_me){
+  body.append(h("h3",{},"The host wants to start "+st.title),
+   st.have_game?h("p",{},"Say yes and Legacy Player opens "+st.title+" on this computer and connects you to the room. Say no and nothing happens."):h("p",{class:"bad"},"You do not have this game in your library, so you cannot start it. Add it to your games folder (same game and region as the host), then press Rescan in Library."),
+   h("div",{class:"row"},st.have_game?h("button",{class:"btn good",onclick:async()=>{const x=await act(()=>api("mp_consent",{consent:true,start_id:st.id}),"You agreed. Opening when the host is ready.");if(x){S.room=x.room;drawRoom(box)}}},"Yes, open it and connect"):null,
+    h("button",{class:"btn",onclick:()=>{S.dismissedStart=st.id;drawRoom(box)}},"Not now")));
+ }else if(st&&st.mine){body.append(h("p",{class:"good"},"You agreed to start "+st.title+". It opens and connects as soon as the host is ready."))}
+ else body.append(h("p",{class:"small muted"},"When the host presses Start for everyone you will be asked to agree. Nothing opens on this computer before that."));
+ return body;
 }
 function drawRoom(box){const r=S.room;if(!r){box.replaceChildren();return}
  const rm=r;const host=rm.role==="host";
@@ -241,7 +264,7 @@ function drawRoom(box){const r=S.room;if(!r){box.replaceChildren();return}
   host&&rm.pending.length?h("div",{style:"margin:12px 0"},h("h3",{},"Waiting to join"),...rm.pending.map(n=>h("div",{class:"row"},h("b",{},n),
     h("button",{class:"btn good",onclick:async()=>{const x=await act(()=>api("mp_decide",{target:n,approve:true}));if(x){S.room=x.room;drawRoom(box)}}},"Let in"),
     h("button",{class:"btn bad",onclick:async()=>{const x=await act(()=>api("mp_decide",{target:n,approve:false}));if(x){S.room=x.room;drawRoom(box)}}},"Decline")))):null,
-  h("h3",{},"In this room"),members,
+  h("h3",{},"In this room"),members,statsTable(rm),startBox(rm,host,box),
   h("div",{class:"row",style:"margin-top:12px"},
    host?h("button",{class:"btn",title:"Checks that everyone has the same game and region",onclick:async()=>{const x=await act(()=>api("mp_lock"),"Everyone has a matching game");if(x){S.room=x.room;drawRoom(box)}}},"Check everyone matches"):null,
    h("button",{class:"btn primary",onclick:async()=>{const x=await act(()=>api("mp_ready"));if(x){S.room=x.room;drawRoom(box)}}},"I'm ready"),
@@ -267,8 +290,8 @@ function launchBox(rm,host){
  const label=dolphin?(host?"Open Dolphin (host)":"Open Dolphin"):(host?"Launch match (host)":"Join match");
  const go=h("button",{class:"btn good",disabled:!L.ready,title:L.reason||"",onclick:async()=>{
    if(dolphin){if(!L.direct_allowed){toast("Dolphin NetPlay shares addresses between players. Allow direct connections in Settings > Privacy first (best over a VPN).","warn");return}
-     if(!confirm("Dolphin NetPlay connects players to each other, so the others will learn this computer's address. Continue?"))return}
-   const body=host?(dolphin?{mode:mode.value,address:addr.value.trim(),port:+port.value,expose_address:true}:{address:addr.value.trim(),port:+port.value,relay:relay.checked,expose_address:!relay.checked&&confirm("Direct connection: every guest will learn this computer's address ("+addr.value.trim()+"). Continue?")}):{expose_address:dolphin||(L.endpoint_kind==="direct"&&confirm("The host chose a direct connection: you and the host will learn each other's address. Continue?"))};
+     if(!await ask("Dolphin NetPlay connects players to each other, so the others will learn this computer's address. Continue?"))return}
+   const body=host?(dolphin?{mode:mode.value,address:addr.value.trim(),port:+port.value,expose_address:true}:{address:addr.value.trim(),port:+port.value,relay:relay.checked,expose_address:!relay.checked&&await ask("Direct connection: every guest will learn this computer's address ("+addr.value.trim()+"). Continue?")}):{expose_address:dolphin||(L.endpoint_kind==="direct"&&await ask("The host chose a direct connection: you and the host will learn each other's address. Continue?"))};
    if(!host&&!dolphin&&L.endpoint_kind==="direct"&&!body.expose_address)return;
    if(host&&!dolphin&&!relay.checked&&!body.expose_address)return;
    const r=await act(()=>api("mp_launch",body));if(!r)return;
@@ -281,12 +304,65 @@ function launchBox(rm,host){
   h("div",{class:"row",style:"margin-top:6px"},go,L.ready?null:h("span",{class:"small muted"},L.reason||"")),
   steps,codeRow,
   host?h("p",{class:"small muted"},dolphin?"Dolphin's NetPlay is started inside Dolphin; these steps are filled in for you. Everyone needs the same Dolphin version and the same game file. The traversal server is Dolphin's own, so game traffic is not run through Legacy Player.":"Same home network: use the address above. Over the internet, use a VPN such as Tailscale or ZeroTier, or forward the port. The match traffic itself is not encrypted, so a VPN is the safer choice."):null)}
+function autoJoin(){const r=S.room;if(!r||r.role!=="guest"||!r.start||!r.start.mine||S.autoJoined===r.start.id)return;
+ const L=r.launch||{};if(!L.endpoint_kind||L.engine==="dolphin"||L.endpoint_kind==="direct"||!L.ready)return;
+ S.autoJoined=r.start.id;api("mp_launch",{expose_address:false}).then(x=>toast("Opened "+x.launched+" and connected.")).catch(e=>{S.autoJoined=null;toast(e.message,"err")})}
 let pollTimer=null;
 function poll(){clearInterval(pollTimer);pollTimer=setInterval(async()=>{if(!S.room&&!(S.waits&&S.waits.length)&&S.tab!=="together"){return}
  const s=await api("mp_state").catch(()=>null);if(!s)return;
  if(s.notice){toast(s.notice,s.level||"warn");S.room=null;renderNav();if(S.tab==="together")go();return}
  const had=!!S.room;S.room=s.room;S.waits=s.waits||[];(s.room?s.room.new_events:(s.wait_events||[])).forEach(e=>toast(e.text,e.level));
- renderNav();const box=$("#room");if(box)drawRoom(box);const wb=$("#waits");if(wb)drawWaits(wb);if(had&&!S.room&&S.tab==="together")go()},2000)}
+ renderNav();autoJoin();const box=$("#room");const ae=document.activeElement;if(box&&!(ae&&box.contains(ae)&&/SELECT|INPUT/.test(ae.tagName)))drawRoom(box);const wb=$("#waits");if(wb)drawWaits(wb);if(had&&!S.room&&S.tab==="together")go()},2000)}
+
+
+/* ---------- Servers ---------- */
+function copyText(t){if(navigator.clipboard)navigator.clipboard.writeText(t);toast("Copied")}
+async function viewServers(m){
+ const st=await pingServer();const cfg=await api("settings");S.settings=cfg.values;const V=cfg.values;
+ m.append(h("h2",{},"Servers"),
+  h("div",{class:"why"},"A server keeps rooms and invite codes. Run your own here and give friends its short server code, or connect to a friend's server with theirs. Picking a game and playing happens in Play Together."));
+ // 1. your server
+ const share=h("input",{type:"checkbox",id:"srvshare"});
+ share.checked=!!V.server_tls&&V.server_host==="127.0.0.1";
+ const srvAct=async action=>{const r=await act(()=>api("server_control",{action,share:share.checked}));if(r){toast(r.message);go()}};
+ const num=(key,min,max)=>h("input",{type:"number",value:V[key],min,max,style:"width:90px","aria-label":key});
+ const players=num("server_max_players",2,8),rooms=num("server_max_rooms",1,10000),line=num("server_max_waiting",0,500);
+ const pub=h("input",{type:"text",value:V.server_public_address||"",placeholder:"blank = this computer's home-network address",style:"width:min(280px,100%)","aria-label":"Address friends use"});
+ const saveLimits=async restart=>{
+  for(const[k,el]of[["server_max_players",players],["server_max_rooms",rooms],["server_max_waiting",line]]){const r=await act(()=>api("settings",{key:k,value:+el.value}));if(!r)return;S.settings=r.values}
+  const r=await act(()=>api("settings",{key:"server_public_address",value:pub.value.trim()}));if(!r)return;
+  toast("Saved");if(restart&&st.online&&!(await act(()=>api("server_control",{action:"restart",share:share.checked}))))return;go()};
+ m.append(h("div",{class:"card",style:"margin-top:14px"},
+  h("div",{class:"row"},h("h3",{class:"grow"},"Your server"),st.online?h("b",{class:"good"},"running"):h("b",{class:"bad"},"stopped")),
+  h("p",{class:"small muted"},whyInline("What is it?","A small program that keeps rooms and invite codes. It keeps your rooms when you stop it and brings them back when you start it again. It runs on this computer while Legacy Player is open."),st.message?" "+st.message:""),
+  h("div",{class:"row"},h("button",{class:"btn primary",onclick:()=>srvAct("start")},"Start"),h("button",{class:"btn",onclick:()=>srvAct("restart")},"Restart"),h("button",{class:"btn",onclick:()=>srvAct("stop")},"Stop"),
+   h("label",{class:"small"},share," Let friends connect (encrypted with this app's own certificate)")),
+  h("h3",{style:"margin-top:16px"},whyInline("Limits","Players per room is the most any room may hold. Rooms is how many your server will keep. Waiting line is how many people can queue for a full room (0 turns lines off). They apply the next time the server starts.")),
+  h("div",{class:"row"},h("label",{class:"small"},"Players per room ",players),h("label",{class:"small"},"Rooms ",rooms),h("label",{class:"small"},"Waiting line ",line)),
+  h("div",{class:"row",style:"margin-top:8px"},h("label",{class:"small"},"Address friends use ",pub)),
+  h("div",{class:"row",style:"margin-top:10px"},h("button",{class:"btn primary",onclick:()=>saveLimits(true)},st.online?"Save and restart":"Save"),st.online?h("button",{class:"btn",onclick:()=>saveLimits(false)},"Save for next start"):null)));
+ // 2. invite friends
+ const codeBox=h("div",{});
+ const showCode=async()=>{const c=await act(()=>api("server_code",{}));if(!c)return;
+  codeBox.replaceChildren(c.code?h("div",{},h("div",{class:"row"},h("span",{class:"code",style:"font-size:1.4em"},c.code),h("button",{class:"btn",onclick:()=>copyText(c.code)},"Copy")),
+    h("p",{class:"small muted"},"Friends paste this into Connect to a server. It carries "+c.address+":"+c.port+" and the first part of your certificate fingerprint."),h("p",{class:"small muted"},c.reach),
+    h("details",{},h("summary",{class:"small"},"Longer details"),h("p",{class:"small"},"Full fingerprint: ",h("span",{class:"code"},c.fingerprint||"-"))))
+   :h("p",{class:"warn small"},c.error+" Share these instead: address "+c.address+", port "+c.port+", fingerprint "+(c.fingerprint||"-")+"."))};
+ m.append(h("div",{class:"card",style:"margin-top:14px"},h("h3",{},"Invite friends to your server"),
+  h("p",{class:"small muted"},"Start the server with Let friends connect on, then make your server code. Room invite codes (made in Play Together) are separate: the server code gets a friend to your server, the invite code lets them into one room."),
+  h("div",{class:"row"},h("button",{class:"btn primary",onclick:showCode},"Make my server code")),codeBox));
+ // 3. connect
+ const code=h("input",{type:"text",placeholder:"LP-XXXX-XXXX-XXXX-XXXX-XX",style:"width:min(300px,100%)","aria-label":"Server code"});
+ const mine=V.server_host==="127.0.0.1";
+ m.append(h("div",{class:"card",style:"margin-top:14px"},h("h3",{},"Connect to a server"),
+  h("p",{class:"small"},"Connected to: ",h("b",{},mine?"your own server (this computer)":V.server_host+":"+V.server_port),mine?"":h("span",{class:"small muted"}," (encrypted, certificate checked)")),
+  h("div",{class:"row"},code,h("button",{class:"btn good",onclick:async()=>{const r=await act(()=>api("server_connect",{code:code.value}));if(!r)return;toast(r.connected?"Connected to "+r.host:r.message,r.connected?"":"warn");go()}},"Connect"),
+   mine?null:h("button",{class:"btn",onclick:async()=>{await act(()=>api("server_connect",{local:true}),"Back to your own server");go()}},"Use my own server"))));
+ // 4. rooms on the connected server
+ const s2=await api("mp_state");S.room=s2.room;S.waits=s2.waits||[];
+ const waitsBox=h("div",{id:"waits"});m.append(waitsBox);drawWaits(waitsBox);
+ if(st.online){const bb=h("div",{id:"browse"});m.append(bb);drawBrowse(bb)}
+}
 
 /* ---------- Setup ---------- */
 async function viewSetup(m){
@@ -311,7 +387,7 @@ async function viewSetup(m){
     st.dolphin.installed?null:h("a",{href:st.dolphin.download_page,target:"_blank",rel:"noopener noreferrer"},"Open the Dolphin download page")),
    h("div",{class:"card",style:"margin-top:12px"},h("h3",{},"Install"),
     h("div",{class:"row"},
-     h("button",{class:"btn primary",disabled:running||nothingToDo||cannot,onclick:async()=>{if(!confirm("Download from buildbot.libretro.com into "+st.install_folder+"?"))return;if(await act(()=>api("setup_install",{what:"all",confirm:true}))){draw();poll()}}},
+     h("button",{class:"btn primary",disabled:running||nothingToDo||cannot,onclick:async()=>{if(!await ask("Download from buildbot.libretro.com into "+st.install_folder+"?"))return;if(await act(()=>api("setup_install",{what:"all",confirm:true}))){draw();poll()}}},
       st.retroarch.installed?"Install missing cores":"Install RetroArch and cores"),
      h("button",{class:"btn",onclick:draw},"Check again")),
     h("p",{class:"small muted"},"Downloads come only from "+st.source+". Installs go into "+st.install_folder+" and need no admin rights. Nothing is run afterwards."),
@@ -348,11 +424,12 @@ async function viewControllers(m){
  m.append(h("h2",{},"Controllers"),
   h("div",{class:"why"},"Plug in or turn on any gamepad, then press a button on it. It appears below. Use Identify to make it rumble (so you know which is which), assign it to a player, and press Map to teach Legacy Player what each of its buttons is. Nothing is sent anywhere; mapping is saved on this computer."),
   h("h3",{},"Your controllers"),padsBox,wizBox,
+  h("details",{class:"card",style:"margin-top:12px"},h("summary",{style:"cursor:pointer"},"Console layout (advanced): which pad control is each console button"),
   h("h3",{},whyInline("Console layout","A console has its own buttons. This table says which standard control on your pad is each console button. Your pad's own mapping (above) is applied first.")),
   h("div",{class:"row"},sel,h("span",{class:"badge"},L.customized?"customized":"default")),L.note?h("p",{class:"small muted"},L.note):"",
   h("div",{class:"card",style:"margin-top:12px"},h("table",{},h("thead",{},h("tr",{},h("th",{},"Console button"),h("th",{},"Standard control"))),h("tbody",{},...rows)),
    h("div",{class:"row",style:"margin-top:12px"},h("button",{class:"btn primary",onclick:async()=>{if(Object.keys(edits).length){const cur={};L.buttons.forEach(b=>cur[b.name]=b.index);const r=await act(()=>api("controllers",{console:S.ctrl,buttons:{...cur,...edits}}),"Saved");if(r)go()}}},"Save layout"),
-    h("button",{class:"btn",onclick:async()=>{await act(()=>api("controllers",{console:S.ctrl,buttons:{}}),"Reset to default");go()}},"Reset"))),
+    h("button",{class:"btn",onclick:async()=>{await act(()=>api("controllers",{console:S.ctrl,buttons:{}}),"Reset to default");go()}},"Reset")))),
   h("h3",{},"Live test"),live,
   h("p",{class:"small muted"},"Emulator note: RetroArch gets your Xbox-style (standard layout) pad bindings automatically. Other emulators keep their own controller settings; for those, set the pad inside the emulator once."));
  let sig="";
@@ -447,7 +524,7 @@ async function viewEngines(m){
    h("div",{class:"card"},h("div",{class:"row"},h("h3",{class:"grow"},"Find what is already here"),
      h("button",{class:"btn primary",onclick:async()=>{toast("Scanning the usual program folders…");const r=await act(()=>api("engines_scan",{confirm:true}));if(r){const n=Object.keys(r.new||{}).length;toast(n?"Found "+n+" new engine(s)":"Scan finished; nothing new");draw()}}},"Scan this computer"),
      h("button",{class:"btn",disabled:running,onclick:async()=>{if(!d.allow_internet){toast("Turn on 'Allow internet downloads' in Settings first","warn");return}
-       if(!confirm("Fetch every missing engine that has an official GitHub release, one after another, into "+d.install_folder+"?"))return;
+       if(!await ask("Fetch every missing engine that has an official GitHub release, one after another, into "+d.install_folder+"?"))return;
        const r=await act(()=>api("engines_install_all",{confirm:true}));if(r){toast("Fetching: "+r.queued.join(", "));draw();poll()}}},"Get all missing engines")),
     h("p",{class:"small muted"},"Looks in Program Files, your user folders, your games and emulator folders. Read-only, stays on this computer."+(d.last_scan?" Last scan: "+new Date(d.last_scan*1000).toLocaleString():""))),
    h("div",{class:"card",style:"margin-top:12px"},h("table",{},h("thead",{},h("tr",{},h("th",{},"Engine"),h("th",{},"Consoles"),h("th",{},"Status"),h("th",{},"Official source"))),h("tbody",{},...d.engines.map(e=>h("tr",{},
@@ -456,7 +533,7 @@ async function viewEngines(m){
      h("td",{},e.path?h("span",{class:"good"},"✓ "+e.path):h("span",{class:"muted"},"not found")),
      h("td",{},e.can_download?h("button",{class:"btn",disabled:running,title:"github.com/"+e.official.repo,onclick:async()=>{
         if(!d.allow_internet){toast("Turn on 'Allow internet downloads' in Settings first","warn");return}
-        if(!confirm("Download the latest "+e.name+" from github.com/"+e.official.repo+" into "+d.install_folder+"? Only that site is contacted.")) return;
+        if(!await ask("Download the latest "+e.name+" from github.com/"+e.official.repo+" into "+d.install_folder+"? Only that site is contacted.")) return;
         if(await act(()=>api("engines_install",{engine:e.id,confirm:true}))){draw();poll()}}},e.path?"Update from GitHub":"Get from GitHub")
       :h("a",{href:e.official.url,target:"_blank",rel:"noopener noreferrer",title:e.official.note||""},"Official page"))))))),
    job.state!=="idle"?h("div",{class:"card",style:"margin-top:12px"},h("div",{class:"small"},(running?"Working: ":job.state==="done"?"Done. ":"Stopped. ")+job.step+(running?" ("+job.percent+"%)":"")),

@@ -41,7 +41,7 @@ class LobbyClient:
             sock = context.wrap_socket(sock, server_hostname=self.host)
             if self.fingerprint:
                 seen = hashlib.sha256(sock.getpeercert(binary_form=True)).hexdigest()
-                if not seen.startswith(self.fingerprint) or len(self.fingerprint) < 16:
+                if not seen.startswith(self.fingerprint) or len(self.fingerprint) < 10:
                     sock.close()
                     raise LobbyClientError(
                         "The server's certificate does not match the fingerprint you entered. "
@@ -84,7 +84,7 @@ class LobbyClient:
                 sock = context.wrap_socket(sock, server_hostname=self.host)
                 if self.fingerprint:
                     seen = hashlib.sha256(sock.getpeercert(binary_form=True)).hexdigest()
-                    if not seen.startswith(self.fingerprint) or len(self.fingerprint) < 16:
+                    if not seen.startswith(self.fingerprint) or len(self.fingerprint) < 10:
                         sock.close()
                         raise LobbyClientError(
                             "The server's certificate does not match the fingerprint you entered. "
