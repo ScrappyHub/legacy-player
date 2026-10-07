@@ -245,6 +245,43 @@ body.busy .brand .martin,.hop{animation:hop .55s ease-in-out infinite}
 textarea{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:8px 10px;font:inherit;resize:vertical}
 .tipwrap .btn{display:inline-flex;align-items:center;white-space:nowrap}
 .dd button{white-space:nowrap}
+
+/* ---------- batch 5: a livelier doctor's office ---------- */
+.docspot{cursor:pointer}
+.docspot.working .px.doctor{animation:shake .35s ease-in-out infinite}
+.fxlayer{position:absolute;inset:0;pointer-events:none;z-index:6;overflow:hidden}
+.fxlayer .fx{position:absolute;bottom:28%;animation:fxup 1.7s ease-out forwards;filter:drop-shadow(0 2px 3px #0007)}
+@keyframes fxup{0%{transform:translateY(0) rotate(0) scale(.6);opacity:0}15%{opacity:1}100%{transform:translateY(-190px) rotate(300deg) scale(1.2);opacity:0}}
+.pressstart{position:absolute;left:14px;bottom:12px;z-index:7;background:#000;color:#ffd23f;border:0;font:800 12px ui-monospace,Consolas,monospace;letter-spacing:2px;padding:9px 12px;cursor:pointer;box-shadow:0 0 0 3px #ffd23f,0 0 0 6px #000;animation:blinkc 1s steps(1) infinite}
+.pressstart:hover{background:#ffd23f;color:#000;animation:none}
+.office.visiting .pressstart{display:none}
+.docsay.talk::after{content:"";display:inline-block;width:8px;height:12px;background:#2b3157;margin-left:3px;animation:blinkc .5s steps(1) infinite}
+.docsay .more{display:inline-block;animation:blinkc .8s steps(1) infinite}
+.docsay{min-height:34px;max-width:86%}
+.rx{position:absolute;right:14px;bottom:128px;z-index:8;width:170px;background:#fffbe6;color:#3a2a14;padding:12px 14px;font:700 13px ui-monospace,Consolas,monospace;transform:rotate(3deg);box-shadow:4px 6px 0 #0006;animation:rxin .5s cubic-bezier(.2,1.4,.4,1) both}
+.rx .rxh{border-bottom:2px dashed #3a2a14;padding-bottom:4px;margin-bottom:6px;color:#c0392b}.rx .rxs{text-align:right;margin-top:6px;font-style:italic}
+@keyframes rxin{from{transform:rotate(-12deg) scale(.2);opacity:0}}
+.sect{margin:26px 0 10px;font-size:1.15rem;letter-spacing:.3px}
+.cases{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:16px}
+.case{position:relative;border-radius:18px;padding:18px;color:#fff;overflow:hidden;background:linear-gradient(135deg,var(--c1),var(--c2));box-shadow:0 12px 30px #0007;border:2px solid #fff3;transition:transform .2s}
+.case:nth-child(odd){transform:rotate(-.7deg)}.case:nth-child(even){transform:rotate(.7deg)}.case:hover{transform:rotate(0) translateY(-4px)}
+.case::after,.ecard::after{content:"";position:absolute;inset:0;background:linear-gradient(115deg,transparent 35%,#fff4 48%,transparent 62%);transform:translateX(-120%);animation:shine 4.5s ease-in-out infinite;pointer-events:none}
+@keyframes shine{60%,100%{transform:translateX(120%)}}
+.case .caseicon{float:right;margin-left:10px;animation:bob 2.4s ease-in-out infinite}
+.case .ct{font-weight:800;font-size:1.05rem;margin-bottom:4px}.case p{margin:4px 0 12px;color:#fffe;font-size:.9rem}
+.case .btn{background:#0003;border-color:#fff5;color:#fff}.case .btn.primary{background:#fff;color:#1c1f3a;border:0;font-weight:700}
+.stamp{position:absolute;right:-18px;top:14px;transform:rotate(18deg);background:#ff4d6d;color:#fff;font:800 9px ui-monospace,monospace;letter-spacing:1px;padding:3px 24px;box-shadow:0 2px 0 #0005}
+.ecards{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:16px}
+.ecard{position:relative;border-radius:18px;padding:16px;color:#fff;overflow:hidden;background:linear-gradient(150deg,var(--c1),var(--c2));box-shadow:0 12px 30px #0007;border:3px solid #ffffff55;outline:3px solid #0004;outline-offset:-8px;transition:transform .2s}
+.ecard:hover{transform:translateY(-6px) rotate(-1deg)}
+.ecard .eicon{background:#0003;border-radius:12px;padding:8px;box-sizing:content-box}
+.ecard .en{font-weight:800;font-size:1.1rem;margin-top:8px;text-shadow:0 2px 0 #0004}
+.ecard .chip{background:#0003;border-color:#fff4;color:#fff;font-size:.74rem;padding:3px 9px}
+.ecard .epath{opacity:.7;margin-top:8px;word-break:break-all;font-size:.68rem}
+.ecard .healthy{position:absolute;right:12px;top:12px;background:#3be0a8;color:#04251a;font:800 9px ui-monospace,monospace;letter-spacing:1px;padding:3px 8px;border-radius:99px}
+.ecard.empty{background:var(--solid);border:2px dashed var(--line);color:var(--text);box-shadow:none;outline:0;text-align:center;max-width:340px}
+.ecard.empty::after{display:none}
+.case .caseicon{margin-top:26px}
 </style>
 </head>
 <body>
@@ -275,7 +312,7 @@ const $=(s,r=document)=>r.querySelector(s);
 function h(tag,attrs,...kids){const e=document.createElement(tag);for(const[k,v]of Object.entries(attrs||{})){if(k==="class")e.className=v;else if(k.startsWith("on"))e.addEventListener(k.slice(2),v);else if(v===true)e.setAttribute(k,"");else if(v!==false&&v!=null)e.setAttribute(k,v)}
  for(const c of kids.flat()){if(c==null||c===false)continue;e.append(c.nodeType?c:document.createTextNode(String(c)))}return e}
 /* A thin shimmer bar at the top and a hopping Martin show the app is working. Quiet background polls do not trigger it. */
-let pending=0,busyT=null;const QUIET=new Set(["ping","mp_state","status","scan_pc","server_status","pads","bye","network_last"]);
+let pending=0,busyT=null;const QUIET=new Set(["ping","mp_state","status","scan_pc","server_status","pads","bye","network_last","setup_status"]);
 async function api(name,body={}){const loud=!QUIET.has(name);if(loud){pending++;if(pending===1)busyT=setTimeout(()=>document.body.classList.add("busy"),200)}
  try{const r=await fetch("/api/"+name,{method:"POST",headers:{"Content-Type":"application/json","X-LP-Token":TOKEN},body:JSON.stringify(body)});
   const j=await r.json();if(!r.ok)throw new Error(j.error||"Request failed");return j}
@@ -459,14 +496,14 @@ function doctorRows(mood){const r=DOC_BASE.slice();
  return r}
 async function scanEverything(refresh){
  if(!await ask("Scan everything? I will read your games folders again, make the save folders, and look through this computer for emulators and BIOS files. It reads names only, changes nothing, sends nothing and uses no internet.","Scan everything"))return;
- await act(()=>api("scan_everything"));await runScan(true);refresh()}
+ docWork(true,"scan");try{await act(()=>api("scan_everything"));await runScan(true)}finally{docWork(false)}refresh()}
 function doctorSay(dr){const cheers=["Let's play!","Ready, player one!","Game on!","So many games!","Press start!","Pick something!"];
  return{happy:cheers[Math.floor(Date.now()/60000)%cheers.length],worried:"Almost there! A few things to sort.",sad:dr.games?"Let's find you an emulator!":"Show me your games!"}[dr.mood]}
 /* Home shows only the doctor's door; the doctor himself lives in his office on the Setup page */
 function doctorDoor(dr){const n=dr.issues.filter(i=>!i.dismissed).length;
  return h("div",{class:"doc door"},h("div",{class:"row",style:"align-items:center;flex-wrap:nowrap;gap:14px"},pixels(doctorRows(dr.mood),104,"doctor "+dr.mood),
   h("div",{style:"flex:1;min-width:0"},h("div",{class:"retro"},h("div",{class:"hd"},doctorSay(dr)),h("div",{class:n?"w":""},"Check-up: "+(n?n+" thing"+(n>1?"s":"")+" to look at":"all clear")),h("div",{},"PC scanned: "+ago(dr.last_scan))),
-   h("button",{class:"btn primary",style:"margin:10px 3px 0;width:calc(100% - 6px)",onclick:()=>nav("setup")},"Visit the doctor's office"))))}
+   h("button",{class:"btn primary",style:"margin:10px 3px 0;width:calc(100% - 6px)",onclick:()=>{S.autoVisit=true;nav("setup")}},"Visit the doctor's office"))))}
 function doctorCard(dr,opts){opts=opts||{};
  const box=h("div",{class:"doc"+(opts.office?" inoffice":"")});
  const refresh=async()=>{const x=await api("doctor");S.doc=x;draw(x)};
@@ -479,10 +516,10 @@ function doctorCard(dr,opts){opts=opts||{};
     L("PC scanned",ago(dr.last_scan),!dr.last_scan)),
     h("button",{class:"btn primary",style:"margin:10px 3px 0;width:calc(100% - 6px)",onclick:()=>scanEverything(refresh)},"Scan everything"));
   box.replaceChildren(h("div",{class:"row",style:"align-items:center;flex-wrap:nowrap;gap:14px"},opts.office?null:pixels(doctorRows(dr.mood),104,"doctor "+dr.mood),report),
-   ...active.map(i=>h("div",{class:"worry"},h("span",{class:"grow"},i.text),
+   ...(opts.noWorries?[]:active).map(i=>h("div",{class:"worry"},h("span",{class:"grow"},i.text),
     i.kind==="core"?h("button",{class:"btn",onclick:()=>{const el=$("#supplies");if(el)el.scrollIntoView({behavior:"smooth"})}},"Fix"):(i.kind==="emulator"||i.kind==="bios")?h("button",{class:"btn",onclick:()=>nav("engines")},"Fix"):null,
     h("button",{class:"btn",title:"I do not want to install that. Stop worrying about it.",onclick:async()=>{await act(()=>api("doctor_dismiss",{key:i.key}));refresh()}},"I don't need it"))),
-   quiet.length?h("div",{class:"small muted",style:"margin-top:6px"},quiet.length+" worr"+(quiet.length>1?"ies":"y")+" set aside. ",h("a",{href:"#",onclick:async e=>{e.preventDefault();for(const q of quiet)await api("doctor_dismiss",{key:q.key,undo:true});refresh()}},"Bring back")):null);
+   quiet.length&&!opts.noWorries?h("div",{class:"small muted",style:"margin-top:6px"},quiet.length+" worr"+(quiet.length>1?"ies":"y")+" set aside. ",h("a",{href:"#",onclick:async e=>{e.preventDefault();for(const q of quiet)await api("doctor_dismiss",{key:q.key,undo:true});refresh()}},"Bring back")):null);
   if(opts.onDraw)opts.onDraw(dr)};
  draw(dr);return box}
 
@@ -643,7 +680,7 @@ function gamePicker(games){
 /* ---------- Library ---------- */
 async function viewLibrary(m){
  const d=S.lib=await api("library",{console:S.console,q:S.q,favorites:S.fav,sort:S.sort,collection:S.collection,hidden:S.showHidden});
- const st=S.settings||(S.settings=(await api("settings")).values);
+ const st=S.settings=(await api("settings")).values;
  document.documentElement.dataset.theme=st.theme;
  if(!d.roots.length){m.append(emptyState());return}
  const search=h("input",{type:"search",placeholder:"Search your games",value:S.q,"aria-label":"Search",oninput:e=>{S.q=e.target.value;clearTimeout(S.t);S.t=setTimeout(()=>refreshGrid(),180)}});
@@ -1411,7 +1448,9 @@ function netTipModal(){closeModals();const ov=h("div",{class:"modal tipmodal",on
 function coverBtn(){const off=!allowNet();let wrap;
  const b=h("button",{class:"btn",title:off?"Needs 'Allow internet downloads'":"Fetch box art for your games (asks first)","aria-describedby":off?"covtip":null,onclick:()=>{if(!allowNet()){wrap.classList.add("show");clearTimeout(wrap._t);wrap._t=setTimeout(()=>wrap.classList.remove("show"),8000);return}fetchCovers()}},"Get cover art",off?pixels(AVATARS.star.rows,14,"twinkle"):null);
  const tip=starBubble();tip.id="covtip";
- wrap=h("span",{class:"tipwrap"+(off?" off":"")},b,off?tip:null);return wrap}
+ wrap=h("span",{class:"tipwrap"+(off?" off":"")},b,off?tip:null);
+ if(off&&!S.starShown){S.starShown=true;setTimeout(()=>{wrap.classList.add("show");setTimeout(()=>wrap.classList.remove("show"),7000)},600)}
+ return wrap}
 async function fetchCovers(){
  const s=await api("settings");S.settings=s.values;if(!allowNet()){netTipModal();return}
  if(!await ask("Get cover art? Legacy Player asks thumbnails.libretro.com (the picture library RetroArch uses) for each game's box art by its name. Only game names are sent. Pictures are kept on this computer and it runs in the background.","Get cover art"))return;
@@ -1479,22 +1518,97 @@ const DIPLOMA=["YYYYYYYYYYYYYY","YWWWWWWWWWWWWY","YWGGGGGGGGGGWY","YWWWWWWWWWWWW
 const WINDOW=["DDDDDDDDDDDDDDDD","DCCCCCCDCCCCCCCD","DCCCYYCDCCCCCCCD","DCCYYYYDCCCWWCCD","DCCCYYCDCCWWWWCD","DCCCCCCDCCCCCCCD","DDDDDDDDDDDDDDDD","DCCCCCCDCCCCCCCD","DCCCCCCDCCCCCCCD","DCNNCCCDCCCCCNND","DNNNNCCDCCCNNNND","DNNNNNNDNNNNNNND","DDDDDDDDDDDDDDDD","..LLLLLLLLLLLL.."];
 const CROSS=["...RRR...","...RRR...","...RRR...","RRRRRRRRR","RRRRRRRRR","RRRRRRRRR","...RRR...","...RRR...","...RRR..."];
 const BOOKS=[".RR.BBB.YY.NNN.LL.RR.","RRR.BBB.YY.NNN.LL.RR","RRR.BBB.YY.NNN.LL.RR","RRR.BBB.YY.NNN.LL.RR","RRR.BBB.YY.NNN.LL.RR","KKKKKKKKKKKKKKKKKKKK"];
+const FX_ICONS=[["G","..GG.GG.","..GGGGG.","...GGG..","...GG...","..GG....",".GG.....","GG......","G......."],["G","..G..G..",".GGGGGG.","GGG..GGG",".G....G.",".G....G.","GGG..GGG",".GGGGGG.","..G..G.."],
+ ["Y","...YY...","..YY....",".YYYYY..","...YY...","..YY....",".YY.....","Y.......","........"],["R"].concat(AVATARS.heart.rows),["Y"].concat(AVATARS.star.rows),["C","..CC.CC.",".CCCCCCC",".CCCCCCC","..CCCCC.","...CCC..","....C...","........","........"]].map(a=>a.slice(1));
+const WORK_LINES={install:["Tightening your cores…","Percussive maintenance!","Have you tried turning it off and on again?","This will only pinch a little.","Hold still, little emulator!","Applying one (1) bandage to RetroArch.","Scrubbing in… 20 seconds, like always."],
+ scan:["Peeking behind the couch cushions…","Counting your ROMs… 1, 2, 3, lots!","Checking under the sofa for BIOS files.","Stethoscope on the hard drive: ba-dum, ba-dum.","Dusting off the cartridges…","Is that a Game Boy in my pocket? Oh, it's a stethoscope."]};
+let DOCW={on:false,t:null,fx:null,i:0};
+function docWork(on,kind){
+ const spot=$(".docspot"),say=$(".docsay"),fx=$(".fxlayer");
+ DOCW.on=on;DOCW.kind=on?kind:null;clearInterval(DOCW.t);clearInterval(DOCW.fx);
+ if(spot)spot.classList.toggle("working",on);
+ if(!on){const d=S.doc;if(say&&d&&!S.visit)say.textContent=doctorSay(d);return}
+ const lines=WORK_LINES[kind]||WORK_LINES.scan;DOCW.i=Math.floor(Math.random()*lines.length);
+ const talk=()=>{const s=$(".docsay");if(s&&!S.visit){s.textContent=lines[DOCW.i++%lines.length]}};talk();DOCW.t=setInterval(talk,2300);
+ DOCW.fx=setInterval(()=>{const f=$(".fxlayer");if(!f){clearInterval(DOCW.fx);return}
+  const ic=FX_ICONS[Math.floor(Math.random()*FX_ICONS.length)],e=pixels(ic,20+Math.random()*10,"fx");e.style.left=(8+Math.random()*84)+"%";f.append(e);setTimeout(()=>e.remove(),1800)},330)}
+function buildVisit(dr){const act=dr.issues.filter(i=>!i.dismissed),L=[],n=(x,w)=>x+" "+w+(x===1?"":"s");
+ L.push(["happy","Well hello there, player! Hop up on the table and let's see how you're doing."]);
+ if(dr.games){const top=dr.library.slice().sort((a,b)=>b.count-a.count).slice(0,3).map(c=>c.name+" ("+c.count+")");
+  L.push(["happy","Let me see... "+n(dr.games,"game")+" across "+n(dr.library.length,"console")+"! Mostly "+(top.length>1?top.slice(0,-1).join(", ")+" and "+top[top.length-1]:top[0])+". Nice collection!"])}
+ else L.push(["sad","Hmm, I don't see any games yet. Point me at your games folder in Library and I'll count them!"]);
+ const cards=dr.emulator_cards||[];
+ if(cards.length){const nm=cards.map(c=>c.name);L.push(["happy","My waiting room has "+n(cards.length,"emulator")+": "+(nm.length>1?nm.slice(0,-1).join(", ")+" and "+nm[nm.length-1]:nm[0])+". All awake and ready!"])}
+ else L.push(["sad","My waiting room is empty! We need an emulator. Open Engines and I'll help you find one."]);
+ L.push([dr.consoles_ready?"happy":"worried",dr.consoles_ready+" of "+dr.consoles_total+" consoles are ready to play. "+(dr.library.some(c=>!c.emulator)?"Still waiting on: "+dr.library.filter(c=>!c.emulator).map(c=>c.name).join(", ")+".":"Every console you own has a doctor on call!")]);
+ L.push([dr.saves_ready?"happy":"worried",dr.saves_ready?"Your save folders are in great shape. No lost progress on my watch!":"I haven't made your save folders yet. Press Scan everything and I'll set them up."]);
+ L.push(["happy",dr.bios_needed?"BIOS files: "+dr.bios_have+" of "+dr.bios_needed+" found.":"No BIOS files needed for what you have. Easy!"]);
+ L.push([dr.last_scan?"happy":"worried",dr.last_scan?"I last scanned your computer "+ago(dr.last_scan)+".":"I've never scanned your computer. Let's fix that with a Scan everything!"]);
+ if(act.length){L.push(["worried","Now, about "+(act.length===1?"that one thing":"those "+act.length+" things")+"..."]);act.slice(0,4).forEach(i=>L.push(["worried",i.text]));
+  L.push(["worried","Don't worry. Press Fix on the case files below and I'll get right on it, or tell me you don't need it."]);
+  L.push(["happy","Sort those out and you'll be healthy as can be. And then the best medicine is to stay home and play video games!"])}
+ else if(dr.games&&cards.length){L.push(["happy","Heart rate: steady. Saves: safe. Emulators: awake. You are healthy as can be!"]);L.push(["happy","My prescription: stay home and play video games! Doctor's orders!","rx"])}
+ else L.push(["happy","Get your games and an emulator in, and come back. I'll be here, polishing my stethoscope!"]);
+ return L}
+async function startVisit(dr){
+ if(S.visit)return;const spot=$(".docspot"),say=$(".docsay"),scene=$(".office");if(!say)return;S.visit=true;const rx=$(".rx");if(rx)rx.remove();
+ const lines=buildVisit(dr);let skip=false;
+ const paint=m=>{spot.replaceChildren(pixels(doctorRows(m),176,"doctor "+m))};
+ const next=()=>new Promise(res=>{const done=()=>{scene.removeEventListener("click",done);document.removeEventListener("keydown",key);res()};
+  const key=e=>{if(e.key==="Enter"||e.key===" "||e.key==="a"){e.preventDefault();done()}if(e.key==="Escape"){skip=true;done()}};
+  scene.addEventListener("click",done);document.addEventListener("keydown",key)});
+ scene.classList.add("visiting");
+ for(let k=0;k<lines.length&&!skip;k++){const[m,text,tag]=lines[k];paint(m);
+  say.classList.add("talk");say.textContent="";let i=0,quick=false;
+  const skipType=()=>{quick=true};scene.addEventListener("click",skipType,{once:true});
+  while(i<text.length&&!quick){say.textContent=text.slice(0,++i);await new Promise(r=>setTimeout(r,18))}say.textContent=text;
+  say.classList.remove("talk");scene.removeEventListener("click",skipType);
+  if(tag==="rx"){showRx()}
+  const more=h("span",{class:"more"},k<lines.length-1?" ▼":" ■");say.append(more);
+  if(k<lines.length-1)await next()}
+ S.visit=false;scene.classList.remove("visiting");paint(dr.mood);say.textContent=doctorSay(dr)}
+function showRx(){const scene=$(".office");if(!scene||$(".rx"))return;scene.append(h("div",{class:"rx"},h("div",{class:"rxh"},"℞ PRESCRIPTION"),h("div",{},"Stay home."),h("div",{},"Play video games."),h("div",{},"Repeat daily."),h("div",{class:"rxs"},"— Doc")))}
+const GRADS=[["#3b6bff","#7a5cff"],["#d9468f","#ff8a5c"],["#0aa57a","#2bd1b0"],["#7b4dff","#4fc3ff"],["#e8a21a","#ff6a3d"],["#2b8cff","#3be0a8"]];
+function caseCards(dr,refresh){const act=dr.issues.filter(i=>!i.dismissed),quiet=dr.issues.filter(i=>i.dismissed);
+ const ic={core:AVATARS.gem,emulator:AVATARS.controller,bios:AVATARS.ghost};
+ const fix=i=>i.kind==="core"?{t:"Install the core",fn:()=>{const el=$("#supplies");if(el)el.scrollIntoView({behavior:"smooth"});toast("Press “Install missing cores” in the supply cabinet","")}}:{t:i.kind==="bios"?"Find BIOS files":"Find an emulator",fn:()=>nav("engines")};
+ return h("div",{},act.length?h("div",{class:"cases"},...act.map((i,n)=>{const g=GRADS[n%GRADS.length],f=fix(i);
+   return h("div",{class:"case",style:`--c1:${g[0]};--c2:${g[1]}`},h("span",{class:"stamp"},"NEEDS A DOCTOR"),pixels((ic[i.kind]||AVATARS.gem).rows,44,"caseicon"),
+    h("div",{class:"ct"},i.kind==="core"?"Missing core":i.kind==="bios"?"Missing BIOS":"Missing emulator"),h("p",{},i.text),
+    h("div",{class:"row",style:"gap:8px"},h("button",{class:"btn primary",onclick:f.fn},"🔧 "+f.t),
+     h("button",{class:"btn",title:"I do not want to install that. Stop worrying about it.",onclick:async()=>{await act(()=>api("doctor_dismiss",{key:i.key}));refresh()}},"I don't need it")))})):null,
+  quiet.length?h("div",{class:"small muted",style:"margin-top:8px"},quiet.length+" worr"+(quiet.length>1?"ies":"y")+" set aside. ",h("a",{href:"#",onclick:async e=>{e.preventDefault();for(const q of quiet)await api("doctor_dismiss",{key:q.key,undo:true});refresh()}},"Bring back")):null)}
+function emulatorCards(dr){const cards=dr.emulator_cards||[];const av=[AVATARS.controller,AVATARS.gem,AVATARS.rocket,AVATARS.star,AVATARS.robot,AVATARS.ghost];
+ if(!cards.length)return h("div",{class:"ecard empty"},pixels(AVATARS.ghost.rows,44),h("div",{class:"en"},"The waiting room is empty"),h("p",{class:"small"},"No emulators found yet."),h("button",{class:"btn primary",onclick:()=>nav("engines")},"Find emulators"));
+ return h("div",{class:"ecards"},...cards.map((c,n)=>{const g=GRADS[n%GRADS.length];
+  return h("div",{class:"ecard",style:`--c1:${g[0]};--c2:${g[1]}`,title:c.path},h("span",{class:"healthy"},"✓ HEALTHY"),pixels(av[n%av.length].rows,52,"eicon"),h("div",{class:"en"},c.name),
+   h("div",{class:"chips",style:"margin:6px 0"},...(c.consoles.length?c.consoles.slice(0,6).map(x=>h("span",{class:"chip",style:"cursor:default"},x)):[h("span",{class:"chip",style:"cursor:default"},"standing by")])),
+   h("div",{class:"small",style:"opacity:.9"},c.games?"Plays "+c.games+" of your games":"No games waiting for it yet"),h("div",{class:"epath small"},c.path))}))}
 async function viewSetup(m){
- clearInterval(S.setupTimer);
- const dr=await api("doctor");
- const spot=h("div",{class:"docspot"}),say=h("div",{class:"docsay"});
- const paint=d=>{spot.replaceChildren(pixels(doctorRows(d.mood),176,"doctor "+d.mood));say.textContent=doctorSay(d)};
- const report=doctorCard(dr,{office:true,onDraw:paint});
+ clearInterval(S.setupTimer);clearInterval(S.officeTimer);S.visit=false;
+ const dr=S.doc=await api("doctor");
+ const refresh=()=>{const y=window.scrollY;go();setTimeout(()=>window.scrollTo(0,y),450)};
+ const spot=h("div",{class:"docspot",title:"Click me for a check-up!",onclick:e=>{if(S.visit)return;e.stopPropagation();startVisit(S.doc)}}),say=h("div",{class:"docsay"});
+ const paint=d=>{S.doc=d;spot.replaceChildren(pixels(doctorRows(d.mood),176,"doctor "+d.mood));if(!S.visit&&!DOCW.on)say.textContent=doctorSay(d)};
+ const report=doctorCard(dr,{office:true,noWorries:true,onDraw:paint});
  const supplies=h("div",{id:"supplies",class:"supplies"});
+ const start=h("button",{class:"pressstart",type:"button",onclick:e=>{e.stopPropagation();startVisit(S.doc)}},"▶ PRESS START");
  m.append(h("h2",{},"The Doctor's Office"),
-  h("div",{class:"why"},"Come on in! Doc checks that your games, emulators, save folders and BIOS files are all in place. The supply cabinet below stocks what he can safely install for you: RetroArch, a small plug-in per console called a core, and Dolphin for GameCube and Wii."),
+  h("div",{class:"why"},"Come on in! Press Start or click the doctor for a check-up. He checks your games, emulators, save folders and BIOS files. The supply cabinet below stocks what he can safely install for you."),
   h("div",{class:"officegrid"},
    h("div",{class:"office"},h("div",{class:"wall"},
      h("div",{class:"decor win"},pixels(WINDOW,150)),h("div",{class:"decor dip"},pixels(DIPLOMA,92)),h("div",{class:"decor sign"},pixels(CROSS,40)),h("div",{class:"decor plant"},pixels(PLANT,64)),h("div",{class:"decor books"},pixels(BOOKS,130))),
-    h("div",{class:"deskzone"},say,spot,h("div",{class:"desk"},h("span",{class:"plate"},"DOC"),h("span",{class:"deskcat"},martin(52))))),
+    h("div",{class:"deskzone"},say,spot,h("div",{class:"desk"},h("span",{class:"plate"},"DOC"),h("span",{class:"deskcat"},martin(52)))),h("div",{class:"fxlayer"}),start),
    h("div",{class:"clip"},h("h3",{style:"margin:0 0 10px"},"Today's check-up"),report)),
-  h("h3",{style:"margin:22px 0 4px"},"The supply cabinet"),supplies);
- await viewSupplies(supplies)}
+  dr.issues.some(i=>!i.dismissed)||dr.issues.some(i=>i.dismissed)?h("h3",{class:"sect"},"Case files"):null,caseCards(dr,refresh),
+  h("h3",{class:"sect"},"In the waiting room: your emulators"),emulatorCards(dr),
+  h("h3",{class:"sect"},"The supply cabinet"),supplies);
+ viewSupplies(supplies);
+ /* he gets busy while an install runs */
+ S.officeTimer=setInterval(async()=>{if(S.tab!=="setup"){clearInterval(S.officeTimer);docWork(false);return}
+  const st=await api("setup_status").catch(()=>null);if(!st)return;const running=st.job&&st.job.state==="running";
+  if(running&&!DOCW.on)docWork(true,"install");else if(!running&&DOCW.on&&DOCW.kind!=="scan"){docWork(false)}},1800);
+ if(S.autoVisit){S.autoVisit=false;setTimeout(()=>startVisit(S.doc),700)}}
 
 /* ================= online: it is obvious when you are connected ================= */
 function liveInfo(){const r=S.room,w=(S.waits||[])[0];

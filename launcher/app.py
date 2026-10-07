@@ -1151,7 +1151,18 @@ class LauncherApp:
             mood = "worried"
         else:
             mood = "happy"
-        return {"mood": mood, "games": len(self.games), "emulators": have, "saves_ready": self._save_root().is_dir(),
+        chosen = {c.id: self._emulator_for(c.id, found)[0] for c in CONSOLES}
+        cards = []
+        for eid, v in found.items():
+            if not v["path"]:
+                continue
+            mine = [c for c in CONSOLES if chosen.get(c.id) == eid]
+            cards.append({"id": eid, "name": v["name"], "path": v["path"], "consoles": [c.name for c in mine],
+                          "games": sum(counts.get(c.id, 0) for c in mine)})
+        library = [{"name": c.name, "count": counts[c.id], "emulator": (emulators.EMULATORS.get(chosen[c.id]) or {}).get("name")}
+                   for c in CONSOLES if counts.get(c.id)]
+        return {"emulator_cards": cards, "library": library,
+                "mood": mood, "games": len(self.games), "emulators": have, "saves_ready": self._save_root().is_dir(),
                 "bios_needed": bios_needed, "bios_have": bios_have, "issues": issues,
                 "last_rescan": self.catalog.data.get("last_rescan"), "last_scan": self.catalog.data.get("last_scan"),
                 "consoles_ready": sum(1 for c in CONSOLES if self._emulator_for(c.id, found)[0]), "consoles_total": len(CONSOLES)}
