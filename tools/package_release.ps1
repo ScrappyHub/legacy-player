@@ -5,15 +5,19 @@
    LegacyPlayer-<version>-win64.exe      the bare exe, for people who just want the one file
    each of the two with a .sha256 next to it, and SHA256SUMS.txt listing both
 #>
+param([switch]$BuildOnly, [switch]$SkipBuild)     # the release workflow builds, signs the exe with Azure, then packages
 $ErrorActionPreference = 'Stop'
 Set-Location (Split-Path -Parent $PSScriptRoot)
 $version = (Select-String -Path 'launcher\version.py' -Pattern '^VERSION\s*=\s*"([^"]+)"').Matches[0].Groups[1].Value
 Write-Host "Packaging Legacy Player $version"
 
 # build_exe.bat does the PyInstaller build (LP_LOGGED=1 skips its log-and-pause wrapper)
-$env:LP_LOGGED = '1'
-cmd /c "build_exe.bat"
+if (-not $SkipBuild) {
+    $env:LP_LOGGED = '1'
+    cmd /c "build_exe.bat"
+}
 if ($LASTEXITCODE -ne 0 -or -not (Test-Path 'dist\LegacyPlayer.exe')) { throw 'The build failed; see the output above.' }
+if ($BuildOnly) { Write-Host 'Built dist\LegacyPlayer.exe (not packaged yet).'; exit 0 }
 
 # Code signing: when a certificate is supplied (LP_SIGN_PFX_BASE64 = the .pfx file as base64, LP_SIGN_PFX_PASSWORD), the exe is
 # signed and time-stamped BEFORE it is zipped and hashed. Without one the build still works and is plainly marked unsigned.

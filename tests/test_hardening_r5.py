@@ -213,3 +213,17 @@ class DeployKitTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AzureSigningWiringTests(unittest.TestCase):
+    def test_azure_signing_is_optional_and_between_build_and_package(self):
+        wf = (ROOT / "tools/release.workflow.yml").read_text(encoding="utf-8")
+        ps = (ROOT / "tools/package_release.ps1").read_text(encoding="utf-8")
+        build, login, sign, package = (wf.index(x) for x in ("-BuildOnly", "azure/login", "trusted-signing-action", "-SkipBuild"))
+        self.assertLess(build, login)
+        self.assertLess(login, sign)
+        self.assertLess(sign, package)
+        self.assertEqual(wf.count("vars.ARTIFACT_SIGNING_ACCOUNT != ''"), 2)       # both steps skip when unset
+        self.assertNotIn("secrets.AZURE", wf)                                       # nothing secret is needed
+        self.assertIn("[switch]$BuildOnly", ps)
+        self.assertIn("[switch]$SkipBuild", ps)

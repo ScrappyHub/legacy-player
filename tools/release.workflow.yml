@@ -1,6 +1,6 @@
 name: release
 
-# Push a tag like v0.7.13 (git tag v0.7.13 && git push origin v0.7.13) to build the Windows app and publish it as a release.
+# Push a tag like v0.7.14 (git tag v0.7.14 && git push origin v0.7.14) to build the Windows app and publish it as a release.
 on:
   push:
     tags: ['v*']
@@ -28,14 +28,39 @@ jobs:
       - name: Python has what the app needs bundled
         shell: pwsh
         run: python -c "import tkinter, ctypes; print('tkinter', tkinter.TkVersion)"
-      - name: Build the zip
+      - name: Build the exe
         shell: pwsh
-        # Code signing is optional: add repository secrets WINDOWS_SIGN_PFX_BASE64 (the .pfx file as base64) and
-        # WINDOWS_SIGN_PFX_PASSWORD to sign the exe. Without them the release is built and clearly marked unsigned.
+        run: ./tools/package_release.ps1 -BuildOnly
+      # Optional signing with Azure Artifact Signing. It runs only when the repository VARIABLES below are set (Settings >
+      # Secrets and variables > Actions > Variables); no secret is stored: GitHub proves who it is to Azure (OIDC).
+      # See docs/AZURE_SIGNING.md. If these are set and signing fails, the release fails rather than shipping unsigned.
+      - name: Sign in to Azure
+        if: ${{ vars.ARTIFACT_SIGNING_ACCOUNT != '' && vars.AZURE_CLIENT_ID != '' }}
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Sign the exe (Azure Artifact Signing)
+        if: ${{ vars.ARTIFACT_SIGNING_ACCOUNT != '' && vars.AZURE_CLIENT_ID != '' }}
+        uses: azure/trusted-signing-action@v0.5.0     # Microsoft renamed the service to Artifact Signing; if this action name moves, update it here
+        with:
+          endpoint: ${{ vars.ARTIFACT_SIGNING_ENDPOINT }}
+          trusted-signing-account-name: ${{ vars.ARTIFACT_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ vars.ARTIFACT_SIGNING_PROFILE }}
+          files-folder: ${{ github.workspace }}\dist
+          files-folder-filter: exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+      - name: Package the zip
+        shell: pwsh
+        # Another way to sign is optional too: repository secrets WINDOWS_SIGN_PFX_BASE64 (the .pfx file as base64) and
+        # WINDOWS_SIGN_PFX_PASSWORD. An exe already signed above is left as it is. With neither, the release is clearly marked unsigned.
         env:
           LP_SIGN_PFX_BASE64: ${{ secrets.WINDOWS_SIGN_PFX_BASE64 }}
           LP_SIGN_PFX_PASSWORD: ${{ secrets.WINDOWS_SIGN_PFX_PASSWORD }}
-        run: ./tools/package_release.ps1
+        run: ./tools/package_release.ps1 -SkipBuild
       - name: Check the built app starts
         shell: pwsh
         run: |
