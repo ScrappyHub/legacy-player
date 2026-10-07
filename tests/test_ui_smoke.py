@@ -111,6 +111,28 @@ class UiSmokeTests(unittest.TestCase):
             page.evaluate('nav("probe")')
             page.wait_for_selector("text=Take baseline")
             self.assertEqual(0, page.locator("#main button:disabled").count())
+            # hovering a cover splits it into Play and Online; the Online half opens the host/join box
+            page.evaluate('nav("library")')
+            page.wait_for_selector(".game")
+            page.locator(".game").first.hover()
+            page.wait_for_selector(".game .qplay")
+            self.assertEqual(1, page.locator(".game").first.locator(".qonline").count())
+            page.locator(".game").first.locator(".qonline").click(force=True)
+            page.wait_for_selector(".modal")
+            self.assertIn("Host a room", page.inner_text(".modal"))
+            page.get_by_role("button", name="Cancel").click()
+            self.assertEqual(0, page.locator(".modal").count())
+            # the launch question and the Display page card
+            page.evaluate('void displayModal({emulator:"RetroArch",title:"Test",monitor:"",monitors:[{index:1,label:"Screen 1"},{index:2,label:"Screen 2"}]})')
+            page.wait_for_selector(".modal select[data-mon]")
+            self.assertIn("Full screen", page.inner_text(".modal"))
+            page.get_by_role("button", name="Cancel").click()
+            page.evaluate('nav("display")')
+            page.wait_for_selector("text=Where games open")
+            page.evaluate('nav("home")')
+            # Home: emulators are character cards, and the featured card has an Open button
+            page.evaluate('nav("home")')
+            page.wait_for_selector("text=Your emulators")
             # dialogs: Tab stays inside, Esc means Cancel (the link is single-use, so this shares the page above)
             page.evaluate("() => { window.__r = 'unset'; ask('Really?', 'Yes').then(v => { window.__r = v }); }")      # not returned: evaluate would wait for it
             page.wait_for_selector(".modal")
@@ -139,6 +161,14 @@ class UiSmokeTests(unittest.TestCase):
             page.locator(".sitcat").click(force=True)
             self.assertTrue(page.evaluate('document.querySelector(".sitcat").classList.contains("petting")'))
             self.assertEqual("", page.evaluate("getSelection().toString()"))
+            # clicking the doctor in his office repaints him before the page-wide handlers run; that must not leave a bubble by the logo
+            page.evaluate("() => { S.visit = false; document.querySelector('.docspot .px.doctor').dispatchEvent(new MouseEvent('click', {bubbles: true})); }")
+            for _ in range(3):
+                page.locator(".sitcat").click(force=True)
+            top = page.evaluate('(()=>{const b=document.querySelector("#bubble");return b?b.getBoundingClientRect().top:999})()')
+            self.assertGreater(top, 100)
+            page.evaluate('S.visit=false;S.docVisits=0;S.docLast=0;nav("home")')
+            page.wait_for_selector("text=Your emulators")
             # the games-folder box never pre-fills anything from this computer
             page.evaluate('S.wizStep=1;nav("welcome")')
             page.wait_for_selector("text=Where are your games?")

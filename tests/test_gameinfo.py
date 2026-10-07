@@ -22,6 +22,10 @@ class GameInfoTests(unittest.TestCase):
         r = gameinfo.players_for("snes", "Obscure Thing")
         self.assertEqual("console", r["source"]); self.assertEqual(2, r["max"]); self.assertEqual(5, r["hw"])
 
+    def test_zelda_links_awakening_is_single_player_but_four_swords_is_not(self):
+        self.assertEqual(1, gameinfo.players_for("gb", "Legend of Zelda, The - Link's Awakening (USA, Europe)")["max"])
+        self.assertEqual(4, gameinfo.players_for("gba", "Legend of Zelda, The - Four Swords")["max"])
+
     def test_player_override_wins(self):
         r = gameinfo.players_for("n64", "Super Mario 64", "2")
         self.assertEqual(("you", 2), (r["source"], r["max"]))

@@ -73,7 +73,7 @@ input[type=checkbox]{accent-color:var(--accent);width:16px;height:16px;vertical-
 .game::before{content:"";position:absolute;inset:0 0 auto 0;height:3px;background:var(--grad);opacity:.7}
 .game:hover,.game:focus-visible{border-color:var(--accent);outline:none;transform:translateY(-4px);box-shadow:0 14px 30px rgba(0,0,0,.4),var(--glow)}
 .game .t{font-weight:650;line-height:1.25;padding-right:28px}.game .m{color:var(--mute);font-size:.82rem}
-.star{position:absolute;top:8px;right:8px;background:none;border:0;font-size:1.25rem;cursor:pointer;color:var(--mute);transition:transform .15s}.star:hover{transform:scale(1.25) rotate(12deg)}.star.on{color:#ffcf40;text-shadow:0 0 10px #ffcf4088}
+.star{z-index:4;position:absolute;top:8px;right:8px;background:none;border:0;font-size:1.25rem;cursor:pointer;color:var(--mute);transition:transform .15s}.star:hover{transform:scale(1.25) rotate(12deg)}.star.on{color:#ffcf40;text-shadow:0 0 10px #ffcf4088}
 .badge{display:inline-block;font-size:.72rem;padding:2px 9px;border-radius:999px;border:1px solid var(--line);color:var(--mute)}
 .badge.strong,.badge.good{color:var(--accent2);border-color:var(--accent2)}.badge.per-game{color:var(--accent);border-color:var(--accent)}
 .badge.experimental,.badge.not-practical{color:var(--warn);border-color:var(--warn)}
@@ -368,6 +368,26 @@ textarea{background:var(--panel2);color:var(--text);border:1px solid var(--line)
 .unlist{max-height:180px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:6px 10px;margin-bottom:10px}
 .unrow{display:flex;flex-direction:column;padding:4px 0;border-bottom:1px solid var(--line);word-break:break-all}.unrow:last-child{border:0}
 .unopt{display:flex;gap:10px;align-items:flex-start;margin:8px 0}
+/* Home emulators: little character cards */
+.estrip{display:flex;gap:12px;overflow-x:auto;padding:4px 2px 10px}
+.emini{position:relative;flex:0 0 auto;min-width:150px;display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:12px 14px;border-radius:14px;border:1px solid var(--line);color:#fff;text-align:left;cursor:pointer;background:linear-gradient(150deg,var(--c1),var(--c2));box-shadow:0 8px 18px #0005;transition:transform .15s,box-shadow .15s}
+.emini:hover,.emini:focus-visible{transform:translateY(-5px) rotate(-1deg);box-shadow:0 16px 28px #0008,0 0 0 2px #ffffff55;outline:none}
+.emini .eicon{animation:bob 3s ease-in-out infinite;animation-delay:var(--d);filter:drop-shadow(0 4px 6px #0006)}
+.emini:hover .eicon{animation:hop .6s ease-in-out infinite}
+.emini b{font-size:1rem;text-shadow:0 1px 3px #0008}.emini .small{opacity:.95;text-shadow:0 1px 2px #0008}
+.emini .alive{position:absolute;right:12px;top:12px;width:10px;height:10px;border-radius:50%;background:#3be0a8;box-shadow:0 0 0 0 #3be0a8aa;animation:alivepulse 2s infinite}
+@keyframes alivepulse{0%{box-shadow:0 0 0 0 #3be0a8aa}70%{box-shadow:0 0 0 9px #3be0a800}100%{box-shadow:0 0 0 0 #3be0a800}}
+/* hover a game cover to split it into Play and Online */
+.cvwrap{position:relative;border-radius:10px;overflow:hidden;margin:-2px 0 6px}
+.cvwrap .cv{margin:0}
+.quick{position:absolute;inset:0;display:flex;gap:2px;opacity:0;transition:opacity .15s;pointer-events:none}
+.game:hover .quick,.game:focus-within .quick{opacity:1;pointer-events:auto}
+.quick button{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;border:0;color:#fff;font:800 .95rem/1 inherit;font-family:inherit;cursor:pointer;background:rgba(8,12,40,.78);transition:background .12s,transform .12s;text-shadow:0 1px 3px #000}
+.quick button .qi{font-size:1.6rem}
+.quick .qplay:hover:not(:disabled),.quick .qplay:focus-visible{background:linear-gradient(160deg,#18b886,#3be0a8cc);outline:none}
+.quick .qonline:hover:not(:disabled),.quick .qonline:focus-visible{background:linear-gradient(160deg,#5b7cff,#a45cffcc);outline:none}
+.quick button:disabled{cursor:not-allowed;opacity:.6}
+.list .quick{display:none}
 /* Martin sits on the desk: slow tail sway and a gentle head tilt, a quick wag and head rub while he is being petted */
 .sitcat{position:relative;display:block;cursor:pointer;filter:drop-shadow(0 4px 8px #0007)}
 .sitcat:focus-visible{outline:2px solid var(--link);outline-offset:4px;border-radius:8px}
@@ -493,6 +513,25 @@ function stepify(root){(root||document).querySelectorAll("input[type=number]:not
  inp.addEventListener("keydown",e=>{if(e.key==="ArrowUp"){e.preventDefault();bump(1)}else if(e.key==="ArrowDown"){e.preventDefault();bump(-1)}})})}
 new MutationObserver(()=>stepify()).observe(document.documentElement,{childList:true,subtree:true});
 function toast(text,level){const t=h("div",{class:"toast "+(level||"")},text);$("#toasts").append(t);setTimeout(()=>t.remove(),level==="warn"?9000:5000)}
+async function displayModal(nd){return new Promise(res=>{const done=v=>{ov.remove();res(v)};
+ let mode="fullscreen";const mons=nd.monitors||[];let mon=nd.monitor||"";
+ const remember=h("input",{type:"checkbox",id:"dispRem"});
+ const mk=(v,t,sub)=>{const b=h("button",{type:"button",class:"btn"+(mode===v?" primary":""),onclick:()=>{mode=v;[...row.children].forEach(c=>c.classList.toggle("primary",c.dataset.v===mode))}},h("b",{},t),h("div",{class:"small"},sub));b.dataset.v=v;return b};
+ const row=h("div",{class:"row",style:"gap:8px;margin:10px 0"},mk("fullscreen","Full screen","Fills the screen"),mk("windowed","Windowed","A normal window"));
+ const sel=mons.length>1?h("select",{"aria-label":"Which screen","data-mon":"1",onchange:e=>{mon=e.target.value}},h("option",{value:""},"Automatic"),...mons.map(m=>h("option",{value:String(m.index),selected:String(m.index)===String(mon)},m.label))):null;
+ const ov=h("div",{class:"modal",role:"dialog","aria-modal":"true"},h("div",{class:"modalbox"},h("h3",{style:"margin-top:0"},"How should "+(nd.title||"this game")+" open?"),
+  h("p",{class:"small muted"},"In "+nd.emulator+"."),row,sel?h("label",{class:"small"},"On which screen? ",sel):null,
+  h("label",{class:"small",style:"display:block;margin:8px 0"},remember," Remember for "+nd.emulator+" (change any time in Display)"),
+  h("div",{class:"row",style:"justify-content:flex-end;gap:8px"},h("button",{class:"btn",onclick:()=>done(null)},"Cancel"),h("button",{class:"btn primary qgo",onclick:()=>done({mode,monitor:mon,remember:remember.checked})},"Play"))));
+ document.body.append(ov);ov.querySelector(".qgo").focus()})}
+async function forceQuit(){
+ if(!S.running||!await ask("Force quit "+S.running.title+"? It stops right away and anything you have not saved is lost.","Force quit"))return;
+ const r=await act(()=>api("force_quit"));if(r){S.running=null;toast("Stopped "+r.stopped);go()}}
+async function launchGame(g){
+ let r=await act(()=>api("launch",{id:g.id,interactive:true}));
+ if(r&&r.needs_display){const c=await displayModal(r.needs_display);if(!c)return null;r=await act(()=>api("launch",{id:g.id,display:c}))}
+ if(r){S.running={title:r.launched};toast("Opening "+r.launched+" in "+r.emulator+"…")}
+ return r}
 function ask(text,yes){return new Promise(res=>{const done=v=>{ov.remove();res(v)};const ov=h("div",{class:"modal",role:"dialog","aria-modal":"true"},h("div",{class:"modalbox"},h("p",{},text),h("div",{class:"row",style:"justify-content:flex-end;gap:8px"},h("button",{class:"btn",onclick:()=>done(false)},"Cancel"),h("button",{class:"btn primary",onclick:()=>done(true)},yes||"OK"))));document.body.append(ov);ov.querySelector(".primary").focus()})}
 async function act(fn,ok){try{const r=await fn();if(ok)toast(ok);return r}catch(e){toast(e.message,"err")}}
 function why(text){const box=h("div",{class:"why",hidden:true},text);const b=h("button",{class:"i","aria-label":"What is this?",title:"What is this?",onclick:()=>{box.hidden=!box.hidden}},"i");return[b,box]}
@@ -599,8 +638,9 @@ function placeBubble(){const b=$("#bubble");if(!b)return;if(!pet.el||!pet.el.isC
  const r=pet.el.getBoundingClientRect();const off=r.bottom<0||r.top>innerHeight||r.right<0||r.left>innerWidth;b.style.visibility=off?"hidden":"visible";
  const w=b.offsetWidth||90;let left=r.right+8;if(left+w>innerWidth-6)left=Math.max(6,r.left-w-8);
  b.style.left=left+"px";b.style.top=Math.max(6,r.top-26)+"px";pet.raf=requestAnimationFrame(placeBubble)}
-function say(text,el){let b=$("#bubble");if(el)pet.el=el;if(!b){b=h("div",{id:"bubble",role:"status"});document.body.append(b)}
- if(!pet.el||!pet.el.isConnected)pet.el=document.querySelector("#logomartin .martin");if(!pet.el)return;
+function say(text,el){let b=$("#bubble");if(el)pet.el=el;
+ if(!pet.el||!pet.el.isConnected){if(b)b.remove();return}   /* the one that was clicked is gone (page redrew): no bubble, never one stuck on the logo */
+ if(!b){b=h("div",{id:"bubble",role:"status"});document.body.append(b)}
  b.textContent=text;b.style.animation="none";void b.offsetWidth;b.style.animation="";
  cancelAnimationFrame(pet.raf);placeBubble();clearTimeout(pet.timer);pet.timer=setTimeout(()=>{cancelAnimationFrame(pet.raf);const x=$("#bubble");if(x)x.remove()},3200)}
 function nextMeow(){let t;do{t=MEOWS[Math.floor(Math.random()*MEOWS.length)]}while(t===pet.text&&MEOWS.length>1);pet.text=t;return t}
@@ -615,7 +655,7 @@ document.addEventListener("click",e=>{const m=e.target.closest&&e.target.closest
 const POKES=["Ow! I'm a doctor, not a pin cushion.","Careful, these hands are insured.","Say ahh!","Your pixels look healthy.","Have you tried staying home and playing video games?","Appointments are in the Setup tab, you know.","Hmm. Your high score is in perfect health."];
 const POKES_TIRED=["Okay, okay, I'm awake!","Please stop poking the doctor.","I'm writing you a prescription for patience.","My clipboard is getting dizzy.","...Is this a bit?"];
 const poke={n:0,t:0,last:""};
-document.addEventListener("click",e=>{const d=e.target.closest&&e.target.closest(".px.doctor");if(!d||d.closest(".docspot,#boot,.modal"))return;
+document.addEventListener("click",e=>{const d=e.target.closest&&e.target.closest(".px.doctor");if(!d||!d.isConnected||d.closest(".docspot,.office,#boot,.modal"))return;
  const now=Date.now();if(now-poke.t>10000)poke.n=0;poke.t=now;poke.n++;
  d.classList.remove("poked");void d.getBoundingClientRect();d.classList.add("poked");
  const pool=poke.n>=5?POKES_TIRED:POKES;let t;do{t=pool[Math.floor(Math.random()*pool.length)]}while(t===poke.last&&pool.length>1);poke.last=t;
@@ -655,11 +695,9 @@ async function viewHome(m){
  S.lib=S.lib||await api("library",{});
  m.append(shelf("Recent games",d.recent,"Play something and it shows up here."));
  if(d.favorites.length)m.append(shelf("Favorites",d.favorites,""));
- m.append(h("div",{class:"card",style:"margin-top:10px"},h("div",{class:"row"},h("h3",{class:"grow",style:"margin:0"},"Your emulators"),
-   h("button",{class:"btn",onclick:()=>nav("emulators")},"Manage"),h("button",{class:"btn primary",onclick:()=>{nav("engines")}},"Find more")),
-  h("div",{class:"chips"},...(d.emulators.length?d.emulators.map(e=>h("span",{class:"chip",title:e.path,onclick:()=>nav("emulators")},"✓ "+e.name)):[h("span",{class:"muted small"},"None found yet. Open Engines and scan this computer.")]))));
+ m.append(emulatorStrip(dr,d));
  const f=d.featured;
- m.append(f?h("div",{class:"card featured",style:"margin-top:14px"},h("div",{class:"row"},pixels(AVATARS.rose.rows,36),h("span",{class:"tag"},"Featured"),h("h3",{class:"grow",style:"margin:0"},f.title),f.link?h("a",{class:"btn",href:f.link,target:"_blank",rel:"noopener noreferrer"},"Open"):null),f.text?h("p",{},f.text):null,
+ m.append(f?h("div",{class:"card featured",style:"margin-top:14px"},h("div",{class:"row"},pixels(AVATARS.rose.rows,36),h("span",{class:"tag"},"Featured"),h("h3",{class:"grow",style:"margin:0"},f.title),f.link?h("a",{class:"btn",href:f.link,target:"_blank",rel:"noopener noreferrer",title:f.link,onclick:async e=>{e.preventDefault();const r=await api("open_url",{url:f.link}).catch(()=>null);if(!r)window.open(f.link,"_blank","noopener")}},"Open"):null),f.text?h("p",{},f.text):null,
    h("p",{class:"small muted"},"Chosen by whoever set up this copy of Legacy Player. It is not an ad and nothing is paid for it."))
   :h("div",{class:"card featured",style:"margin-top:14px"},h("div",{class:"row"},h("span",{class:"tag"},"Featured"),h("b",{class:"grow"},"Your featured spot"),h("button",{class:"btn",onclick:()=>nav("settings")},"Set it up")),
    h("p",{class:"small muted"},"Put a game night, a friend's server or a link here. Set the title, text and link under Settings > Home page.")));
@@ -712,6 +750,16 @@ function doctorDoor(dr){const n=dr.issues.filter(i=>!i.dismissed).length;
  return h("div",{class:"doc door"},h("div",{class:"row",style:"align-items:center;flex-wrap:nowrap;gap:14px"},pixels(doctorRows(dr.mood),104,"doctor "+dr.mood),
   h("div",{style:"flex:1;min-width:0"},h("div",{class:"retro"},h("div",{class:"hd"},doctorSay(dr)),h("div",{class:n?"w":""},"Check-up: "+(n?n+" thing"+(n>1?"s":"")+" to look at":"all clear")),h("div",{},"PC scanned: "+ago(dr.last_scan))),
    h("button",{class:"btn primary",style:"margin:10px 3px 0;width:calc(100% - 6px)",onclick:()=>{S.autoVisit=true;nav("setup")}},"Visit the doctor's office"))))}
+/* Home: each emulator is a little character card that wakes up when you hover it */
+function emulatorStrip(dr,d){const cards=dr.emulator_cards||[];const av=[AVATARS.controller,AVATARS.gem,AVATARS.rocket,AVATARS.star,AVATARS.robot,AVATARS.ghost];
+ const head=h("div",{class:"row",style:"margin-bottom:10px"},h("h3",{class:"grow",style:"margin:0"},"Your emulators",h("span",{class:"badge good",style:"margin-left:10px"},cards.length+" ready")),
+  h("button",{class:"btn",onclick:()=>nav("emulators")},"Manage"),h("button",{class:"btn primary",onclick:()=>nav("engines")},"Find more"));
+ if(!cards.length)return h("div",{class:"card",style:"margin-top:10px"},head,h("div",{class:"ecard empty"},pixels(AVATARS.ghost.rows,44),h("div",{class:"en"},"It's quiet in here"),h("p",{class:"small"},"No emulators found yet. Scan this computer and I'll round them up."),h("button",{class:"btn primary",onclick:()=>nav("setup")},"Ask the doctor")));
+ return h("div",{class:"card",style:"margin-top:10px"},head,h("div",{class:"estrip"},...cards.map((c,n)=>{const g=GRADS[n%GRADS.length];
+  return h("button",{type:"button",class:"emini",style:`--c1:${g[0]};--c2:${g[1]};--d:${(n*0.35).toFixed(2)}s`,title:"Open "+c.name+" settings",onclick:()=>nav("emulators")},
+   h("span",{class:"alive"}),pixels(av[n%av.length].rows,46,"eicon"),h("b",{},c.name),
+   h("span",{class:"small"},c.games?"Plays "+c.games+" of your games":"Standing by"),
+   h("span",{class:"chips",style:"margin:4px 0 0"},...(c.consoles.length?c.consoles.slice(0,3).map(x=>h("span",{class:"chip",style:"cursor:inherit;font-size:.7rem;padding:2px 8px"},x)):[])))}))) }
 function doctorCard(dr,opts){opts=opts||{};
  const box=h("div",{class:"doc"+(opts.office?" inoffice":"")});
  const refresh=async()=>{const x=await api("doctor");S.doc=x;draw(x)};
@@ -961,8 +1009,24 @@ function card(g){
  const star=h("button",{class:"star"+(g.favorite?" on":""),title:g.favorite?"Remove favorite":"Favorite","aria-label":"Toggle favorite",onclick:async e=>{e.stopPropagation();const r=await act(()=>api("favorite",{id:g.id,favorite:!g.favorite}));if(r){g.favorite=r.favorite;star.classList.toggle("on",r.favorite);star.title=r.favorite?"Remove favorite":"Favorite"}}},"★");
  const showRegion=!S.settings||S.settings.show_region;
  return h("div",{class:"game","data-gid":g.id,tabindex:0,role:"button",onclick:()=>openGame(g.id),onkeydown:e=>{if(e.key==="Enter")openGame(g.id)}},star,
-  coverEl(g),h("div",{class:"t"},g.title),h("div",{class:"m"},consoleName(g.console)+(showRegion&&g.region?" · "+g.region:"")+" · "+g.size_mb+" MB"+(g.emulator?" · "+g.emulator:"")),
+  h("div",{class:"cvwrap"},coverEl(g),quickBar(g)),h("div",{class:"t"},g.title),h("div",{class:"m"},consoleName(g.console)+(showRegion&&g.region?" · "+g.region:"")+" · "+g.size_mb+" MB"+(g.emulator?" · "+g.emulator:"")+(g.players&&g.players.source!=="console"?" · "+(g.players.max<2?"1P":"1-"+g.players.max+"P")+(g.players.coop?" co-op":""):"")),
   g.plays?h("div",{class:"m"},"Played "+g.plays+"×"):null,g.is_archive?h("span",{class:"badge"},"archive "+g.extension):null)}
+/* hover a cover: it splits into Play now (left) and Play online (right) */
+function quickBar(g){const solo=g.players&&g.players.max<2&&g.players.source!=="console";
+ const play=h("button",{type:"button",class:"qplay",disabled:!g.emulator,title:g.emulator?"Start "+g.title+" now":"No emulator is ready for this console yet",onclick:e=>{e.stopPropagation();playGame(g)},onkeydown:e=>e.stopPropagation()},h("span",{class:"qi"},"▶"),"Play");
+ const online=h("button",{type:"button",class:"qonline",disabled:solo,title:solo?g.title+" is a single-player game":"Host a room, or join one with a code",onclick:e=>{e.stopPropagation();quickOnline(g)},onkeydown:e=>e.stopPropagation()},h("span",{class:"qi"},"◎"),solo?"1 player":"Online");
+ return h("div",{class:"quick"},play,online)}
+async function quickOnline(g){
+ const code=h("input",{type:"text",placeholder:"Invite code, XXXXX-XXXXX",maxlength:12,style:"width:100%","aria-label":"Invite code"});
+ const close=()=>{ov.remove()};
+ const status=h("p",{class:"small "+(S.online?"muted":"warn")},S.online?"Connected to a server.":"You are not connected to a server yet. Start yours or paste a friend's server code on the Servers page first.");
+ const ov=h("div",{class:"modal",role:"dialog","aria-modal":"true"},h("div",{class:"modalbox"},h("h3",{style:"margin-top:0"},"Play "+g.title+" online"),
+  h("p",{class:"small muted"},g.players?g.players.label+". "+g.players.note:""),status,
+  h("div",{class:"row",style:"margin:10px 0"},h("button",{class:"btn primary grow",onclick:async()=>{const r=await act(()=>api("mp_host",{id:g.id}));if(r){close();S.room=r.room;nav("together");poll()}}},"Host a room")),
+  h("div",{class:"small muted",style:"margin:8px 0 4px"},"or join a friend's room"),
+  h("div",{class:"row"},code,h("button",{class:"btn good",onclick:async()=>{if(!code.value.trim()){toast("Paste the invite code first","warn");return}const r=await act(()=>api("mp_join",{id:g.id,invite_code:code.value.trim()}));if(r){close();S.room=r.room;nav("together");poll()}}},"Join")),
+  h("div",{class:"row",style:"justify-content:flex-end;margin-top:12px"},!S.online?h("button",{class:"btn",onclick:()=>{close();nav("servers")}},"Servers"):null,h("button",{class:"btn",onclick:close},"Cancel"))));
+ document.body.append(ov);code.focus()}
 function consoleName(id){const c=(S.lib&&S.lib.consoles||[]).find(x=>x.id===id);return c?c.name:id}
 function emptyState(){const input=h("input",{type:"text",placeholder:"Paste your games folder path, e.g. D:\\Games",style:"min-width:min(480px,100%)"});
  return h("div",{class:"panel"},h("h2",{},"Welcome. Let's find your games."),
@@ -976,7 +1040,7 @@ async function openGame(id){
  const scrim=h("div",{class:"scrim",onclick:close});
  const launchBtn=h("button",{class:"btn good",disabled:!g.launch.ready,onclick:async()=>{
    if(S.settings&&S.settings.confirm_launch&&!await ask("Open "+g.title+" in "+g.launch.emulator+"?"))return;
-   const r=await act(()=>api("launch",{id}));if(r){S.running={title:r.launched}}if(r)toast("Opening "+r.launched+" in "+r.emulator+"…")}},"▶ Play");
+   await launchGame({id:id,title:g.title})}},"▶ Play");
  const backups=h("div",{});
  const drawBackups=()=>backups.replaceChildren(...(g.backups.length?g.backups.map(b=>h("div",{class:"row small"},h("span",{class:"grow"},b.backup+" ("+b.files+" file"+(b.files===1?"":"s")+")"),
    h("button",{class:"btn",onclick:async()=>{if(await ask("Restore this backup? Your current saves are backed up first.")){const r=await act(()=>api("restore",{id,backup:b.backup}));if(r)toast("Restored "+r.restored+" file(s)")}}},"Restore"))):[h("span",{class:"muted small"},"No backups yet.")]));drawBackups();
@@ -1508,7 +1572,7 @@ async function viewConsole(m){
    h("p",{class:"small muted tvhelp"},"D-pad or arrows: move · A / Enter: play · Shoulder buttons or [ ]: change console · B / Esc: back to Library"));
   const sel=wrap.querySelector(".tvcard.sel");if(sel)sel.scrollIntoView({block:"nearest"});
  };
- const play=async g=>{const r=await act(()=>api("launch",{id:g.id}));if(r){S.running={title:r.launched}}if(r)toast("Started "+r.launched+" in "+r.emulator)};
+ const play=g=>launchGame(g);
  const move=(dx,dy)=>{const c=consoles[ci];if(!c)return;const games=gamesOf(c);const cols=Math.max(1,Math.floor((wrap.clientWidth-20)/180));
   gi=Math.max(0,Math.min(games.length-1,gi+dx+dy*cols));render()};
  const key=e=>{if(S.tab!=="console"){document.removeEventListener("keydown",key);return}
@@ -1702,7 +1766,7 @@ function refreshAfter(){closeCtx();const y=window.scrollY;go();setTimeout(()=>wi
 
 async function playGame(g){
  if(S.settings&&S.settings.confirm_launch&&!await ask("Open "+g.title+"?"))return;
- const r=await act(()=>api("launch",{id:g.id}));if(r){S.running={title:r.launched};toast("Opening "+r.launched+" in "+r.emulator+"…")}}
+ await launchGame(g)}
 async function gameMenu(g,x,y){
  const cols=(await api("collections").catch(()=>({collections:[]}))).collections;
  const ok=fn=>async()=>{const r=await act(fn);if(r!==undefined)refreshAfter()};
@@ -1999,6 +2063,7 @@ function renderLive(){
     h("span",{class:"grow"}),
     h("span",{class:"badge"},n+(r.max_players?"/"+r.max_players:"")+" players"),avg!=null?h("span",{class:"badge"},Math.round(avg)+" ms"):null,h("span",{class:"badge"},r.state),
     S.running?h("span",{class:"badge good"},"game running"):null,
+    S.running?h("button",{class:"btn bad",title:"Stops the game right away, even if it asks \"are you sure?\". Unsaved progress is lost.",onclick:forceQuit},"Force quit game"):null,
     r.role==="host"&&r.invite_code?h("button",{class:"btn",title:"Copy the invite code for friends",onclick:()=>copyText(r.invite_code,"Invite code copied")},"Copy invite"):null,
     S.tab==="together"?null:h("button",{class:"btn primary",onclick:()=>nav("together")},"Open room"),
     h("button",{class:"btn bad",onclick:async()=>{if(!await ask(r.role==="host"?"Close the room? Everyone is disconnected.":"Leave the room?",r.role==="host"?"Close room":"Leave"))return;await act(()=>api("mp_leave"));S.room=null;renderNav();if(S.tab==="together")go()}},r.role==="host"?"Close":"Leave"))}
@@ -2107,7 +2172,7 @@ async function viewConsole(m){
   const sel=wrap.querySelector(".tvcard.sel");if(sel)sel.scrollIntoView({block:"nearest"});
   const cb=wrap.querySelector(".conchip.on");if(cb)cb.scrollIntoView({block:"nearest",inline:"center"});
  };
- const play=async g=>{const r=await act(()=>api("launch",{id:g.id}));if(r){S.running={title:r.launched}}if(r)toast("Started "+r.launched+" in "+r.emulator)};
+ const play=g=>launchGame(g);
  const move=(dx,dy)=>{const c=consoles[ci];if(!c)return;const games=gamesOf(c);const cols=Math.max(1,Math.floor((wrap.clientWidth-20)/180));
   gi=Math.max(0,Math.min(games.length-1,gi+dx+dy*cols));render()};
  const go2=n=>{ci=(ci+n+consoles.length)%consoles.length;gi=0;swap=true;S.console=consoles[ci].id==="all"?null:consoles[ci].id;render()};
@@ -2157,8 +2222,17 @@ async function viewDisplay(m){
  const tiles=h("div",{class:"vtiles"},...F.map(k=>{const on=defs()[k];const sw=h("input",{type:"checkbox",checked:on,role:"switch","aria-label":VIDEO_TITLE[k]||d.fields[k].label});
   sw.addEventListener("change",async()=>{d.defaults[k]=sw.checked;pvAll.update();const r=await act(()=>api("video",{scope:"all",key:k,value:sw.checked}));if(r)toast(VIDEO_TITLE[k]+": "+(sw.checked?"on":"off"))});
   return h("label",{class:"vtile"},vIcon(k,30),h("div",{class:"vt"},h("b",{},VIDEO_TITLE[k]||d.fields[k].label),h("span",{class:"small muted"},VIDEO_PLAIN[k]||d.fields[k].help)),h("span",{class:"switch"},sw,h("i",{})))}));
+
+ const dp=await api("display_prefs",{});
+ const whereCard=h("div",{class:"card wopen"},h("h3",{class:"sect",style:"margin-top:0"},"Where games open"),
+  h("div",{class:"small muted"},"Games open in front of Legacy Player. Choose full screen or a window for each emulator, or let it ask each time."),
+  dp.monitors.length>1?h("label",{class:"small",style:"display:block;margin:8px 0"},"Screen: ",h("select",{"aria-label":"Screen for games",onchange:async e=>{const r=await act(()=>api("display_prefs",{monitor:e.target.value}));if(r)toast("Games will open on "+(e.target.value?"that screen":"the automatic screen"))}},h("option",{value:""},"Automatic"),...dp.monitors.map(x=>h("option",{value:String(x.index),selected:String(x.index)===String(dp.monitor)},x.label)))):h("div",{class:"small muted",style:"margin:6px 0"},dp.monitors.length?"One screen detected.":"Screens are detected on Windows."),
+  ...dp.emulators.map(e=>h("div",{class:"row",style:"gap:8px;align-items:center;margin:4px 0"},h("b",{style:"min-width:140px"},e.name),
+   h("select",{"aria-label":"Open "+e.name+" as",onchange:async ev=>{const r=await act(()=>api("display_prefs",{emulator:e.id,mode:ev.target.value}));if(r)toast(e.name+": "+ev.target.options[ev.target.selectedIndex].text)}},...[["ask","Ask me each time"],["fullscreen","Full screen"],["windowed","Windowed"]].map(([v,l])=>h("option",{value:v,selected:e.mode===v},l))))),
+  h("div",{class:"small muted",style:"margin-top:6px"},"On a second screen, full screen is a borderless window that covers it, which behaves the same for play."));
  m.append(h("h2",{},"Display and video"),
   h("div",{class:"why"},"Choose how games look once, and Legacy Player applies it each time a game opens. RetroArch gets every choice. Other emulators only get “start full screen”; their own graphics options (resolution, shaders, 3D) live inside each emulator and it remembers them."),
+  whereCard,
   h("div",{class:"vgrid"},h("div",{},h("h3",{class:"sect",style:"margin-top:0"},"1. For every console"),tiles),h("div",{},h("h3",{class:"sect",style:"margin-top:0"},"What it looks like"),pvAll.el)),
   h("h3",{class:"sect"},"2. Pick a console to set up differently"),
   h("div",{class:"conbar"},...d.consoles.map(c=>{const own=Object.keys(c.own||{}).length;return conChip(c.id,c.name,null,cur===c.id,()=>{S.dispConsole=cur===c.id?null:c.id;go()},own?h("span",{class:"cust",title:"Has its own choices"},own+" custom"):null)})));

@@ -178,6 +178,7 @@ DEFAULT_DATA = {
     "game_meta": {},        # game id -> {"title", "hidden", "emulator", "args", "note"} the player chose for that one game
     "collections": {},      # collection name -> [game ids], like Steam categories
     "video": {},            # "all" or console id -> display choices (see launcher/app.py VIDEO_FIELDS)
+    "display_prefs": {"modes": {}, "monitor": ""},   # emulator id -> "ask"|"fullscreen"|"windowed"; monitor "" = automatic, else "1","2",...
     "last_rescan": None,    # when the games folders were last read
     "doctor_dismissed": [], # things the user told the doctor not to worry about
     "save_root": "",        # managed save folder root ("" = inside the data folder)

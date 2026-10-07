@@ -184,3 +184,14 @@ list is short and should be extended.
   which makes Windows ignore "no window", so each `ping` (its wait between retries) got its own window and they kept coming
   until Legacy Player was closed. It now starts with a hidden console only; `taskkill`, `tasklist` and archive tools also
   run hidden. Needs a real uninstall on Windows to confirm.
+
+## Follow-up: 0.7.1 (quick play, lively emulators, display and monitor)
+
+- **Hover split on covers.** Hovering a game shows Play and Online halves over the art. Online opens the host/join box; it is disabled (and says "1 player") for known single-player titles.
+- **Your emulators** on Home are now character cards with a live pulse when ready.
+- **Featured link** Open button launches the link in the system browser (`api_open_url`, only the configured https link). Default is the project's GitHub; change it in Settings > Home page.
+- **Player counts** (1P / multiplayer / co-op) come from a built-in title list, then a console guess labelled as a guess; per-game override stays. Unknown titles are guesses.
+- **Games open in front, full screen or windowed, on the chosen screen.** `launcher/winplace.py` finds the game window, brings it forward, and (full screen on a chosen monitor) makes it borderless on that monitor. Each emulator asks once (Full screen / Windowed, screen if more than one, "Remember"); change it later under Display and video > Where games open. Unverified on real Windows until tested by hand.
+- **Fix:** clicking the doctor repeatedly could leave speech bubbles on the top bar; bubbles now only appear for elements still on the page.
+- **Force quit game.** A button beside "game running" stops the running game immediately (`api_force_quit`, process tree, no waiting on the emulator's own "are you sure?").
+- **Planned, not built yet: in-game overlay + key/controller bind to open it.** Needs a design decision (see chat): a topmost mini window with Force quit, volume/screen, room code and chat, opened by a global hotkey and a controller button combo.

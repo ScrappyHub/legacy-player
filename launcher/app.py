@@ -31,7 +31,7 @@ from adapters.retroarch import tunnel as netplay_tunnel
 
 from . import controllers, emulators, engines, pads, savefolders, saves
 from .installer import EngineInstaller, InstallError, latest_release, pick_asset
-from . import dolphinpads, firewall, gameinfo, portmap, keyboard, memprobe, netcheck, reports, selfuninstall, sysinfo
+from . import dolphinpads, firewall, gameinfo, portmap, winplace, keyboard, memprobe, netcheck, reports, selfuninstall, sysinfo
 from .covers import (CONTENT_TYPES, CoverFetcher, SYSTEMS as COVER_SYSTEMS, clear_custom_cover, cover_path,
                      custom_cover, set_custom_cover)
 from .pcscan import PcScan
@@ -203,6 +203,15 @@ class LauncherApp:
             except CatalogError as exc:
                 raise AppError(str(exc)) from exc
         return {"roots": self.catalog.data["roots"], "excluded_folders": list(DEFAULT_EXCLUDES)}
+
+    def api_open_url(self, body: dict) -> dict:
+        """Open the Featured card's link in the computer's own browser. Only that one address, and only https."""
+        import webbrowser
+        url = str(body.get("url") or "").strip()
+        if not url.startswith("https://") or url != str(self.catalog.settings().get("featured_link") or "").strip():
+            raise AppError("Only the Featured link from Settings can be opened from here.")
+        webbrowser.open(url)
+        return {"opened": True}
 
     def api_rescan(self, body: dict) -> dict:
         return self.rescan(body)
@@ -470,7 +479,7 @@ class LauncherApp:
         return {"will_write": bool(text), "notes": notes, "settings_folder": str(user) if user else None,
                 "enabled": self.catalog.settings()["dolphin_manage_pads"]}
 
-    def _retroarch_extra(self, console_id: str, exe: str, netplay: bool = False) -> list[str]:
+    def _retroarch_extra(self, console_id: str, exe: str, netplay: bool = False, fullscreen: bool | None = None) -> list[str]:
         """Extra RetroArch arguments: managed save folders and any custom pad bindings."""
         lines: list[str] = ["netplay_public_announce = \"false\""] if netplay else []  # private rooms stay private
         for player in range(1, pads.MAX_PLAYERS + 1):
@@ -480,6 +489,8 @@ class LauncherApp:
                 lines += pads.retroarch_pad_config(profile, player)[0]
         lines += keyboard.retroarch_lines(self.catalog.data.get("keyboard"))
         v = self._video_for(console_id)
+        if fullscreen is not None:
+            v["fullscreen"] = fullscreen
         lines += [f'video_fullscreen = "{str(v["fullscreen"]).lower()}"', f'video_scale_integer = "{str(v["integer"]).lower()}"',
                   f'video_force_aspect = "{str(v["keep_shape"]).lower()}"', f'video_smooth = "{str(v["smooth"]).lower()}"',
                   f'video_vsync = "{str(v["vsync"]).lower()}"']
@@ -559,30 +570,95 @@ class LauncherApp:
         return [{"id": e, "name": emulators.EMULATORS[e]["name"], "installed": bool(found.get(e, {}).get("path"))}
                 for e in BY_ID[console_id].emulators if e in emulators.EMULATORS]
 
+    # where games open: full screen or a window, and on which monitor ------------------------------------------
+    def _display_prefs(self) -> dict:
+        prefs = self.catalog.data.setdefault("display_prefs", {"modes": {}, "monitor": ""})
+        prefs.setdefault("modes", {})
+        prefs.setdefault("monitor", "")
+        return prefs
+
+    def _monitor_for(self, key: str) -> dict | None:
+        key = str(key or "")
+        return next((m for m in winplace.list_monitors() if str(m["index"]) == key), None) if key else None
+
+    def _display_choice(self, eid: str, console: str, body: dict) -> tuple[str | None, str, bool]:
+        """(mode, monitor key, must_ask). `display` in the request is the player's answer to the question."""
+        prefs = self._display_prefs()
+        chosen = body.get("display")
+        if isinstance(chosen, dict) and chosen.get("mode") in ("fullscreen", "windowed"):
+            monitor = str(chosen.get("monitor") or "")
+            if chosen.get("remember"):
+                prefs["modes"][eid] = chosen["mode"]
+                prefs["monitor"] = monitor
+                self.catalog.save()
+            return chosen["mode"], monitor, False
+        stored = prefs["modes"].get(eid)
+        if stored in ("fullscreen", "windowed"):
+            return stored, prefs["monitor"], False
+        if body.get("interactive") and stored in (None, "ask"):
+            return None, prefs["monitor"], True
+        return ("fullscreen" if self._video_for(console)["fullscreen"] else "windowed"), prefs["monitor"], False
+
+    def _bring_forward(self, pid: int, eid: str, mode: str | None = None, monitor_key: str | None = None) -> None:
+        """Once the game's window exists: in front of Legacy Player, on the chosen monitor, full screen or windowed."""
+        prefs = self._display_prefs()
+        mode = mode or prefs["modes"].get(eid)
+        mode = mode if mode in ("fullscreen", "windowed") else "windowed"
+        key = prefs["monitor"] if monitor_key is None else monitor_key
+        has_flag = eid == "retroarch" or bool(emulators.EMULATORS.get(eid, {}).get("fullscreen"))
+        winplace.arrange_async(pid, self._monitor_for(key), mode, has_flag)
+
+    def api_monitors(self, body: dict) -> dict:
+        return {"monitors": winplace.list_monitors()}
+
+    def api_display_prefs(self, body: dict) -> dict:
+        prefs = self._display_prefs()
+        if "emulator" in body:
+            eid, mode = body["emulator"], body.get("mode")
+            if eid not in emulators.EMULATORS or mode not in ("ask", "fullscreen", "windowed"):
+                raise AppError("Unknown emulator or choice.")
+            prefs["modes"][eid] = mode
+        if "monitor" in body:
+            key = str(body["monitor"] or "")
+            if key and self._monitor_for(key) is None:
+                raise AppError("That monitor is not connected right now.")
+            prefs["monitor"] = key
+        self.catalog.save()
+        found = emulators.find_emulators(self._search_roots(), self.catalog.data["emulator_paths"])
+        return {"monitor": prefs["monitor"], "monitors": winplace.list_monitors(),
+                "emulators": [{"id": k, "name": v["name"], "mode": prefs["modes"].get(k, "ask"),
+                               "flag": emulators.fullscreen_status(k)} for k, v in found.items() if v["path"]]}
+
     def api_launch(self, body: dict) -> dict:
         game = self._game(body)
         check = self.launch_check(game)
         if not check["ready"]:
             raise AppError(check["reason"])
+        eid = check["emulator_id"]
+        mode, monitor, must_ask = self._display_choice(eid, game["console"], body)
+        if must_ask:
+            return {"needs_display": {"emulator": check["emulator"], "emulator_id": eid, "title": game["title"], "monitor": monitor,
+                                      "monitors": winplace.list_monitors(), "flag": emulators.fullscreen_status(eid)}}
+        fullscreen = mode == "fullscreen"
         _, info = self._emulator_for(game["console"], prefer=self._meta(game).get("emulator"))
         try:
-            if check["emulator_id"] == "retroarch":
+            if eid == "retroarch":
                 if game["console"] not in CORES:
                     raise AppError("RetroArch has no core set up for this console.")
                 core = find_core(info["path"], game["console"])
                 command = build_solo_command(info["path"], core, game["path"],
-                                             self._retroarch_extra(game["console"], info["path"]) + self._user_args(game))
+                                             self._retroarch_extra(game["console"], info["path"], fullscreen=fullscreen) + self._user_args(game))
                 pid = emulators.launch_command(command)
             else:
-                if check["emulator_id"] == "dolphin":
+                if eid == "dolphin":
                     self._prepare_dolphin(info["path"], game["console"])
-                pid = emulators.launch(check["emulator_id"], info["path"], game["path"],
-                                       emulators.video_args(check["emulator_id"], self._video_for(game["console"])["fullscreen"]) + self._user_args(game))
+                pid = emulators.launch(eid, info["path"], game["path"], emulators.video_args(eid, fullscreen) + self._user_args(game))
         except NetplayError as exc:
             raise AppError(str(exc)) from exc
         except (OSError, FileNotFoundError) as exc:
             self.reports.capture("launch-failed", exc, context={"emulator": check.get("emulator_id"), "console": game["console"], "extension": game.get("extension")})
             raise AppError(f"Could not start {check['emulator']}: {exc}") from exc
+        self._bring_forward(pid, eid, mode, monitor)
         self.catalog.record_play(game["id"])
         self.running = {"pid": pid, "title": game["title"], "emulator": check["emulator"]}
         return {"launched": game["title"], "emulator": check["emulator"], "pid": pid}
@@ -1900,6 +1976,7 @@ class LauncherApp:
                         encrypted = True
                 command = build_guest_command(check["exe"], check["core"], game["path"], connect_address, connect_port, nick, extra)
             pid = emulators.launch_command(command)
+            self._bring_forward(pid, "retroarch")
             if room["role"] == "host":  # publish only once RetroArch is starting
                 request = {"operation": "set_endpoint", "address": address, "port": port, **self._auth()}
                 if relay:
@@ -1965,6 +2042,7 @@ class LauncherApp:
                 guide = dolphin_steps("guest", mode=mode, address=endpoint["address"], port=endpoint.get("port"), code=endpoint["address"])
             self._prepare_dolphin(check["exe"], game["console"])
             pid = emulators.launch_command(dolphin_open_command(check["exe"], game["path"]))
+            self._bring_forward(pid, "dolphin")
             if room["role"] == "host" and mode == "direct":
                 self._call({"operation": "set_endpoint", "kind": "direct", "address": address, "port": port, **self._auth()})
         except DolphinNetplayError as exc:
@@ -2001,7 +2079,7 @@ class LauncherApp:
 
     # window lifetime (used by the packaged app so it quits when its window closes) ----------
     # calls that need no global lock: quick reads, or slow work that only touches its own cache
-    UNLOCKED = frozenset({"router_test", "firewall_allow", "ping", "bye", "status", "specs", "server_status", "network_last", "server_control", "rescan", "scan_everything"})
+    UNLOCKED = frozenset({"force_quit", "router_test", "firewall_allow", "ping", "bye", "status", "specs", "server_status", "network_last", "server_control", "rescan", "scan_everything"})
 
     def api_ping(self, body: dict) -> dict:
         self.last_ping, self.bye_at, self.tray_mode = time.time(), 0.0, False
@@ -2039,6 +2117,15 @@ class LauncherApp:
         report["server_stopped"] = server_stopped
         self.catalog.save = lambda: None      # never write the settings file back after it was removed
         return report
+
+    def api_force_quit(self, body: dict) -> dict:
+        """Stop the running game now, even if the emulator is showing its own "are you sure?" box. No saves are written."""
+        if not self.running:
+            raise AppError("No game is running from Legacy Player.")
+        title = self.running["title"]
+        emulators.stop_pid(self.running["pid"])
+        self.running = None
+        return {"stopped": title}
 
     def api_quit(self, body: dict) -> dict:
         """Full close: leave rooms politely, then stop the app."""
