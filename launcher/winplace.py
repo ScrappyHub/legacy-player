@@ -248,6 +248,22 @@ def overlay_open(fragment: str) -> bool:
     return bool(_titled(fragment))
 
 
+APP_TITLE_MARK = "Legacy Player \u2014"        # every app window's title starts like this (the overlay's does not)
+
+
+def minimize_titled(fragment: str) -> bool:
+    """Minimise the window whose title contains the text. False when there is none."""
+    wins = _titled(fragment)
+    for w in wins:
+        _user32().ShowWindow(w["hwnd"], 6)              # SW_MINIMIZE
+    return bool(wins)
+
+
+def restore_titled(fragment: str) -> bool:
+    """Bring a minimised window back and in front (the same as focus_titled)."""
+    return focus_titled(fragment)
+
+
 def focus_titled(fragment: str) -> bool:
     """Bring a window whose title contains the text to the front (restoring it if minimised). False when there is none."""
     wins = _titled(fragment)

@@ -331,7 +331,14 @@ class TrayController:
                 line += "  ·  this computer only"
         else:
             line = "Server stopped" if st["known"] else "Checking the server..."
-        items = [("open", "Open Legacy Player", True, True), ("overlay", "Open the in-game overlay", True), None, ("open", line, True)]
+        items = [("open", "Open Legacy Player", True, True)]
+        game = app._running_now()
+        if game:                                       # the overlay only exists while a game is running
+            from .overlay_window import duration
+            since = game.get("since")
+            items += [None, ("open", f"Playing {game['title']}" + (f"  ·  {duration(time.time() - since)}" if since else ""), True),
+                      ("overlay", "Open game overlay", True)]
+        items += [None, ("open", line, True)]
         if room:
             who = room.get("game", "a game")
             items.append(("open", f"In a room: {who}" + (" (you are hosting)" if room.get("role") == "host" else ""), True))

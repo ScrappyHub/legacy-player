@@ -224,3 +224,62 @@ class QuitFarewellTests(unittest.TestCase):
             app.api_quit({})
             self.assertTrue(app.api_ping({})["quitting"])
             self.assertGreater(app.quit_at, 0)
+
+
+class GameOverlayTests(unittest.TestCase):
+    def setUp(self):
+        import os
+        p = mock.patch.dict(os.environ, {"LEGACY_PLAYER_NO_BACKGROUND": "1"})
+        p.start()
+        self.addCleanup(p.stop)
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.app = LauncherApp(Path(self.tmp.name) / "data", roots=[])
+
+    def test_overlay_does_not_open_without_a_game(self):
+        from launcher.app import AppError
+        with self.assertRaises(AppError):
+            self.app.api_overlay_open({})
+
+    def test_overlay_view_names_the_game_and_the_room(self):
+        self.assertIsNone(self.app._overlay_view()["game"])
+        self.app.running = {"pid": 1, "title": "Bomberman II", "emulator": "RetroArch", "emulator_id": "retroarch", "started": None, "since": 100.0}
+        with mock.patch("launcher.procs.is_alive", return_value=True):
+            view = self.app._overlay_view()
+        self.assertEqual(("Bomberman II", 100.0), (view["game"]["title"], view["game"]["since"]))
+
+    def test_tray_offers_the_overlay_only_while_a_game_runs(self):
+        import time
+        from launcher.tray import TrayController
+        tray = TrayController(self.app, lambda: None)
+        tray._state = {"running": False, "players": 0, "live": 0, "open_rooms": 0, "cert": False, "known": True, "shared": False}
+        self.assertFalse(any(i and i[0] == "overlay" for i in tray.menu()))
+        self.app.running = {"pid": 1, "title": "Bomberman II", "emulator": "RetroArch", "emulator_id": "retroarch", "started": None, "since": time.time() - 1500}
+        with mock.patch("launcher.procs.is_alive", return_value=True):
+            labels = [i[1] for i in tray.menu() if i]
+        self.assertTrue(any(l.startswith("Playing Bomberman II  ·  25 min") for l in labels), labels)
+        self.assertIn("Open game overlay", labels)
+        self.assertLess([l.startswith("Playing") for l in labels].index(True), labels.index("Open game overlay"))
+
+    def test_app_steps_aside_for_a_game_and_returns_when_it_ends(self):
+        from launcher import winplace
+        alive = iter([True, True, False])
+        with mock.patch("time.sleep"), mock.patch("launcher.procs.is_alive", side_effect=lambda *a: next(alive)), \
+                mock.patch.object(winplace, "minimize_titled", return_value=True) as mini, \
+                mock.patch.object(winplace, "restore_titled") as back:
+            self.app._step_aside_for(7, None)
+        mini.assert_called_once()
+        back.assert_called_once()
+
+    def test_it_does_not_pop_the_window_back_if_it_never_stepped_aside(self):
+        from launcher import winplace
+        with mock.patch("time.sleep"), mock.patch("launcher.procs.is_alive", return_value=False), \
+                mock.patch.object(winplace, "minimize_titled", return_value=False), mock.patch.object(winplace, "restore_titled") as back:
+            self.app._step_aside_for(7, None)
+        back.assert_not_called()
+
+    def test_session_length_reads_naturally(self):
+        from launcher.overlay_window import duration
+        self.assertEqual("under a minute", duration(20))
+        self.assertEqual("25 min", duration(1500))
+        self.assertEqual("1 h 05 min", duration(3900))

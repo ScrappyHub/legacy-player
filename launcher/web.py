@@ -235,6 +235,11 @@ def serve(app: LauncherApp, port: int = 8780, open_browser: bool = True, opener=
         from .shell import make_overlay_opener
         overlay_window = make_overlay_opener(app.data_dir)
         app.overlay_opener = lambda: overlay_window(url_for_window() + "&overlay=1")   # returns False when no browser can open it
+        from . import overlay_window
+        if overlay_window.available():                 # the real overlay panel (frameless, always on top); the browser window is the fallback
+            from . import overlay as overlaymod
+            app.overlay_native = overlay_window.NativeOverlay(app._overlay_view, app._overlay_actions(), monitor=app._overlay_monitor,
+                                                              pad=overlaymod.read_pads)
         app.overlay_listeners = Listeners(lambda: app.api_overlay_open({}))
         app.overlay_listeners.start(app._overlay_prefs())
     if exit_when_closed:
@@ -269,6 +274,7 @@ def serve(app: LauncherApp, port: int = 8780, open_browser: bool = True, opener=
         app.last_ping, app.bye_at, app.tray_mode = time.time(), 0.0, False
         (opener or webbrowser.open)(url_for_window())
     launch.on_wake = show_window
+    app.show_main_window = show_window
     if exit_when_closed:      # a second launch finds this one through this file and asks it to show its window
         try:
             instance_file.write_text(json.dumps({"port": httpd.server_address[1], "wake": launch.wake_secret}), encoding="utf-8")
@@ -291,6 +297,8 @@ def serve(app: LauncherApp, port: int = 8780, open_browser: bool = True, opener=
             tray.stop()
         if app.overlay_listeners is not None:
             app.overlay_listeners.stop()
+        if app.overlay_native is not None:
+            app.overlay_native.stop()
         httpd.server_close()
         app.shutdown()
 

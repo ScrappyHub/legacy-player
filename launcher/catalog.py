@@ -110,6 +110,11 @@ SETTINGS_SCHEMA: dict[str, dict] = {
         "label": "Address friends use to reach your server",
         "help": "Leave blank: the app finds your public address itself when it opens the router. Only fill this in if you forward the port yourself or use a VPN address.",
     },
+    "minimize_on_launch": {
+        "type": "bool", "default": True, "group": "Playing",
+        "label": "Minimise Legacy Player while a game runs",
+        "help": "When you start a game from Legacy Player, the app steps aside and comes back when the game closes.",
+    },
     "server_autostart": {
         "type": "bool", "default": True, "group": "Your server",
         "label": "Start my server by itself when I host or join",

@@ -143,7 +143,9 @@ class LauncherApp:
         self.room: dict | None = None
         self.waits: dict[str, dict] = {}   # rooms you are queued for while doing something else
         self._overlay_launched = 0.0
-        self.overlay_opener = None            # set by the web server: opens the overlay window
+        self.overlay_opener = None            # set by the web server: opens the browser-window overlay (fallback)
+        self.overlay_native = None            # set by the web server: the real overlay panel
+        self.show_main_window = None          # set by the web server: bring the app window forward
         self.overlay_listeners = None         # global shortcut + controller watcher
         self.running: dict | None = None   # the game started from the library, if any
         self.tunnel = None
@@ -608,7 +610,19 @@ class LauncherApp:
         return ("fullscreen" if self._video_for(console)["fullscreen"] else "windowed"), prefs["monitor"], False
 
     def _note_running(self, pid: int, title: str, emulator: str, eid: str) -> None:
-        self.running = {"pid": pid, "title": title, "emulator": emulator, "emulator_id": eid, "started": procs.start_time(pid)}
+        self.running = {"pid": pid, "title": title, "emulator": emulator, "emulator_id": eid, "started": procs.start_time(pid),
+                        "since": time.time()}
+        if self.catalog.settings().get("minimize_on_launch", True) and not os.environ.get("LEGACY_PLAYER_NO_BACKGROUND"):
+            threading.Thread(target=self._step_aside_for, args=(pid, self.running["started"]), daemon=True, name="step-aside").start()
+
+    def _step_aside_for(self, pid: int, started) -> None:
+        """Legacy Player gets out of the way while a game runs and comes back when it ends (Xbox / Steam style)."""
+        time.sleep(1.5)                                    # let the game's own window appear first
+        hidden = winplace.minimize_titled(winplace.APP_TITLE_MARK)
+        while procs.is_alive(pid, started):
+            time.sleep(1.0)
+        if hidden and not self.quit_requested:
+            winplace.restore_titled(winplace.APP_TITLE_MARK)
 
     def _running_now(self) -> dict | None:
         """The game started from here, but only if it is still running (a closed game, or a reused process number, clears it)."""
@@ -2250,20 +2264,61 @@ class LauncherApp:
                 "error": getattr(self.overlay_listeners, "error", "") or ""}
 
     def api_overlay_open(self, body: dict) -> dict:
-        """Open the overlay, or close it if it is already open (so the same shortcut works both ways)."""
+        """Open the overlay, or close it if it is already open (so the same shortcut works both ways).
+        It only exists while a game started from Legacy Player is running."""
+        native = self.overlay_native
+        if native is not None and native.is_open():
+            native.close()
+            return {"open": False}
         if winplace.close_titled(overlaymod.TITLE):
             return {"open": False}
+        if not self._running_now():
+            raise AppError("The overlay is for while a game is running. Start a game from Legacy Player first.")
+        if time.time() - self._overlay_launched < 1.0:
+            return {"open": True}                      # a second press while it is still starting must not undo it
+        if native is not None:
+            try:
+                opened = native.toggle()
+                self._overlay_launched = time.time()
+                return {"open": opened}
+            except RuntimeError:
+                pass                                   # no Tk on this machine: use the browser-window version below
         opener = self.overlay_opener
         if opener is None:
             raise AppError("The overlay opens from the Windows app.")
-        if time.time() - self._overlay_launched < 3.0:
-            return {"open": True}                      # it is still starting: a second press must not open a second window
         if opener() is False:
             raise AppError("I could not open the overlay window (Edge or Chrome is needed).")
         self._overlay_launched = time.time()
         prefs = self._display_prefs()
         winplace.pin_titled(overlaymod.TITLE, self._monitor_for(prefs["monitor"]) or next((m for m in winplace.list_monitors() if m.get("primary")), None))
         return {"open": True}
+
+    def _overlay_view(self) -> dict:
+        """What the overlay panel shows, read fresh every second."""
+        running = self._running_now()
+        room = self.room
+        members = [n for n in ((room.get("session") or {}).get("participants") or {})] if room else []
+        return {"game": ({"title": running["title"], "emulator": running["emulator"], "since": running.get("since")} if running else None),
+                "room": ({"game": room.get("game"), "role": room.get("role"), "invite_code": room.get("invite_code"), "members": members} if room else None)}
+
+    def _overlay_monitor(self) -> dict | None:
+        prefs = self._display_prefs()
+        return self._monitor_for(prefs["monitor"]) or next((m for m in winplace.list_monitors() if m.get("primary")), None)
+
+    def _overlay_actions(self) -> dict:
+        def window(mode: str):
+            def run() -> None:
+                if self._running_now():
+                    self._bring_forward(self.running["pid"], self.running.get("emulator_id") or "", mode, explicit=True)
+            return run
+
+        def open_app() -> None:
+            if self.overlay_native is not None:
+                self.overlay_native.close()
+            if self.show_main_window:
+                self.show_main_window()
+        return {"back": lambda: self.overlay_native.close(), "fullscreen": window("fullscreen"), "windowed": window("windowed"),
+                "force_quit": lambda: self.api_force_quit({}), "open_app": open_app}
 
     def api_overlay_state(self, body: dict) -> dict:
         room = self.room

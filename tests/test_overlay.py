@@ -106,7 +106,27 @@ class AppOverlayTests(unittest.TestCase):
             stop.assert_not_called()
         self.assertIsNone(self.app.running)
 
+    def _game(self):
+        self.app.running = {"pid": 7, "title": "T", "emulator": "E", "emulator_id": "retroarch", "started": None, "since": 1.0}
+        p = mock.patch("launcher.procs.is_alive", return_value=True)
+        p.start()
+        self.addCleanup(p.stop)
+
+    def test_native_overlay_is_used_when_there_is(self):
+        self._game()
+
+        class Native:
+            opened = False
+            def is_open(self): return self.opened
+            def toggle(self): self.opened = not self.opened; return self.opened
+            def close(self): self.opened = False
+        self.app.overlay_native = Native()
+        with mock.patch("launcher.winplace.close_titled", return_value=False):
+            self.assertEqual({"open": True}, self.app.api_overlay_open({}))
+            self.assertEqual({"open": False}, self.app.api_overlay_open({}))       # the same shortcut closes it
+
     def test_overlay_without_a_browser_says_so_and_a_second_press_does_not_double_open(self):
+        self._game()
         self.app.overlay_opener = lambda: False
         with mock.patch("launcher.winplace.close_titled", return_value=False):
             with self.assertRaises(AppError):
@@ -119,6 +139,7 @@ class AppOverlayTests(unittest.TestCase):
         self.assertEqual([1], opened)
 
     def test_open_toggles_closed_when_already_open(self):
+        self._game()
         with mock.patch("launcher.winplace.close_titled", return_value=True):
             self.assertEqual({"open": False}, self.app.api_overlay_open({}))
         opened = []

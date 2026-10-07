@@ -18,6 +18,7 @@ exit /b %RC%
 python --version || (echo Python was not found. Install Python 3.13+ from python.org and try again. & exit /b 1)
 rem A running copy locks dist\LegacyPlayer.exe ("Access is denied"), so close it first.
 taskkill /f /t /im LegacyPlayer.exe
+del /f /q dist\LegacyPlayer.old-*.exe >nul 2>&1
 if exist dist\LegacyPlayer.exe del /f /q dist\LegacyPlayer.exe
 rem Windows lets a running exe be renamed even though it can not be deleted, so move a stubborn one aside.
 if exist dist\LegacyPlayer.exe move /y dist\LegacyPlayer.exe dist\LegacyPlayer.old-%RANDOM%.exe >nul
@@ -36,6 +37,7 @@ python -m PyInstaller --noconfirm --clean --onefile --windowed --name LegacyPlay
   --collect-submodules tools --add-data "game_packs;game_packs" ^
   legacy_player_app.py || exit /b 1
 echo.
+del /f /q dist\LegacyPlayer.old-*.exe >nul 2>&1
 echo Built: %CD%\dist\LegacyPlayer.exe
 echo Double-click it to open Legacy Player. Your data lives in %USERPROFILE%\.legacy-player
 endlocal
