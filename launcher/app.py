@@ -397,6 +397,9 @@ class LauncherApp:
     def api_probe_capture(self, body: dict) -> dict:
         return self._probe(self.memprobe.capture)
 
+    def api_probe_forget(self, body: dict) -> dict:
+        return self._probe(self.memprobe.forget, str(body.get("label") or ""))
+
     def api_probe_cancel(self, body: dict) -> dict:
         return self.memprobe.cancel()
 

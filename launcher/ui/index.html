@@ -712,33 +712,43 @@ async function viewStorage(m){
 async function viewProbe(m){
  const st=await api("probe_status");
  m.append(h("h2",{},"Dolphin memory probe"),
-  h("div",{class:"why"},"For developers: this finds which part of Dolphin's emulated memory changes when you do one thing in Mario Party 4 (start a minigame, land on a space...). It only reads memory from your open Dolphin, on this computer. It never changes the game and sends nothing anywhere."));
+  h("div",{class:"why"},"For developers. Works with any GameCube or Wii game open in Dolphin: it finds which part of the game's memory changes when you do ONE thing (roll the dice, start a minigame, spend a coin...). Do the same thing again and it keeps only the parts that changed both times, so a name gets more trustworthy each time. It only reads memory from your open Dolphin, on this computer. It never changes the game and sends nothing anywhere."));
  const box=h("div",{style:"margin-top:12px"});m.append(box);
  const resultBox=h("div",{style:"margin-top:12px"});m.append(resultBox);
+ const refresh=async()=>draw(await api("probe_status"));
  const draw=st=>{
   if(!st.supported){box.replaceChildren(h("div",{class:"card"},h("p",{class:"muted"},st.why||"The probe only works on Windows.")));return}
-  const known=(st.actions||[]).map(a=>a.name);
-  const label=h("input",{type:"text",list:"probe-actions",placeholder:"What will you do? e.g. start_minigame_once","aria-label":"Action label",style:"width:min(360px,100%)",value:st.label||""});
-  const dl=h("datalist",{id:"probe-actions"},...known.map(n=>h("option",{value:n})));
+  const learned=st.learned||[];
+  const label=h("input",{type:"text",list:"probe-actions",placeholder:"Name the thing you will do, e.g. roll_dice","aria-label":"Action name",style:"width:min(360px,100%)",value:st.label||""});
+  const dl=h("datalist",{id:"probe-actions"},...learned.map(l=>h("option",{value:l.name})));
   const recheck=h("button",{class:"btn",onclick:async()=>{const v=await act(()=>api("probe_status"));if(v)draw(v)}},"Check again");
-  const info=h("div",{class:"card"},h("div",{class:"row"},h("h3",{class:"grow",style:"margin:0"},st.ready?"Dolphin and the game were found":"Not ready yet"),recheck),
-   st.ready?h("p",{class:"small muted"},"Game "+st.game.id+" ("+(st.game.region||"?")+"), RAM at "+st.ram.base+", "+Math.round(st.ram.size/1048576)+" MB. Watching "+st.tracked_pages+" memory pages."):h("p",{class:"small"},st.why||""));
+  const info=h("div",{class:"card"},h("div",{class:"row"},h("h3",{class:"grow",style:"margin:0"},st.ready?"Found: "+st.game.name:"Not ready yet"),recheck),
+   st.ready?h("p",{class:"small muted"},(st.game.title?st.game.title+". ":"")+Math.round(st.ram.size/1048576)+" MB of game memory ("+st.ram.pages+" pages) will be watched."):h("p",{class:"small"},st.why||""));
   const steps=h("div",{class:"card",style:"margin-top:12px"},h("h3",{style:"margin-top:0"},"Run it"),
    h("div",{class:"row"},label,dl),
    st.waiting_for_action
     ?h("div",{style:"margin-top:10px"},h("p",{},h("b",{},"Baseline taken for "+st.label+". "),"Now do that ONE thing in the game, then press the button right after."),
-      h("div",{class:"row"},h("button",{class:"btn primary",onclick:async()=>{const r=await act(()=>api("probe_capture"));if(r){showResult(r);draw(await api("probe_status"))}}},"I did it, capture now"),
-       h("button",{class:"btn",onclick:async()=>{await api("probe_cancel");draw(await api("probe_status"))}},"Cancel")))
-    :h("div",{style:"margin-top:10px"},h("p",{class:"small muted"},"1. Press the button. 2. Do one thing in the game. 3. Press capture."),
+      h("div",{class:"row"},h("button",{class:"btn primary",onclick:async()=>{const r=await act(()=>api("probe_capture"));if(r)showResult(r);refresh()}},"I did it, capture now"),
+       h("button",{class:"btn",onclick:async()=>{await api("probe_cancel");refresh()}},"Cancel")))
+    :h("div",{style:"margin-top:10px"},h("p",{class:"small muted"},"1. Name it and press the button. 2. Do that one thing in the game. 3. Press capture. Repeat it a second time to make the name trustworthy."),
       h("button",{class:"btn primary",disabled:!st.ready,onclick:async()=>{
         if(!await ask("The probe will read memory from your open Dolphin program, on this computer only. It does not change the game and sends nothing anywhere. Continue?","Take baseline"))return;
-        const r=await act(()=>api("probe_baseline",{label:label.value,consent:true}));if(r)draw(await api("probe_status"))}},"Take baseline")));
-  box.replaceChildren(info,steps)};
+        const r=await act(()=>api("probe_baseline",{label:label.value,consent:true}));if(r)refresh()}},"Take baseline")));
+  const known=h("div",{class:"card",style:"margin-top:12px"},h("h3",{style:"margin-top:0"},"Learned for this game"),
+   learned.length?h("table",{},h("thead",{},h("tr",{},h("th",{},"Name"),h("th",{},"Times"),h("th",{},"Pages"),h("th",{},"Trust"),h("th",{},""))),
+     h("tbody",{},...learned.map(l=>h("tr",{},h("td",{},l.name),h("td",{},String(l.runs)),h("td",{},String(l.pages)),h("td",{},l.confidence==="grounded"?"Confirmed twice":l.confidence==="shipped"?"Came with the game pack":"One try so far"),
+       h("td",{},h("button",{class:"btn bad",onclick:async()=>{if(!await ask("Forget \u201c"+l.name+"\u201d for this game?","Forget"))return;const r=await act(()=>api("probe_forget",{label:l.name}));if(r)refresh()}},"Forget"))))))
+    :h("p",{class:"small muted"},"Nothing yet. The first capture for this game starts the list."));
+  box.replaceChildren(info,steps,...(st.ready?[known]:[]))};
  const showResult=r=>{
-  const good=r.token!=="NO_STRONG_MATCH";
-  resultBox.replaceChildren(h("div",{class:"card"},h("h3",{style:"margin-top:0"},good?"Matched: "+(r.best_cluster||"").replace(/_/g," "):"No strong match"),
-   h("p",{},r.changed_pages+" of the watched pages changed."+(good?"":" Nothing known lined up with this action; that is useful to know too.")),
-   r.best_score?h("p",{class:"small muted"},"Best overlap "+r.best_score.overlap_count+" of "+r.best_score.cluster_size+" pages (score "+r.best_score.score+")."):null,
+  const L=r.learned;
+  const head=r.token==="NOTHING_CHANGED"?"Nothing changed":r.matched?"Looks like \u201c"+r.best_label+"\u201d":"Changed, but nothing known matches";
+  resultBox.replaceChildren(h("div",{class:"card"},h("h3",{style:"margin-top:0"},head),
+   h("p",{},r.changed_pages+" memory pages changed because of what you did ("+r.noise_pages+" that change by themselves were ignored)."),
+   r.token==="NOTHING_CHANGED"?h("p",{class:"small muted"},"Try again and press capture a little sooner after the action, or pick an action that clearly changes the game (a score, a turn, a menu)."):null,
+   r.best_score&&r.best_label?h("p",{class:"small muted"},"Closest earlier name: "+r.best_label+" ("+r.best_score.overlap_count+" of its "+r.best_score.cluster_size+" pages, score "+r.best_score.score+")."):null,
+   L?h("p",{},L.confidence==="grounded"?"Confirmed: "+L.pages+" pages changed every time you did this.":"Saved as a first try ("+L.pages+" pages). Do it again to confirm it."+(L.note?" "+L.note:"")):null,
+   r.top_pages&&r.top_pages.length?h("p",{class:"small muted"},"Biggest changes at "+r.top_pages.slice(0,4).map(p=>p.address).join(", ")+(r.top_pages.length>4?"...":"")):null,
    h("p",{class:"small muted"},"Saved to "+r.file),
    h("div",{class:"row"},h("button",{class:"btn",onclick:()=>copyText(r.file,"Path copied")},"Copy file path"))))};
  draw(st)}

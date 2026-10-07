@@ -103,9 +103,10 @@ class UiSmokeTests(unittest.TestCase):
             page.locator(".hero, .doc").first.dblclick(force=True)
             self.assertEqual("", page.evaluate("getSelection().toString()"))
             # the Dolphin memory probe page, drawn with a pretend "Dolphin found" answer (the real one is Windows only)
-            ready = {"supported": True, "ready": True, "waiting_for_action": False, "label": "", "tracked_pages": 3,
-                     "game": {"id": "GMPE01", "region": "USA", "phase": "board"}, "ram": {"base": "0x1000", "size": 33554432},
-                     "actions": [{"name": "coin_total_change_once", "confidence": "grounded", "pages": 3}]}
+            ready = {"supported": True, "ready": True, "waiting_for_action": False, "label": "",
+                     "game": {"key": "GTSE01", "name": "GTSE01 (USA)", "region": "USA", "title": "Test Game (GTSE01)"},
+                     "ram": {"base": "0x1000", "size": 25165824, "pages": 6144},
+                     "learned": [{"name": "roll_dice", "runs": 2, "pages": 5, "confidence": "grounded", "updated": None}]}
             page.route("**/api/probe_status", lambda route: route.fulfill(status=200, content_type="application/json", body=__import__("json").dumps(ready)))
             page.evaluate('nav("probe")')
             page.wait_for_selector("text=Take baseline")

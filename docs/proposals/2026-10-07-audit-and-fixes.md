@@ -98,12 +98,20 @@ under "Still to verify on Windows".
 - **Windows:** `tools/windows_selfcheck.py` runs the Recycle Bin move, specs read, icon, tray icon and cleanup script
   and prints PASS/FAIL; `docs/WINDOWS_CHECKLIST.md` lists the hand checks. These still need one run on a real PC.
 
-## Follow-up: Dolphin memory probe in the app
+## Follow-up: Dolphin memory probe in the app (any game) and a faster tray menu
 
-Tools > "Dolphin memory probe" runs the hot-action validator step by step (`launcher/memprobe.py` wraps
-`tools/memory_probe/hot_action_validator.py`): take a baseline, do one thing in the game, capture. It shows which
-known cluster of Dolphin's RAM changed and saves the full record under `<data folder>/probe_exports`. It is read-only
-and local, asks for confirmation first, and says plainly when it is not on Windows or Dolphin is not running. Only
-`coin_total_change_once` is grounded in the current cluster file; the other two clusters are placeholders, and the
-page shows "no strong match" until they are filled in from real captures. `build_exe.bat` now bundles `tools` and
-`game_packs` and installs `psutil`. Needs a real run on Windows with Dolphin open.
+Tools > "Dolphin memory probe" works with any GameCube or Wii game open in Dolphin (`launcher/memprobe.py`). It reads
+the game's whole emulated RAM as 4 KB page fingerprints, reads the baseline twice to learn which pages change on their
+own (noise), and after one action shows which pages changed. What it finds is saved per game under the label the player
+typed; doing the same thing again keeps only the pages that changed both times ("confirmed"), and every capture is
+compared with the other labels of the same game ("looks like start_minigame"). Mario Party 4 (USA) starts with the
+pages from its game pack; an unrecognised game is keyed by its window title. Everything is read-only and local, needs
+consent first, and saves records under `<data folder>/probe_exports` and `<data folder>/probe`. The old command-line
+tools in `tools/memory_probe` are unchanged. `build_exe.bat` bundles `tools` and `game_packs` and installs `psutil`.
+Needs a real run on Windows with Dolphin open; only GameCube/Wii games in Dolphin are covered.
+
+The tray menu used to ask the server for its status on every right-click, which made it open late. It now opens from a
+picture of the server that a background thread refreshes every few seconds (first look at start-up, and straight
+after any server command), shows the server's player and room counts at the top, makes the information rows readable
+and clickable instead of greyed out, makes "Open Legacy Player" the bold default, and borrows foreground focus
+properly so Windows gives the menu hover highlighting. Needs checking by eye on Windows.

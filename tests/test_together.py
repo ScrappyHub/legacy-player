@@ -524,23 +524,61 @@ class TrayTests(unittest.TestCase):
         app.api_quit({})
         self.assertTrue(app.should_exit(time.time()))
 
-    def test_menu_follows_the_server_state(self):
+    def _tray(self):
         import tempfile
         from pathlib import Path
         from launcher.app import LauncherApp
         from launcher.tray import TrayController
         app = LauncherApp(Path(tempfile.mkdtemp()))
-        tray = TrayController(app, lambda: None)
-        tray.server_running = lambda: False
+        return app, TrayController(app, lambda: None)
+
+    def test_menu_follows_the_server_state(self):
+        app, tray = self._tray()
+        tray._state = {"running": False, "players": 0, "live": 0, "open_rooms": 0, "cert": False, "known": True}
         labels = [i[1] for i in tray.menu() if i]
-        self.assertIn("Server: stopped", labels); self.assertIn("Start server (let friends connect)", labels)
+        self.assertIn("Server stopped", labels); self.assertIn("Start server (let friends connect)", labels)
         self.assertNotIn("Stop server", labels)
-        tray.server_running = lambda: True
-        app.room = {"game": "Mario", "invite_code": "ABCDE-FGHIJ"}
-        labels = [i[1] for i in tray.menu() if i]
+        tray._state = {"running": True, "players": 3, "live": 2, "open_rooms": 1, "cert": True, "known": True}
+        app.room = {"game": "Mario", "invite_code": "ABCDE-FGHIJ", "role": "host"}
+        items = tray.menu()
+        labels = [i[1] for i in items if i]
+        self.assertIn("Server running  ·  3 players  ·  2 rooms", labels)
         self.assertIn("Stop server", labels); self.assertIn("Copy this room's invite code", labels)
-        self.assertIn("In a room: Mario", labels); self.assertEqual(labels[-1], "Exit Legacy Player")
+        self.assertIn("In a room: Mario (you are hosting)", labels); self.assertEqual(labels[-1], "Exit Legacy Player")
+        self.assertTrue(items[0][3], "Open Legacy Player is the bold default item")
+        self.assertTrue(all(i[2] for i in items if i and i[0] == "open"), "information rows are readable and clickable, not greyed out")
         self.assertTrue(app.catalog.settings()["close_to_tray"])
+
+    def test_opening_the_menu_never_waits_on_the_server(self):
+        import time
+        from server import cli
+        app, tray = self._tray()
+        real = cli._admin_call
+        cli._admin_call = lambda *a, **k: time.sleep(3) or {}
+        try:
+            started = time.time()
+            tray.menu()
+            self.assertLess(time.time() - started, 0.5)
+        finally:
+            cli._admin_call = real
+
+    def test_refresh_reads_the_server_numbers(self):
+        from server import cli
+        app, tray = self._tray()
+        real = cli._admin_call
+        cli._admin_call = lambda *a, **k: {"players_in_live_sessions": 4, "sessions_live": 2, "open_rooms": 1}
+        try:
+            state = tray.refresh()
+        finally:
+            cli._admin_call = real
+        self.assertEqual((True, 4, 2), (state["running"], state["players"], state["live"]))
+        self.assertTrue(tray.server_running())
+        cli_down = lambda *a, **k: (_ for _ in ()).throw(ConnectionError("down"))
+        cli._admin_call = cli_down
+        try:
+            self.assertFalse(tray.refresh()["running"])
+        finally:
+            cli._admin_call = real
 
 
 class LaunchSecretTests(unittest.TestCase):

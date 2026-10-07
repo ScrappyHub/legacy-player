@@ -79,6 +79,11 @@ class NativeTray:
         user32.CreatePopupMenu.restype = wintypes.HMENU
         user32.DestroyMenu.argtypes = [wintypes.HMENU]
         user32.SetForegroundWindow.argtypes = [wintypes.HWND]
+        user32.GetForegroundWindow.restype = wintypes.HWND
+        user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.c_void_p]
+        user32.GetWindowThreadProcessId.restype = wintypes.DWORD
+        user32.AttachThreadInput.argtypes = [wintypes.DWORD, wintypes.DWORD, wintypes.BOOL]
+        kernel32.GetCurrentThreadId.restype = wintypes.DWORD
         user32.DestroyIcon.argtypes = [wintypes.HICON]
         shell32.Shell_NotifyIconW.argtypes = [wintypes.DWORD, ctypes.POINTER(NOTIFYICONDATA)]
         shell32.ExtractIconW.restype = wintypes.HICON
@@ -100,8 +105,8 @@ class NativeTray:
         NIF_MESSAGE, NIF_ICON, NIF_TIP, NIF_INFO = 1, 2, 4, 0x10
         WM_DESTROY, WM_CLOSE, WM_NULL = 0x0002, 0x0010, 0x0000
         WM_RBUTTONUP, WM_LBUTTONUP, WM_LBUTTONDBLCLK, WM_CONTEXTMENU = 0x0205, 0x0202, 0x0203, 0x007B
-        MF_STRING, MF_GRAYED, MF_SEPARATOR = 0, 1, 0x800
-        TPM_RETURNCMD, TPM_RIGHTBUTTON, TPM_NONOTIFY = 0x100, 0x2, 0x80
+        MF_STRING, MF_GRAYED, MF_SEPARATOR, MF_DEFAULT = 0, 1, 0x800, 0x1000
+        TPM_RETURNCMD, TPM_RIGHTBUTTON, TPM_BOTTOMALIGN = 0x100, 0x2, 0x20
         taskbar_created = user32.RegisterWindowMessageW("TaskbarCreated")
 
         # the same Martin icon as the window and the program file: load it from the bundled .ico at the tray's size
@@ -139,13 +144,23 @@ class NativeTray:
                 if item is None:
                     user32.AppendMenuW(hmenu, MF_SEPARATOR, 0, None)
                     continue
-                command, label, enabled = item
+                command, label, enabled = item[0], item[1], item[2]
+                bold = len(item) > 3 and item[3]
                 lookup[self.ID_BASE + n] = command
-                user32.AppendMenuW(hmenu, MF_STRING | (0 if enabled else MF_GRAYED), self.ID_BASE + n, label)
+                user32.AppendMenuW(hmenu, MF_STRING | (0 if enabled else MF_GRAYED) | (MF_DEFAULT if bold else 0), self.ID_BASE + n, label)
             pt = wintypes.POINT()
             user32.GetCursorPos(ctypes.byref(pt))
-            user32.SetForegroundWindow(self.hwnd)            # needed so the menu closes when you click elsewhere
-            chosen = user32.TrackPopupMenu(hmenu, TPM_RETURNCMD | TPM_RIGHTBUTTON | TPM_NONOTIFY, pt.x, pt.y, 0, self.hwnd, None)
+            # Windows only gives the menu mouse tracking (hover highlight, closing on an outside click) when our window
+            # is really the foreground one, and it refuses that to a background program unless we borrow the current
+            # foreground window's input for a moment.
+            fg = user32.GetForegroundWindow()
+            fg_thread = user32.GetWindowThreadProcessId(fg, None) if fg else 0
+            me = kernel32.GetCurrentThreadId()
+            attached = bool(fg_thread and fg_thread != me and user32.AttachThreadInput(me, fg_thread, True))
+            user32.SetForegroundWindow(self.hwnd)
+            chosen = user32.TrackPopupMenu(hmenu, TPM_RETURNCMD | TPM_RIGHTBUTTON | TPM_BOTTOMALIGN, pt.x, pt.y, 0, self.hwnd, None)
+            if attached:
+                user32.AttachThreadInput(me, fg_thread, False)
             user32.PostMessageW(self.hwnd, WM_NULL, 0, 0)
             user32.DestroyMenu(hmenu)
             if chosen in lookup:
@@ -219,37 +234,86 @@ class NativeTray:
 
 
 class TrayController:
-    """What the tray shows and does. Rebuilt from live state every time the icon is right-clicked."""
+    """What the tray shows and does. The menu is built from a small picture of the server that a background thread keeps
+    fresh, so right-clicking never waits on the network."""
+
+    REFRESH_SECONDS = 4.0
 
     def __init__(self, app, open_window) -> None:
         self.app, self.open_window = app, open_window
         self.native = NativeTray("Legacy Player", self.menu, self.command)
+        self._state = {"running": False, "players": 0, "live": 0, "open_rooms": 0, "cert": False, "known": False}
+        self._wake = threading.Event()
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
 
     def start(self) -> bool:
-        return self.native.start()
+        ok = self.native.start()
+        if ok:
+            self.refresh()                      # the first look happens before anyone can right-click
+            self._thread = threading.Thread(target=self._watch, daemon=True, name="tray-state")
+            self._thread.start()
+        return ok
 
     def stop(self) -> None:
+        self._stop.set()
+        self._wake.set()
         self.native.stop()
 
-    def server_running(self) -> bool:
+    # --- the picture of the server ------------------------------------------------------------------------
+    def refresh(self) -> dict:
+        """Ask the server once (slow if it is busy, so never call this from the menu) and remember the answer."""
+        state = {"running": False, "players": 0, "live": 0, "open_rooms": 0, "known": True,
+                 "cert": (self.app.data_dir / "server" / "tls" / "cert.pem").exists()}
         try:
             from server import cli
-            return bool(cli._is_running(self.app.data_dir / "server"))
+            info = cli._admin_call(self.app.data_dir / "server", "admin_status", timeout=2.0)
+            state.update(running=True, players=int(info.get("players_in_live_sessions", 0)),
+                         live=int(info.get("sessions_live", 0)), open_rooms=int(info.get("open_rooms", 0)))
         except Exception:
-            return False
+            pass
+        self._state = state
+        return state
+
+    def _watch(self) -> None:
+        while not self._stop.is_set():
+            self._wake.wait(self.REFRESH_SECONDS)
+            self._wake.clear()
+            if self._stop.is_set():
+                return
+            try:
+                self.refresh()
+            except Exception:
+                pass
+
+    def poke(self) -> None:
+        """Look again soon (after a click, or because the menu was just opened)."""
+        self._wake.set()
+
+    def server_running(self) -> bool:
+        return bool(self._state["running"])
+
+    @staticmethod
+    def _plural(n: int, one: str, many: str | None = None) -> str:
+        return f"{n} {one if n == 1 else (many or one + 's')}"
 
     def menu(self):
         app = self.app
-        running = self.server_running()
+        st = self._state
         room = app.room
-        items = [("open", "Open Legacy Player", True), None]
-        items.append((None, "Server: running" if running else "Server: stopped", False))
+        self.poke()                                    # so the next right-click is fresher still
+        if st["running"]:
+            line = "Server running  ·  " + self._plural(st["players"], "player") + "  ·  " + self._plural(st["live"], "room")
+        else:
+            line = "Server stopped" if st["known"] else "Checking the server..."
+        items = [("open", "Open Legacy Player", True, True), None, ("open", line, True)]
         if room:
-            items.append((None, f"In a room: {room.get('game', 'a game')}", False))
-        if running:
+            who = room.get("game", "a game")
+            items.append(("open", f"In a room: {who}" + (" (you are hosting)" if room.get("role") == "host" else ""), True))
+        if st["running"]:
             items += [("server_stop", "Stop server", True), ("server_restart", "Restart server", True),
-                      ("server_code", "Copy server code", (app.data_dir / "server" / "tls" / "cert.pem").exists()),
-                      ("server_fresh_code", "Make a fresh server code and copy it", (app.data_dir / "server" / "tls" / "cert.pem").exists())]
+                      ("server_code", "Copy server code", st["cert"]),
+                      ("server_fresh_code", "Make a fresh server code and copy it", st["cert"])]
         else:
             items += [("server_start", "Start server (this computer only)", True),
                       ("server_share", "Start server (let friends connect)", True)]
@@ -285,6 +349,9 @@ class TrayController:
                 self._exit()
         except Exception as exc:
             self.native.notify("Legacy Player", f"That did not work: {exc}"[:200])
+        finally:
+            if command.startswith("server_"):
+                self.refresh()                # show the new state in the menu straight away
 
     def _copy(self, text: str) -> None:
         subprocess.run(["clip"], input=text.encode("ascii", "ignore"), check=False,
@@ -293,7 +360,7 @@ class TrayController:
     def _exit(self) -> None:
         import ctypes
         stop_server = False
-        if self.server_running():
+        if self.refresh()["running"]:
             # MB_YESNOCANCEL | MB_ICONQUESTION | MB_TOPMOST
             answer = ctypes.windll.user32.MessageBoxW(
                 None, "Your server is running for friends.\n\nYes: stop the server and exit\nNo: exit but leave the server running\nCancel: stay open",
