@@ -137,3 +137,19 @@ The receiving end is `server/report_receiver.py` (standard library only; no IP o
 frequent first). **Not live yet:** `REPORT_URL` in `launcher/version.py` is empty, so reports stay on the player's
 computer until the maintainers host the receiver behind https and set that address (or a player sets "Report address" in
 Settings). See `docs/MULTIPLAYER_TEST_PLAN.md` for the first real use.
+
+## Follow-up: automatic reachability and player counts
+
+**Router opening** (`launcher/portmap.py`): when the server starts with "Let friends connect", the app asks the home router
+over UPnP to forward the server port, reads the router's public address, and puts it in the server code automatically;
+it removes the mapping when the server stops (Settings > Your server > "Open my router for friends automatically").
+If the router's outside address is not public (provider-shared, which includes most phone hotspots) it undoes the mapping
+and says so; if UPnP is off it says so; both are also sent as a problem report when reports are on. Tested against a fake
+router; **not yet tried on a real router**. A hotspot computer only ever needs to join, which needs nothing opened.
+Not done: an automatic relay fallback (needs a public relay host), and the Windows firewall prompt still needs one Allow.
+
+**Player counts** (`launcher/gameinfo.py`): every game now has a player count and mode (single-player, co-op, versus,
+taking turns) with a source: set by you (game page), the built-in list of known titles, or the console's usual limit
+when the title is unknown (labelled as a guess). Hosting a game known to be single-player is refused with a plain
+message; room seats are capped to the game's count; the host page shows the count and limits the choices. The built-in
+list is short and should be extended.

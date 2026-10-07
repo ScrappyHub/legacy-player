@@ -107,7 +107,12 @@ SETTINGS_SCHEMA: dict[str, dict] = {
     "server_public_address": {
         "type": "text", "default": "", "group": "Your server",
         "label": "Address friends use to reach your server",
-        "help": "Blank means this computer's home-network address, which works on the same network or a VPN such as Tailscale. For friends on the internet, enter your public IPv4 address and forward the server port on your router. Needed only for the short server code.",
+        "help": "Leave blank: the app finds your public address itself when it opens the router. Only fill this in if you forward the port yourself or use a VPN address.",
+    },
+    "server_auto_open": {
+        "type": "bool", "default": True, "group": "Your server",
+        "label": "Open my router for friends automatically",
+        "help": "When you let friends connect, ask your home router (UPnP) to forward the server port, and close it again when the server stops. Turn off if you set up the router yourself.",
     },
     "server_max_players": {
         "type": "int", "default": 4, "min": 2, "max": 8, "group": "Your server",
@@ -244,7 +249,7 @@ class Catalog:
         self.data["favorites"] = sorted(favorites)
         self.save()
 
-    META_LIMITS = {"title": 80, "emulator": 40, "args": 200, "note": 400}
+    META_LIMITS = {"title": 80, "emulator": 40, "args": 200, "note": 400, "players": 1}
 
     def set_game_meta(self, game_id: str, **fields) -> dict:
         """Per-game choices (name, hidden, emulator, launch options, note). An empty value clears the choice."""

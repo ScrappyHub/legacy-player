@@ -253,7 +253,7 @@ class MultiplayerFlowTests(unittest.TestCase):
         self.apps = {}
         for name in ("Host", "Guest"):
             root = Path(self.tmp.name) / name / "Games"
-            touch(root / "SNES" / "Chrono Trigger (USA).sfc")
+            touch(root / "SNES" / "Super Bomberman (USA).sfc")
             app = LauncherApp(Path(self.tmp.name) / name / "data", roots=[str(root)])
             app.rescan()
             app.catalog.set_setting("display_name", name)
@@ -266,6 +266,21 @@ class MultiplayerFlowTests(unittest.TestCase):
 
     def gid(self, app):
         return app.api_library({})["games"][0]["id"]
+
+    def test_single_player_game_cannot_be_hosted(self):
+        host = self.apps["Host"]
+        root = Path(self.tmp.name) / "Host" / "Games"
+        touch(root / "SNES" / "Chrono Trigger (USA).sfc")
+        host.rescan()
+        solo = next(g for g in host.api_library({})["games"] if "Chrono" in g["title"])
+        self.assertEqual(1, solo["players"]["max"])
+        with self.assertRaises(AppError):
+            host.api_mp_host({"id": solo["id"]})
+
+    def test_room_size_follows_the_game(self):
+        host = self.apps["Host"]
+        room = host.api_mp_host({"id": self.gid(host), "require_approval": False, "max_players": 8})["room"]
+        self.assertEqual(4, room["max_players"])      # Bomberman takes 4; the app will not offer more seats than the game has
 
     def test_host_approves_guest_then_kicks_and_guest_is_told(self):
         host, guest = self.apps["Host"], self.apps["Guest"]
@@ -286,7 +301,7 @@ class MultiplayerFlowTests(unittest.TestCase):
 
     def _extra_app(self, name):
         root = Path(self.tmp.name) / name / "Games"
-        touch(root / "SNES" / "Chrono Trigger (USA).sfc")
+        touch(root / "SNES" / "Super Bomberman (USA).sfc")
         app = LauncherApp(Path(self.tmp.name) / name / "data", roots=[str(root)])
         app.rescan()
         app.catalog.set_setting("display_name", name)
@@ -369,7 +384,7 @@ class MultiplayerFlowTests(unittest.TestCase):
         self.wait_args(host_out)
         third.catalog.set_mapping("console_emulator", "snes", None)
         state = third.api_mp_switch({"session_id": sid, "close_game": True, "auto_join": True})
-        self.assertEqual("Chrono Trigger", state["closed_game"])
+        self.assertEqual("Super Bomberman", state["closed_game"])
         import os, time
         for _ in range(40):
             try:

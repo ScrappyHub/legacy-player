@@ -955,6 +955,9 @@ async function openGame(id){
   h("h3",{},whyInline("Playing with friends",
     "Online play works by sending each player's button presses to everyone and running the game in lockstep. How well that works depends on the console and on a per-game 'game pack'. Nothing is faked: the label below is the honest status.")),
   h("p",{},h("span",{class:"badge "+g.netplay},NETPLAY[g.netplay]||g.netplay)," ",h("span",{class:"small muted"},g.netplay_note)),
+  h("p",{},h("span",{class:"badge "+(g.players.max<2?"warn":"good")},g.players.label)," ",h("span",{class:"small muted"},g.players.note)," ",
+   h("label",{class:"small"},"Players ",h("select",{"aria-label":"Number of players in this game",onchange:async e=>{const r=await act(()=>api("game_meta",{id:g.id,players:e.target.value}));if(r){toast("Saved");}}},
+    h("option",{value:"",selected:!g.own_players},"Automatic"),...[1,2,3,4,5,6,7,8].map(n=>h("option",{value:String(n),selected:g.own_players===String(n)},String(n)))))),
   g.netplay_launch?h("p",{class:"small"},g.netplay_launch.ready?h("span",{class:"good"},"Online play: ready"+(g.netplay_launch.experimental?" (experimental)":"")):h("span",{class:"muted"},"Play Together: "+g.netplay_launch.reason),g.netplay_launch.note?h("div",{class:"muted"},g.netplay_launch.note):null):null,
   h("div",{class:"row"},h("button",{class:"btn primary",onclick:async()=>{const r=await act(()=>api("mp_host",{id}));if(r){S.room=r.room;S.tab="together";close();go();poll()}}},"Host a room"),
     h("button",{class:"btn",onclick:()=>{close();S.tab="together";S.joinGame=id;go()}},"Join with a code")),
@@ -997,8 +1000,14 @@ async function viewTogether(m){
   const code=h("input",{type:"text",placeholder:"XXXXX-XXXXX",value:S.joinCode||"",maxlength:12,style:"width:160px","aria-label":"Invite code"});
   const approve=h("input",{type:"checkbox",checked:true,id:"appr"});
   const maxp=h("select",{"aria-label":"Player limit",title:"How many people can play at once. Others wait in line."},...[2,3,4,5,6,7,8].map(n=>h("option",{value:n,selected:n===4},String(n))));
+  const who=h("p",{class:"small muted"});
+  const showWho=()=>{const g=games.find(x=>x.id===sel.value);if(!g||!g.players){who.textContent="";return}
+   who.textContent=g.players.label+(g.players.max<2&&g.players.source!=="console"?". This game cannot be shared online.":". "+g.players.note);
+   const cap=g.players.source==="console"?g.players.hw:g.players.max;[...maxp.options].forEach(o=>{o.disabled=+o.value>Math.max(2,cap)});
+   maxp.value=String(Math.max(2,Math.min(g.players.max,8)))};
+  sel.addEventListener("change",showWho);setTimeout(showWho,0);
   const openRoom=h("input",{type:"checkbox",id:"openroom"});const label=h("input",{type:"text",placeholder:"Room name (optional)",maxlength:48,style:"width:200px"});
-  m.append(h("div",{class:"card",style:"margin-top:14px"},h("h3",{},"Pick the game you will play"),picker.el,
+  m.append(h("div",{class:"card",style:"margin-top:14px"},h("h3",{},"Pick the game you will play"),picker.el,who,
    h("p",{class:"small muted"},"Everyone in a room must have the same game and region. The host can check this before starting."),
    h("div",{class:"row"},h("label",{class:"small"},"Players ",maxp),
     h("button",{class:"btn primary",onclick:async()=>{const r=await act(()=>api("mp_host",{id:sel.value,require_approval:approve.checked,max_players:+maxp.value,open:openRoom.checked,label:label.value}));if(r){S.room=r.room;go();poll()}}},"Host a room"),
@@ -1168,11 +1177,11 @@ async function viewServers(m){
   h("div",{class:"why"},"A server keeps rooms and invite codes. Run your own here and give friends its short server code, or connect to a friend's server with theirs. Picking a game, the room and live connection numbers are in Server Info."));
  // 1. your server
  const share=h("input",{type:"checkbox",id:"srvshare"});
- share.checked=!!V.server_tls&&V.server_host==="127.0.0.1";
- const srvAct=async action=>{const r=await act(()=>api("server_control",{action,share:share.checked}));if(r){toast(r.message);go()}};
+ share.checked=V.server_host!=="127.0.0.1"?false:(V.server_tls||!st.online);
+ const srvAct=async action=>{const r=await act(()=>api("server_control",{action,share:share.checked}));if(r){toast(r.message+(r.reach&&r.reach.message&&action!=="stop"?" "+r.reach.message:""),r.reach&&r.reach.state&&r.reach.state!=="mapped"&&action!=="stop"?"warn":"");go()}};
  const num=(key,min,max)=>h("input",{type:"number",value:V[key],min,max,style:"width:90px","aria-label":key});
  const players=num("server_max_players",2,8),rooms=num("server_max_rooms",1,10000),line=num("server_max_waiting",0,500);
- const pub=h("input",{type:"text",value:V.server_public_address||"",placeholder:"blank = this computer's home-network address",style:"width:min(380px,100%)","aria-label":"Address friends use"});
+ const pub=h("input",{type:"text",value:V.server_public_address||"",placeholder:"leave blank: found automatically",style:"width:min(380px,100%)","aria-label":"Address friends use"});
  const saveLimits=async restart=>{
   for(const[k,el]of[["server_max_players",players],["server_max_rooms",rooms],["server_max_waiting",line]]){const r=await act(()=>api("settings",{key:k,value:+el.value}));if(!r)return;S.settings=r.values}
   const r=await act(()=>api("settings",{key:"server_public_address",value:pub.value.trim()}));if(!r)return;
@@ -1192,7 +1201,7 @@ async function viewServers(m){
  const showCode=async refresh=>{if(refresh===true&&!await ask("Make a fresh server code? The old code stops working for new people. Everyone already connected stays connected.","Make a fresh code"))return;
   const c=await act(()=>api("server_code",{refresh:refresh===true}));if(!c)return;if(c.rotated)toast("Fresh code made. Players already connected stay connected.");
   codeBox.replaceChildren(c.code?h("div",{},h("div",{class:"row"},h("span",{class:"code",style:"font-size:1.4em"},c.code),h("button",{class:"btn",onclick:()=>copyText(c.code)},"Copy"),h("button",{class:"btn",title:"Stops the old code working for new people. Anyone already connected stays connected.",onclick:()=>showCode(true)},"Make a fresh code")),
-    h("p",{class:"small muted"},"Friends paste this into Connect to a server. It carries ",ipSpan(c.address),":"+c.port+" and the first part of your certificate fingerprint."),h("p",{class:"small muted"},c.reach),h("p",{class:"small muted"},"Made a code by mistake, or shared it too widely? Make a fresh one: the old code stops working for new people, while players already connected stay connected until they leave or something fails."),
+    h("p",{class:"small muted"},"Friends paste this into Connect to a server. It carries ",ipSpan(c.address),":"+c.port+" and the first part of your certificate fingerprint."),h("p",{class:c.reach_state&&c.reach_state!=="mapped"?"warn small":"small muted"},c.reach),h("p",{class:"small muted"},"Made a code by mistake, or shared it too widely? Make a fresh one: the old code stops working for new people, while players already connected stay connected until they leave or something fails."),
     h("details",{},h("summary",{class:"small"},"Longer details"),h("p",{class:"small"},"Full fingerprint: ",h("span",{class:"code"},c.fingerprint||"-"))))
    :h("p",{class:"warn small"},c.error+" Share these instead: address ",ipSpan(c.address),", port "+c.port+", fingerprint "+(c.fingerprint||"-")+"."))};
  m.append(h("div",{class:"card",style:"margin-top:14px"},h("h3",{},"Invite friends to your server"),

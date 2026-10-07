@@ -31,7 +31,7 @@ from adapters.retroarch import tunnel as netplay_tunnel
 
 from . import controllers, emulators, engines, pads, savefolders, saves
 from .installer import EngineInstaller, InstallError, latest_release, pick_asset
-from . import dolphinpads, keyboard, memprobe, netcheck, reports, selfuninstall, sysinfo
+from . import dolphinpads, gameinfo, keyboard, memprobe, netcheck, reports, selfuninstall, sysinfo
 from .covers import (CONTENT_TYPES, CoverFetcher, SYSTEMS as COVER_SYSTEMS, clear_custom_cover, cover_path,
                      custom_cover, set_custom_cover)
 from .pcscan import PcScan
@@ -148,6 +148,7 @@ class LauncherApp:
         self._specs_lock = threading.Lock()
         self.api_lock = threading.RLock()        # one ordinary API call at a time (the web layer takes it)
         self.memprobe = memprobe.MemProbe(self.data_dir)
+        self.port_map: dict = {}
         self.reports = reports.ReportCenter(self.data_dir, lambda: self.catalog.settings(), lambda k, v: self.catalog.set_setting(k, v), self._report_context)
         self._scan_lock = threading.Lock()       # one disk walk at a time (rescan)
         self._server_op_lock = threading.Lock()  # starting/stopping the server: one at a time, outside api_lock
@@ -218,6 +219,8 @@ class LauncherApp:
             "cover_v": int(shown.stat().st_mtime) if shown else 0,
             "hidden": bool(meta.get("hidden")), "own_title": bool(meta.get("title")), "own_emulator": meta.get("emulator", ""),
             "args": meta.get("args", ""), "note": meta.get("note", ""),
+            "players": gameinfo.players_for(game["console"], meta.get("title") or game["title"], meta.get("players", "")),
+            "own_players": meta.get("players", ""),
             "collections": [n for n, ids in self.catalog.data["collections"].items() if game["id"] in ids],
             "original_title": game["title"],
             "id": game["id"], "title": meta.get("title") or game["title"], "console": game["console"], "region": game["region"],
@@ -805,7 +808,7 @@ class LauncherApp:
     def api_game_meta(self, body: dict) -> dict:
         """Per-game choices: name, hidden, emulator, launch options, note."""
         game = self._game(body)
-        fields = {k: body[k] for k in ("title", "hidden", "emulator", "args", "note") if k in body}
+        fields = {k: body[k] for k in ("title", "hidden", "emulator", "args", "note", "players") if k in body}
         if fields.get("emulator") and fields["emulator"] not in emulators.EMULATORS:
             raise AppError("That emulator is not one Legacy Player knows.")
         try:
@@ -1496,11 +1499,17 @@ class LauncherApp:
         game = self._game(body)
         me = self.catalog.player_tag()
         _, info = self._emulator_for(game["console"])
+        who = gameinfo.players_for(game["console"], game["title"], self.catalog.data["game_meta"].get(game["id"], {}).get("players", ""))
+        if who["max"] < 2 and who["source"] != "console":
+            raise AppError(f"{game['title']} is a single-player game, so there is nobody to invite. Pick a game with two or more players "
+                           "(if that is wrong, set the number of players on the game's page).")
+        ceiling = who["max"] if who["source"] != "console" else who["hw"]
+        wanted = int(body.get("max_players") or max(2, who["max"]))
         created = self._call({
             "operation": "create", "participant_id": me, "profile": self._profile(game),
             "adapter_id": (self._emulator_for(game["console"])[0] or "unconfigured"), "game_pack_id": "generic",
             "require_approval": bool(body.get("require_approval", True)),
-            "max_players": body.get("max_players", 4),
+            "max_players": max(2, min(wanted, ceiling, 8)),
             "open": bool(body.get("open", False)), "label": str(body.get("label") or "")[:48],
         })
         self.room = {
@@ -2101,6 +2110,7 @@ class LauncherApp:
         if code != 0 and action != "status":
             self.reports.capture("server-control-failed", None, message, {"action": action, "shared": bool(body.get("share"))})
             raise AppError(message)
+        reach = self._manage_router(action, code, bool(body.get("share")), args.port)
         with self.api_lock:        # settings are shared state, so only this short part takes the big lock
             if args.tls_cert and body.get("share") and action in {"start", "restart"} and code == 0:
                 # the app itself must now talk TLS to its own server
@@ -2110,7 +2120,22 @@ class LauncherApp:
                 self.catalog.set_setting("server_tls", False)
         return {"message": message, "running": cli._is_running(args.state_dir), "shared": bool(body.get("share")),
                 "log": str(args.state_dir / "server.log"), "fingerprint": self.server_fingerprint(),
-                "limits": {"players": args.max_players, "rooms": args.max_rooms, "waiting": args.max_waiting}}
+                "limits": {"players": args.max_players, "rooms": args.max_rooms, "waiting": args.max_waiting}, "reach": reach}
+
+    def _manage_router(self, action: str, code: int, share: bool, port: int) -> dict | None:
+        """Open the server port on the home router when sharing starts; close it when the server stops."""
+        from . import portmap
+        old = self.port_map
+        if action in {"stop", "restart"} and code == 0 and old.get("state") == "mapped":
+            portmap.close_port(old.get("port", port), old.get("location", ""))
+            self.port_map = {}
+        if action in {"start", "restart"} and code == 0 and share and self.catalog.settings().get("server_auto_open", True):
+            self.port_map = portmap.open_port(port)
+            if self.port_map["state"] != "mapped":
+                self.reports.capture("router-not-opened", None, self.port_map["message"],
+                                     {"state": self.port_map["state"], "kind": self.port_map.get("kind", "")})
+            return self.port_map
+        return self.port_map or None
 
     def api_server_code(self, body: dict) -> dict:
         """The short code a friend types to reach the server this app shares. `refresh` makes a fresh one: the old
@@ -2131,14 +2156,16 @@ class LauncherApp:
                 raise AppError("The server has to be running to make a fresh code. Start it first.") from exc
         key = self._own_server_key()
         s = self.catalog.settings()
-        address = str(body.get("address") or s["server_public_address"] or detect_lan_address()).strip()
+        mapped = self.port_map.get("external_ip") if self.port_map.get("state") == "mapped" else ""
+        address = str(body.get("address") or s["server_public_address"] or mapped or detect_lan_address()).strip()
         try:
             code = servercode.encode(address, s["server_port"], fingerprint_of(cert), key)
         except servercode.CodeError as exc:
             return {"code": None, "address": address, "port": s["server_port"], "error": str(exc),
                     "fingerprint": self.server_fingerprint()}
         return {"code": code, "address": address, "port": s["server_port"], "fingerprint": self.server_fingerprint(), "rotated": rotated,
-                "reach": "Friends on your home network or VPN can use it as it is. For friends on the internet, put your public address in Settings > Your server and forward port %d on your router." % s["server_port"]}
+                "reach": self.port_map.get("message") or "Friends on your home network or VPN can use this code. Start the server with 'Let friends connect' and the app will try to open your router for friends on the internet.",
+                "reach_state": self.port_map.get("state", "")}
 
     def api_server_connect(self, body: dict) -> dict:
         """Point this app at a friend's server using their short code (or leave it at this computer)."""

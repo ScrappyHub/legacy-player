@@ -12,12 +12,16 @@ hotspot computer only connects *out*. So:
 - If the game itself needs a direct peer-to-peer link between the two players, the hotspot side may not allow it; then use
   the relay path (Network page shows "relay" vs "direct").
 
-## Setup
-1. Home computer: Servers page > start the server. Note the server code. In Windows, allow Legacy Player through the
-   firewall (private and public) when asked.
-2. Router: forward the server's TCP port to the home computer (or install Tailscale on both).
-3. Hotspot computer: connect to the phone hotspot, open Legacy Player > Network > join with the server code.
-4. Both: Settings > Privacy > Problem reports > "Ask me each time", so a failure produces a report you can read.
+## Setup (what the player does)
+1. Home computer: Servers page, leave "Let friends connect" ticked, press Start. The app asks the router (UPnP) to open
+   the port by itself, learns the public address from the router, and the server code it shows already contains it.
+   Windows may ask once to allow Legacy Player through the firewall: choose Allow.
+2. Share the server code. The friend pastes it into Connect to a server.
+3. Both: Settings > Privacy > Problem reports > "Ask me each time", so a failure produces a report you can read.
+
+What can still need a manual step: a router with UPnP switched off, or an internet provider that shares one public address
+between customers (the app says which). Then use Tailscale on both computers, or a relay (`server/relay`) on a machine
+with a public address; the app does not yet switch to a relay by itself.
 
 ## What to check, in order
 1. Network page on each side: address kind (home / hotspot-style / CGNAT) and the connectivity test result.
