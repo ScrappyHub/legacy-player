@@ -390,10 +390,23 @@ class LauncherApp:
             "folders": self.catalog.data.get("emulator_folders", []),
             "emulators": [{"id": k, **v} for k, v in found.items()],
             "consoles": [
-                {"id": c.id, "name": c.name, "emulator": (self._emulator_for(c.id, found)[1] or {}).get("name")}
+                {"id": c.id, "name": c.name, "emulator": (self._emulator_for(c.id, found)[1] or {}).get("name"),
+                 "chosen": self.catalog.data["console_emulator"].get(c.id),
+                 "options": [{"id": e, "name": emulators.EMULATORS[e]["name"], "installed": bool(found.get(e, {}).get("path"))}
+                             for e in c.emulators if e in emulators.EMULATORS]}
                 for c in CONSOLES
             ],
         }
+
+    def api_console_emulator(self, body: dict) -> dict:
+        """Choose which emulator a console opens with (None = automatic)."""
+        console, emulator = body.get("console"), body.get("emulator")
+        if console not in BY_ID:
+            raise AppError("Unknown console.")
+        if emulator is not None and emulator not in BY_ID[console].emulators:
+            raise AppError("That emulator does not run this console.")
+        self.catalog.set_mapping("console_emulator", console, emulator or None)
+        return self.api_emulators({})
 
     # engines (the owned shell's view of emulators) -----------------------------------
     def _engines_payload(self) -> dict:

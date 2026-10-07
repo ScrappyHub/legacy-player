@@ -552,24 +552,30 @@ async function viewEngines(m){
 /* ---------- Console mode (big screen, pad-driven) ---------- */
 async function viewConsole(m){
  const d=await api("library",{sort:S.sort});S.lib=d;
- const consoles=d.consoles.filter(c=>c.count);
+ const real=d.consoles.filter(c=>c.count);const consoles=real.length>1?[{id:"all",name:"All",count:d.games.length},...real]:real;
+ const E=await api("emulators").catch(()=>({consoles:[]}));const emu=id=>E.consoles.find(c=>c.id===id)||{options:[]};
  let ci=Math.max(0,consoles.findIndex(c=>c.id===S.console)),gi=0;
  const wrap=h("div",{class:"tv"});
  m.append(wrap);
+ const gamesOf=c=>c.id==="all"?d.games:d.games.filter(g=>g.console===c.id);
  const render=()=>{
-  const c=consoles[ci];const games=c?d.games.filter(g=>g.console===c.id):[];gi=Math.min(gi,Math.max(0,games.length-1));
+  const c=consoles[ci];const games=c?gamesOf(c):[];gi=Math.min(gi,Math.max(0,games.length-1));
   wrap.replaceChildren(
    h("div",{class:"tvbar"},...consoles.map((x,i)=>h("span",{class:"chip"+(i===ci?" on":""),onclick:()=>{ci=i;gi=0;render()}},x.name))),
-   consoles.length?h("div",{class:"tvgrid"},...games.map((g,i)=>h("div",{class:"tvcard"+(i===gi?" sel":""),onclick:()=>{gi=i;render()},ondblclick:()=>play(g)},h("div",{class:"tvtitle"},g.title),h("div",{class:"small muted"},g.region||"")))):h("p",{class:"muted"},"No games yet. Add your games folder in Library."),
+   (c&&c.id!=="all"&&emu(c.id).options.length)?h("div",{class:"row small",style:"margin:6px 0"},h("label",{},"Emulator for "+c.name+": ",
+     h("select",{"aria-label":"Emulator for "+c.name,onchange:async e=>{const r=await act(()=>api("console_emulator",{console:c.id,emulator:e.target.value||null}));if(r){E.consoles=r.consoles;const f=await api("library",{sort:S.sort});d.games=f.games;render()}}},
+      h("option",{value:""},"Automatic"),...emu(c.id).options.map(o=>h("option",{value:o.id,selected:emu(c.id).chosen===o.id},o.name+(o.installed?"":" (not found)"))))),
+     h("span",{class:"muted"},"This only changes which program opens "+c.name+" games.")):null,
+   consoles.length?h("div",{class:"tvgrid"},...games.map((g,i)=>h("div",{class:"tvcard"+(i===gi?" sel":""),onclick:()=>{gi=i;render()},ondblclick:()=>play(g)},h("div",{class:"tvtitle"},g.title),h("div",{class:"small muted"},[g.region,consoleName(g.console),g.launch&&g.launch.ready?g.launch.emulator:"no emulator"].filter(Boolean).join(" · "))))):h("p",{class:"muted"},"No games yet. Add your games folder in Library."),
    h("p",{class:"small muted tvhelp"},"D-pad or arrows: move · A / Enter: play · Shoulder buttons or [ ]: change console · B / Esc: back to Library"));
   const sel=wrap.querySelector(".tvcard.sel");if(sel)sel.scrollIntoView({block:"nearest"});
  };
  const play=async g=>{const r=await act(()=>api("launch",{id:g.id}));if(r){S.running={title:r.launched}}if(r)toast("Started "+r.launched+" in "+r.emulator)};
- const move=(dx,dy)=>{const c=consoles[ci];if(!c)return;const games=d.games.filter(g=>g.console===c.id);const cols=Math.max(1,Math.floor((wrap.clientWidth-20)/180));
+ const move=(dx,dy)=>{const c=consoles[ci];if(!c)return;const games=gamesOf(c);const cols=Math.max(1,Math.floor((wrap.clientWidth-20)/180));
   gi=Math.max(0,Math.min(games.length-1,gi+dx+dy*cols));render()};
  const key=e=>{if(S.tab!=="console"){document.removeEventListener("keydown",key);return}
   const map={ArrowLeft:()=>move(-1,0),ArrowRight:()=>move(1,0),ArrowUp:()=>move(0,-1),ArrowDown:()=>move(0,1),
-   Enter:()=>{const c=consoles[ci];const games=c?d.games.filter(g=>g.console===c.id):[];if(games[gi])play(games[gi])},
+   Enter:()=>{const c=consoles[ci];const games=c?gamesOf(c):[];if(games[gi])play(games[gi])},
    "[":()=>{ci=(ci-1+consoles.length)%consoles.length;gi=0;render()},"]":()=>{ci=(ci+1)%consoles.length;gi=0;render()},Escape:()=>{S.tab="library";go()}};
   if(map[e.key]){e.preventDefault();map[e.key]()}};
  document.addEventListener("keydown",key);
@@ -578,7 +584,7 @@ async function viewConsole(m){
   const p=livePads()[0];if(!p)return;const prof=(S.P&&S.P.profiles[padKey(p)])||null;const lit=litSlots(p,prof);
   const edge=s=>{const now=lit.has(s);const was=!!last[s];last[s]=now;return now&&!was};
   if(edge(14))move(-1,0);if(edge(15))move(1,0);if(edge(12))move(0,-1);if(edge(13))move(0,1);
-  if(edge(0)){const c=consoles[ci];const games=c?d.games.filter(g=>g.console===c.id):[];if(games[gi])play(games[gi])}
+  if(edge(0)){const c=consoles[ci];const games=c?gamesOf(c):[];if(games[gi])play(games[gi])}
   if(edge(4)){ci=(ci-1+consoles.length)%consoles.length;gi=0;render()}if(edge(5)){ci=(ci+1)%consoles.length;gi=0;render()}
   if(edge(1)){S.tab="library";go()}},50);
  if(!S.P)S.P=await api("pads").catch(()=>null);
