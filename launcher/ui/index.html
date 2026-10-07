@@ -31,6 +31,7 @@ option{background:#141a33;color:#eef1ff}
 .menu>button:hover,.menu.open>button{background:var(--panel2)}
 .dd{position:absolute;top:100%;left:0;min-width:230px;padding:6px;border-radius:12px;background:var(--chrome);backdrop-filter:blur(22px);border:1px solid var(--line);box-shadow:0 18px 40px #0008;display:none;animation:pop .14s ease both}
 .menu.open .dd{display:block}
+.menu.right .dd{left:auto;right:0}
 .dd button{display:flex;width:100%;gap:10px;align-items:center;background:none;border:0;text-align:left;padding:7px 12px;border-radius:8px;cursor:pointer;color:var(--text)}
 .dd button:hover,.dd button:focus-visible{background:var(--accent);color:#fff;outline:none}
 .dd hr{border:0;border-top:1px solid var(--line);margin:5px 4px}
@@ -651,7 +652,21 @@ function closeMenus(){document.querySelectorAll(".menu.open").forEach(x=>x.class
 function buildMenubar(){const bar=$("#menubar");
  const menus=menuDefs().map(([name,items])=>{const m=h("div",{class:"menu"},h("button",{type:"button",onclick:e=>{e.stopPropagation();const was=m.classList.contains("open");closeMenus();if(!was)m.classList.add("open")},onmouseenter:()=>{if(document.querySelector(".menu.open")){closeMenus();m.classList.add("open")}}},name),
   h("div",{class:"dd",role:"menu"},...items.map(it=>it==="-"?h("hr"):h("button",{type:"button",role:"menuitem",onclick:()=>{closeMenus();it[1]()}},it[0]))));return m});
- bar.replaceChildren(...menus,h("div",{class:"grow"}),h("button",{class:"who",id:"who",type:"button",title:"Your profile",onclick:()=>nav("profile")}));renderWho()}
+ bar.replaceChildren(...menus,h("div",{class:"grow"}),whoMenu());renderWho()}
+function whoMenu(){
+ const box=h("div",{class:"menu right"});const codeRow=h("div",{class:"small",style:"padding:6px 12px;display:none"});
+ const showCode=async(code)=>{codeRow.style.display="block";codeRow.replaceChildren(h("span",{class:"code small"},code)," ",h("button",{type:"button",class:"btn small",onclick:e=>{e.stopPropagation();copyText(code)}},"Copy"))};
+ const fast=async()=>{codeRow.style.display="block";codeRow.textContent="Starting...";
+  const a=await api("server_activity").catch(()=>({online:false}));
+  if(!a.online||!a.shared){const r=await act(()=>api("server_control",{action:a.online?"restart":"start",share:true}));if(!r){codeRow.style.display="none";return}setTimeout(askFirewall,400)}
+  const c=await api("server_code",{refresh:false}).catch(()=>null);
+  if(c&&c.code)showCode(c.code);else codeRow.textContent=(c&&c.error)||"The server started, but there is no code yet."};
+ box.append(h("button",{type:"button",class:"who",id:"who",title:"Your profile and quick actions",onclick:e=>{e.stopPropagation();const was=box.classList.contains("open");closeMenus();if(!was)box.classList.add("open")}}),
+  h("div",{class:"dd",role:"menu",onclick:e=>e.stopPropagation()},
+   h("button",{type:"button",role:"menuitem",onclick:()=>{closeMenus();nav("profile")}},"Edit profile"),
+   h("button",{type:"button",role:"menuitem",onclick:fast},"Fast start server"),codeRow,h("hr"),
+   h("button",{type:"button",role:"menuitem",onclick:()=>{closeMenus();quitApp()}},"Exit Legacy Player")));
+ return box}
 document.addEventListener("click",closeMenus);document.addEventListener("keydown",e=>{if(e.key==="Escape")closeMenus()});
 async function checkUpdates(){const r=await act(()=>api("check_update"));if(!r)return;
  if(r.newer){if(await ask("Version "+r.latest+" is available (you have "+r.current+"). Open its download page?","Open page"))window.open(r.page,"_blank","noopener")}
@@ -1312,42 +1327,47 @@ async function copyText(t,msg){let ok=false;
  try{if(navigator.clipboard&&window.isSecureContext){await navigator.clipboard.writeText(t);ok=true}}catch(e){}
  if(!ok){try{const ta=h("textarea",{style:"position:fixed;opacity:0;left:-999px;top:0"});ta.value=t;document.body.append(ta);ta.select();ok=document.execCommand("copy");ta.remove()}catch(e){}}
  toast(ok?(msg||"Copied"):"Could not copy. Select the text and press Ctrl+C.");return ok}
+async function askFirewall(){const f=await api("firewall_status");if(!f.supported||f.allowed)return;
+ if(await ask("Windows Firewall has no rule for your server yet, so friends on other networks may be blocked. Legacy Player can add it now. Windows will show one approval box; press Yes there.","Add the rule")){const r=await act(()=>api("firewall_allow",{consent:true}));if(r)toast(r.message,r.allowed?"":"warn")}}
 async function viewServers(m){
  const st=await pingServer();const cfg=await api("settings");S.settings=cfg.values;const V=cfg.values;
  m.append(h("h2",{},"Servers"),
   h("div",{class:"why"},"A server keeps rooms and invite codes. Run your own here and give friends its short server code, or connect to a friend's server with theirs. Picking a game, the room and live connection numbers are in Server Info."));
- // 0. right now: is it up, who is in it, and the server code
+ // 0. right now: connection, who is in, and (small) the server code once it is running
  const live=h("div",{class:"card",id:"srvlive",style:"margin-top:14px"});m.append(live);
- const codeLine=h("span",{class:"code",style:"font-size:1.2em"},"LP-••••-••••-••••-••••-••");let codeShown=null,codeBusy=false;
  const dur=sec=>sec<90?Math.round(sec)+" s":sec<5400?Math.round(sec/60)+" min":(sec/3600).toFixed(1)+" h";
- const tile=(big,label,tone)=>h("div",{class:"panel",style:"flex:1;min-width:120px;text-align:center;margin:0"},h("div",{class:tone||"",style:"font-size:1.6em;font-weight:700"},String(big)),h("div",{class:"small muted"},label));
- const revealCode=async()=>{if(codeShown){codeShown=null;codeLine.textContent="LP-••••-••••-••••-••••-••";drawLive.btn.textContent="Reveal server code";return}
-  if(codeBusy)return;codeBusy=true;const c=await act(()=>api("server_code",{refresh:false}));codeBusy=false;if(!c)return;
-  if(!c.code){toast(c.error||"Start your server with Let friends connect first.","warn");return}
-  codeShown=c.code;codeLine.textContent=c.code;drawLive.btn.textContent="Hide server code"};
- const flag=(key,label,help)=>{const cb=h("input",{type:"checkbox",id:"f_"+key});cb.checked=!!V[key];
-  cb.onchange=async()=>{const r=await act(()=>api("settings",{key,value:cb.checked}));if(r){S.settings=r.values;V[key]=cb.checked}else cb.checked=!cb.checked};
-  return h("label",{class:"small",title:help,style:"display:block;margin-top:6px"},cb," "+label)};
- const picks=h("div",{});
+ let codeShown=null;
+ const fastStart=async share=>{const r=await act(()=>api("server_control",{action:share&&S.srvOnline?"restart":"start",share}));if(r){if(share)setTimeout(askFirewall,400);toast(r.message);codeShown=null;await drawLive()}};
+ const toggleCode=async()=>{if(codeShown){codeShown=null;return drawLive()}
+  const c=await act(()=>api("server_code",{refresh:false}));if(!c)return;if(!c.code){toast(c.error||"Open your server to friends first.","warn");return}codeShown=c.code;drawLive()};
+ const freshCode=async()=>{if(!await ask("Make a fresh server code? The old code stops working for new people. Everyone already connected stays connected.","Make a fresh code"))return;
+  const c=await act(()=>api("server_code",{refresh:true}));if(c&&c.code){codeShown=c.code;toast("Fresh code made. Players already connected stay connected.");drawLive()}};
  async function drawLive(){
   const a=await api("server_activity").catch(()=>({online:false}));
   if(!$("#srvlive"))return false;
-  const rm=(S.room||null);
+  S.srvOnline=a.online;
+  const rm=S.room||null;
+  const who=rm?rm.members.map(p=>p.name+(p.me?" (you)":"")).join(", "):"";
+  const con=V.server_host==="127.0.0.1"?(a.online?"Connected to your own server":"Your own server is not running"):"Connected to a friend's server at "+V.server_host;
   live.replaceChildren(
-   h("div",{class:"row"},h("h3",{class:"grow"},"Right now"),a.online?h("b",{class:"good"},"● Running"+(a.shared?", open to friends":", only on this computer")):h("b",{class:"bad"},"● Stopped")),
-   a.online?h("div",{class:"row",style:"gap:10px;flex-wrap:wrap"},tile(a.players,a.players===1?"player in rooms":"players in rooms",a.players?"good":""),tile(a.rooms,a.rooms===1?"live room":"live rooms"),tile(a.open_rooms,"open to join"),tile(a.waiting,"waiting in line"),tile(dur(a.uptime_seconds),"running for"))
-    :h("p",{class:"small"},"Nothing is running. Press Start below, or just host a room: Legacy Player starts your server for you."),
-   rm?h("p",{class:"small"},"You are in a room: ",h("b",{},rm.game),", "+rm.members.length+" player"+(rm.members.length===1?"":"s")+", "+rm.state+"."):h("p",{class:"small muted"},"You are not in a room."),
-   h("div",{class:"row",style:"margin-top:8px"},codeLine,drawLive.btn,codeShown?h("button",{class:"btn",onclick:()=>copyText(codeShown)},"Copy"):null,
-    h("button",{class:"btn",onclick:()=>nav("together")},"Pick or change the game")),
-   h("p",{class:"small muted"},"The server code gets a friend onto your server. The game and the room are chosen in Server Info; changing the game there keeps the room open, and each guest agrees before it starts."),
-   flag("server_autostart","Start my server by itself when I host or join","If your own server is not running, Legacy Player starts it for you."),
-   flag("mp_auto_agree","When a host starts a game I already have, join it without asking me each time","Off: you are asked every time. On: you agree automatically, the game opens and connects, so nothing has to stop between games."));
+   h("div",{class:"row"},h("h3",{class:"grow"},"Right now"),a.online?h("b",{class:"good"},"● Running"+(a.shared?", open to friends":", this computer only")):h("b",{class:"bad"},"● Stopped")),
+   h("p",{class:"small"},con+(a.online?". "+a.players+" "+(a.players===1?"player":"players")+" in "+a.rooms+" "+(a.rooms===1?"room":"rooms")+(a.waiting?", "+a.waiting+" waiting in line":"")+", up for "+dur(a.uptime_seconds)+".":".")),
+   h("p",{class:"small muted"},rm?"In room: "+rm.game+" with "+who+".":a.online?"Nobody is in a room yet.":"Nobody can connect until it is started."),
+   h("div",{class:"row",style:"gap:8px"},
+    !a.online?h("button",{class:"btn small primary",onclick:()=>fastStart(true)},"Start server for friends"):null,
+    a.online&&!a.shared?h("button",{class:"btn small",onclick:()=>fastStart(true)},"Open it to friends"):null,
+    a.online&&a.shared?h("button",{class:"btn small",onclick:toggleCode},codeShown?"Hide server code":"Show server code"):null,
+    a.online&&a.shared&&codeShown?h("span",{class:"code small"},codeShown):null,
+    a.online&&a.shared&&codeShown?h("button",{class:"btn small",onclick:()=>copyText(codeShown)},"Copy"):null,
+    a.online&&a.shared&&codeShown?h("button",{class:"btn small",title:"Stops the old code working for new people",onclick:freshCode},"New code"):null,
+    h("button",{class:"btn small",onclick:()=>nav("together")},"Pick or change the game")));
   return true}
- drawLive.btn=h("button",{class:"btn primary",onclick:revealCode},"Reveal server code");
  await drawLive();
  clearInterval(S.srvTimer);S.srvTimer=setInterval(async()=>{if(!(await drawLive()))clearInterval(S.srvTimer)},3000);
  // 1. your server
+ const flag=(key,label,help)=>{const cb=h("input",{type:"checkbox",id:"f_"+key});cb.checked=!!V[key];
+  cb.onchange=async()=>{const r=await act(()=>api("settings",{key,value:cb.checked}));if(r){S.settings=r.values;V[key]=cb.checked}else cb.checked=!cb.checked};
+  return h("label",{class:"small",title:help,style:"display:block;margin-top:6px"},cb," "+label)};
  const share=h("input",{type:"checkbox",id:"srvshare"});
  share.checked=V.server_host!=="127.0.0.1"?false:(V.server_tls||!st.online);
  const fwAsk=async()=>{const f=await api("firewall_status");if(!f.supported||f.allowed)return;
@@ -1369,21 +1389,12 @@ async function viewServers(m){
   h("div",{class:"row"},h("button",{class:"btn primary",onclick:()=>srvAct("start")},"Start"),h("button",{class:"btn",onclick:()=>srvAct("restart")},"Restart"),h("button",{class:"btn",onclick:()=>srvAct("stop")},"Stop"),
    h("label",{class:"small"},share," Let friends connect (encrypted with this app's own certificate)"),
    h("button",{class:"btn",title:"Opens the server port on your router and closes it again, to see if friends can reach you.",onclick:routerTest},"Test my router"),h("button",{class:"btn",onclick:fwAsk},"Check Windows Firewall")),
+  flag("server_autostart","Start my server by itself when I host or join a room","If your own server is not running, Legacy Player starts it for you."),
+  flag("mp_auto_agree","When a host starts a game I already have, join it without asking me each time","Off: you are asked every time. On: you agree automatically, the game opens and connects, so nothing has to stop between games."),
   h("h3",{style:"margin-top:16px"},whyInline("Limits","Players per room is the most any room may hold. Rooms is how many your server will keep. Waiting line is how many people can queue for a full room (0 turns lines off). They apply the next time the server starts.")),
   h("div",{class:"fieldrow"},fld("Players per room",players),fld("Rooms",rooms),fld("Waiting line",line)),
   h("div",{class:"fieldrow",style:"margin-top:10px"},fld("Address friends use",pub)),
   h("div",{class:"row",style:"margin-top:10px"},h("button",{class:"btn primary",onclick:()=>saveLimits(true)},st.online?"Save and restart":"Save"),st.online?h("button",{class:"btn",onclick:()=>saveLimits(false)},"Save for next start"):null)));
- // 2. invite friends
- const codeBox=h("div",{style:"margin-top:16px"});
- const showCode=async refresh=>{if(refresh===true&&!await ask("Make a fresh server code? The old code stops working for new people. Everyone already connected stays connected.","Make a fresh code"))return;
-  const c=await act(()=>api("server_code",{refresh:refresh===true}));if(!c)return;if(c.rotated)toast("Fresh code made. Players already connected stay connected.");
-  codeBox.replaceChildren(c.code?h("div",{},h("div",{class:"row"},h("span",{class:"code",style:"font-size:1.4em"},c.code),h("button",{class:"btn",onclick:()=>copyText(c.code)},"Copy"),h("button",{class:"btn",title:"Stops the old code working for new people. Anyone already connected stays connected.",onclick:()=>showCode(true)},"Make a fresh code")),
-    h("p",{class:"small muted"},"Friends paste this into Connect to a server. It carries ",ipSpan(c.address),":"+c.port+" and the first part of your certificate fingerprint."),h("p",{class:c.reach_state&&c.reach_state!=="mapped"?"warn small":"small muted"},c.reach),h("p",{class:"small muted"},"Made a code by mistake, or shared it too widely? Make a fresh one: the old code stops working for new people, while players already connected stay connected until they leave or something fails."),
-    h("details",{},h("summary",{class:"small"},"Longer details"),h("p",{class:"small"},"Full fingerprint: ",h("span",{class:"code"},c.fingerprint||"-"))))
-   :h("p",{class:"warn small"},c.error+" Share these instead: address ",ipSpan(c.address),", port "+c.port+", fingerprint "+(c.fingerprint||"-")+"."))};
- m.append(h("div",{class:"card",style:"margin-top:14px"},h("h3",{},"Invite friends to your server"),
-  h("p",{class:"small muted"},"Start the server with Let friends connect on, then make your server code. Room invite codes (made in Server Info) are separate: the server code gets a friend to your server, the invite code lets them into one room."),
-  h("div",{class:"row"},h("button",{class:"btn primary",onclick:()=>showCode(false)},"Make my server code")),codeBox));
  // 3. connect
  const code=h("input",{type:"text",placeholder:"LP-XXXX-XXXX-XXXX-XXXX-XX",style:"width:min(300px,100%)","aria-label":"Server code"});
  const mine=V.server_host==="127.0.0.1";
