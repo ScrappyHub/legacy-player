@@ -5,7 +5,7 @@
 
  (or, with the repository cloned:  .\lp install)
 
- Options (run the file instead of piping):  .\install.ps1 -Tag v0.7.6  -NoLaunch  -Token <github token, for a private repo>
+ Options (run the file instead of piping):  .\install.ps1 -Tag v0.7.7  -NoLaunch  -Token <github token, for a private repo>
 #>
 param(
     [string]$Repo = 'ScrappyHub/legacy-player',
