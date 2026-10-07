@@ -77,6 +77,36 @@ def launch(emulator_id: str, exe: str, rom_path: str) -> int:
     return process.pid
 
 
+def close_pid(pid: int, grace: float = 8.0) -> None:
+    """Ask a game to close the way the X button does (WM_CLOSE on Windows, SIGTERM elsewhere),
+    wait a little for it to write saves, then stop it for good if it is still there."""
+    import time
+    try:
+        if sys.platform == "win32":
+            subprocess.run(["taskkill", "/PID", str(pid)], capture_output=True, timeout=10)   # no /F: polite
+        else:
+            os.kill(pid, signal.SIGTERM)
+    except (OSError, subprocess.SubprocessError):
+        return
+    deadline = time.time() + grace
+    while time.time() < deadline:
+        if not _alive(pid):
+            return
+        time.sleep(0.25)
+    stop_pid(pid)
+
+
+def _alive(pid: int) -> bool:
+    try:
+        if sys.platform == "win32":
+            out = subprocess.run(["tasklist", "/FI", f"PID eq {pid}", "/NH"], capture_output=True, text=True, timeout=10).stdout
+            return str(pid) in out
+        os.kill(pid, 0)
+        return True
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
 def stop_pid(pid: int) -> None:
     try:
         if sys.platform == "win32":

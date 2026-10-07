@@ -43,6 +43,7 @@ class LobbyService:
         self.max_pending_requests = max_pending_requests
         self.max_waiting = max_waiting
         self.lockstep_used: set[str] = set()
+        self.relay = None   # set by the server; drop_session(sid) clears parked relay slots
         self.vacate_after_timeouts = 3  # a seat is freed after 3x the heartbeat timeout without a word
         self.waiting_timeout = waiting_timeout
         self.invites = invite_book if invite_book is not None else InviteBook()
@@ -512,6 +513,8 @@ class LobbyService:
         else:
             raise LobbyError("kind must be 'direct', 'code' or 'relay'")
         self.options[session.session_id]["endpoint"] = endpoint
+        if self.relay is not None:
+            self.relay.drop_session(session.session_id)   # a fresh launch: old parked slots are stale
         psk = request.get("psk")
         if psk is None:
             self._psk.pop(session.session_id, None)
@@ -853,6 +856,8 @@ class LobbyService:
         self.last_activity[session_id] = self.clock()
 
     def _drop_secrets(self, session_id: str) -> None:
+        if self.relay is not None:
+            self.relay.drop_session(session_id)
         self.join_codes.pop(session_id, None)
         self._psk.pop(session_id, None)
         self.invites.revoke_session(session_id)

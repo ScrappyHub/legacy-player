@@ -126,7 +126,7 @@ async function openGame(id){
  const scrim=h("div",{class:"scrim",onclick:close});
  const launchBtn=h("button",{class:"btn good",disabled:!g.launch.ready,onclick:async()=>{
    if(S.settings&&S.settings.confirm_launch&&!confirm("Open "+g.title+" in "+g.launch.emulator+"?"))return;
-   const r=await act(()=>api("launch",{id}));if(r)toast("Opening "+r.launched+" in "+r.emulator+"…")}},"▶ Play");
+   const r=await act(()=>api("launch",{id}));if(r){S.running={title:r.launched}}if(r)toast("Opening "+r.launched+" in "+r.emulator+"…")}},"▶ Play");
  const backups=h("div",{});
  const drawBackups=()=>backups.replaceChildren(...(g.backups.length?g.backups.map(b=>h("div",{class:"row small"},h("span",{class:"grow"},b.backup+" ("+b.files+" file"+(b.files===1?"":"s")+")"),
    h("button",{class:"btn",onclick:async()=>{if(confirm("Restore this backup? Your current saves are backed up first.")){const r=await act(()=>api("restore",{id,backup:b.backup}));if(r)toast("Restored "+r.restored+" file(s)")}}},"Restore"))):[h("span",{class:"muted small"},"No backups yet.")]));drawBackups();
@@ -210,7 +210,10 @@ async function drawBrowse(box){
 function drawWaits(box){const w=S.waits||[];if(!w.length){box.replaceChildren();return}
  box.replaceChildren(h("div",{class:"panel"},h("h3",{},"You are in line for"),...w.map(x=>h("div",{class:"row"},h("b",{},x.game),
   x.ready?h("span",{class:"badge good"},"your spot is ready"):x.pending?h("span",{class:"badge"},"waiting for the host to approve"):h("span",{class:"badge"},"number "+(x.position||"?")+" in line"),
-  x.ready?h("button",{class:"btn primary",onclick:async()=>{const r=await act(()=>api("mp_switch",{session_id:x.session_id}));if(r){S.room=r.room;S.waits=r.waits;go();poll()}}},"Switch to it"):null,
+  x.ready?h("button",{class:"btn primary",onclick:async()=>{
+     const cur=(S.room&&S.room.running)||S.running;const closeGame=cur?confirm("Close "+cur.title+" first? Save your game, then press OK; the emulator is asked to close normally (it writes its saves like when you click X). Cancel keeps it running."):false;
+     const r=await act(()=>api("mp_switch",{session_id:x.session_id,close_game:closeGame,auto_join:true}));if(r){S.room=r.room;S.waits=r.waits;
+      if(r.joined_match)toast("Joined "+r.joined_match.launched+(r.joined_match.relay?" through the relay":""));else if(r.join_note)toast(r.join_note);go();poll()}}},"It's my turn: switch"):null,
   h("button",{class:"btn",onclick:async()=>{const r=await act(()=>api("mp_cancel_wait",{session_id:x.session_id}));if(r){S.waits=r.waits;go()}}},"Leave line"))),
   h("div",{class:"row",style:"margin-top:8px"},h("button",{class:"btn",onclick:()=>{const t=$("#warmup");if(t)warmupTrack(t)}},"Drive the warm-up track while you wait"),h("span",{class:"small muted"},"or keep playing anything in your library; your place in line is kept.")),
   h("div",{id:"warmup"})));
@@ -252,7 +255,8 @@ function launchBox(rm,host){
  const addr=h("input",{type:"text",value:L.suggested_address||"",style:"width:180px","aria-label":"Your address"});
  const port=h("input",{type:"number",value:L.default_port||55435,min:1024,max:65535,style:"width:100px","aria-label":"Port"});
  const mode=h("select",{"aria-label":"Connection type",onchange:()=>{addrRow.hidden=mode.value!=="direct"}},h("option",{value:"traversal"},"Dolphin traversal server (easiest, no router setup)"),h("option",{value:"direct"},"Direct connection (address and port)"));
- const relay=h("input",{type:"checkbox",checked:true,disabled:!L.relay_available||!L.direct_allowed,title:L.direct_allowed?"":"Direct connections are off in Settings > Privacy, so the relay is always used."});
+ const relay=h("input",{type:"checkbox",checked:!!L.relay_available,disabled:!L.relay_available||!L.direct_allowed,title:!L.relay_available?"The relay needs the Legacy Player app (Python 3.13+)":L.direct_allowed?"":"Direct connections are off in Settings > Privacy, so the relay is always used."});
+ const relayNote=(!dolphin&&host&&!L.relay_available)?h("p",{class:"warn small"},"The address-hiding relay is not available in this Python. Use the Legacy Player app, or allow direct connections in Settings > Privacy to play on a trusted network."):null;
  const addrRow=h("div",{class:"row",hidden:dolphin||!host},h("label",{class:"small"},"Your address ",addr),h("label",{class:"small"},"Port ",port));
  const relayRow=h("div",{class:"row",hidden:dolphin||!host},h("label",{class:"small"},relay," ",whyInline("Relay through the server (hides your address)","Instead of guests connecting to your computer, you and they both connect out to the lobby server, which passes the encrypted bytes along. Nobody learns anyone's address and no router port needs opening. Costs one extra hop of delay. The server never sees the game traffic: it stays inside the match encryption.")));
  relay.onchange=()=>{addrRow.hidden=relay.checked};if(!dolphin&&host&&relay.checked)addrRow.hidden=true;
@@ -264,7 +268,8 @@ function launchBox(rm,host){
  const go=h("button",{class:"btn good",disabled:!L.ready,title:L.reason||"",onclick:async()=>{
    if(dolphin){if(!L.direct_allowed){toast("Dolphin NetPlay shares addresses between players. Allow direct connections in Settings > Privacy first (best over a VPN).","warn");return}
      if(!confirm("Dolphin NetPlay connects players to each other, so the others will learn this computer's address. Continue?"))return}
-   const body=host?(dolphin?{mode:mode.value,address:addr.value.trim(),port:+port.value,expose_address:true}:{address:addr.value.trim(),port:+port.value,relay:relay.checked,expose_address:!relay.checked&&confirm("Direct connection: every guest will learn this computer's address ("+addr.value.trim()+"). Continue?")}):{expose_address:dolphin};
+   const body=host?(dolphin?{mode:mode.value,address:addr.value.trim(),port:+port.value,expose_address:true}:{address:addr.value.trim(),port:+port.value,relay:relay.checked,expose_address:!relay.checked&&confirm("Direct connection: every guest will learn this computer's address ("+addr.value.trim()+"). Continue?")}):{expose_address:dolphin||(L.endpoint_kind==="direct"&&confirm("The host chose a direct connection: you and the host will learn each other's address. Continue?"))};
+   if(!host&&!dolphin&&L.endpoint_kind==="direct"&&!body.expose_address)return;
    if(host&&!dolphin&&!relay.checked&&!body.expose_address)return;
    const r=await act(()=>api("mp_launch",body));if(!r)return;
    toast((dolphin?"Opening Dolphin for ":"Starting ")+r.launched+(r.relay?" through the server relay":r.encrypted?" (encrypted)":"")+"…");
@@ -272,7 +277,7 @@ function launchBox(rm,host){
    if(r.needs_code)codeRow.hidden=false}},label);
  return h("div",{class:"card",style:"margin:8px 0"},
   dolphin&&host?h("div",{class:"row"},h("label",{class:"small"},"Connection ",mode)):null,
-  host?relayRow:null,host?addrRow:null,guestDirectRow,
+  host?relayRow:null,relayNote,host?addrRow:null,guestDirectRow,(rm.relay_errors||[]).length?h("p",{class:"bad small"},"Relay problem: "+rm.relay_errors[rm.relay_errors.length-1]):null,
   h("div",{class:"row",style:"margin-top:6px"},go,L.ready?null:h("span",{class:"small muted"},L.reason||"")),
   steps,codeRow,
   host?h("p",{class:"small muted"},dolphin?"Dolphin's NetPlay is started inside Dolphin; these steps are filled in for you. Everyone needs the same Dolphin version and the same game file. The traversal server is Dolphin's own, so game traffic is not run through Legacy Player.":"Same home network: use the address above. Over the internet, use a VPN such as Tailscale or ZeroTier, or forward the port. The match traffic itself is not encrypted, so a VPN is the safer choice."):null)}
@@ -481,7 +486,7 @@ async function viewConsole(m){
    h("p",{class:"small muted tvhelp"},"D-pad or arrows: move · A / Enter: play · Shoulder buttons or [ ]: change console · B / Esc: back to Library"));
   const sel=wrap.querySelector(".tvcard.sel");if(sel)sel.scrollIntoView({block:"nearest"});
  };
- const play=async g=>{const r=await act(()=>api("launch",{id:g.id}));if(r)toast("Started "+r.launched+" in "+r.emulator)};
+ const play=async g=>{const r=await act(()=>api("launch",{id:g.id}));if(r){S.running={title:r.launched}}if(r)toast("Started "+r.launched+" in "+r.emulator)};
  const move=(dx,dy)=>{const c=consoles[ci];if(!c)return;const games=d.games.filter(g=>g.console===c.id);const cols=Math.max(1,Math.floor((wrap.clientWidth-20)/180));
   gi=Math.max(0,Math.min(games.length-1,gi+dx+dy*cols));render()};
  const key=e=>{if(S.tab!=="console"){document.removeEventListener("keydown",key);return}

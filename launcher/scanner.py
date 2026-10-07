@@ -71,10 +71,19 @@ def _slug(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
 
 
+SHARED_EXTENSIONS = {".cso", ".zso", ".chd", ".iso", ".bin"}
+
+
 def _classify(path: Path, root: Path):
     extension = path.suffix.lower()
     console = console_for_extension(extension)
     if console is not None:
+        # A folder name wins over an extension two consoles share (.cso is PSP and PS2).
+        if extension in SHARED_EXTENSIONS:
+            for part in reversed(path.relative_to(root).parts[:-1]):
+                by_folder = console_for_folder_name(part)
+                if by_folder is not None:
+                    return by_folder
         return console
     if extension in AMBIGUOUS_EXTENSIONS:
         for part in reversed(path.relative_to(root).parts[:-1]):

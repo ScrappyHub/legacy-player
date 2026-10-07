@@ -222,6 +222,7 @@ class ServerThread:
         asyncio.set_event_loop(self.loop)
         self.service = LobbyService()
         relay = Relay(self.service)
+        self.service.relay = relay
         server = self.loop.run_until_complete(asyncio.start_server(
             lambda r, w: handle_client(r, w, self.service, None, None, relay), "127.0.0.1", 0))
         self.server = server
@@ -340,6 +341,49 @@ class MultiplayerFlowTests(unittest.TestCase):
         self.assertEqual([], switched["waits"])
         self.assertIn(third.catalog.player_tag(), [m["name"] for m in host.api_mp_state({})["room"]["members"]])
 
+    @unittest.skipIf(sys.platform == "win32", "uses a POSIX shell script as a fake emulator")
+    def test_your_turn_closes_the_current_game_politely_and_joins(self):
+        from adapters.retroarch import tunnel
+        if not tunnel.available():
+            self.skipTest("TLS-PSK needs Python 3.13+")
+        host, guest = self.apps["Host"], self.apps["Guest"]
+        third = self._extra_app("Third")
+        host_out, third_out = self.fake_retroarch("Host"), self.fake_retroarch("Third")
+        # Third is playing something from the library (a sleeping fake emulator)
+        sleeper = Path(self.tmp.name) / "sleeper.sh"
+        sleeper.write_text("#!/bin/sh\ntrap 'exit 0' TERM\nsleep 60 & wait\n")
+        sleeper.chmod(0o755)
+        third.api_emulators({"emulator": "snes9x", "path": str(sleeper)})
+        third.catalog.set_mapping("console_emulator", "snes", "snes9x")
+        third.api_launch({"id": self.gid(third)})
+        self.assertIsNotNone(third.running)
+        pid = third.running["pid"]
+        room = host.api_mp_host({"id": self.gid(host), "require_approval": False, "max_players": 2, "open": True})["room"]
+        sid = host.room["session_id"]
+        guest.api_mp_join({"id": self.gid(guest), "invite_code": room["invite_code"]})
+        third.api_mp_join({"id": self.gid(third), "session_id": sid, "background": True})
+        host.api_mp_kick({"target": guest.catalog.player_tag(), "reason": "done"})
+        self.assertTrue(third.api_mp_state({})["waits"][0]["ready"])
+        host.api_mp_lock({})
+        host.api_mp_launch({"relay": True, "port": 55490})
+        self.wait_args(host_out)
+        third.catalog.set_mapping("console_emulator", "snes", None)
+        state = third.api_mp_switch({"session_id": sid, "close_game": True, "auto_join": True})
+        self.assertEqual("Chrono Trigger", state["closed_game"])
+        import os, time
+        for _ in range(40):
+            try:
+                os.kill(pid, 0)
+                time.sleep(0.1)
+            except OSError:
+                break
+        else:
+            self.fail("the old game was not closed")
+        self.assertIn("joined_match", state, state.get("join_note"))
+        self.assertTrue(state["joined_match"]["relay"])
+        self.wait_args(third_out)
+        host.api_mp_leave({}); third.api_mp_leave({})
+
     def test_guest_with_wrong_game_is_caught_by_host_check(self):
         host, guest = self.apps["Host"], self.apps["Guest"]
         touch(Path(self.tmp.name) / "Guest" / "Games" / "SNES" / "Other Game (USA).sfc")
@@ -391,7 +435,7 @@ class MultiplayerFlowTests(unittest.TestCase):
         self.assertEqual("55440", args[args.index("--port") + 1])
         state = guest.api_mp_state({})["room"]
         self.assertIn("The host has launched. Press Join match.", [e["text"] for e in state["new_events"]])
-        guest.api_mp_launch({})
+        guest.api_mp_launch({"expose_address": True})
         gargs = self.wait_args(guest_out)
         self.assertEqual("192.168.1.20", gargs[gargs.index("--connect") + 1])
         self.assertTrue(gargs[gargs.index("--nick") + 1].startswith("Guest"))
@@ -419,7 +463,7 @@ class MultiplayerFlowTests(unittest.TestCase):
         endpoint = guest._call({"operation": "get_endpoint", **guest._auth()})["endpoint"]
         self.assertEqual(55440, endpoint["port"])
         self.assertEqual(64, len(endpoint["psk"]))
-        result = guest.api_mp_launch({})
+        result = guest.api_mp_launch({"expose_address": True})
         self.assertTrue(result["encrypted"])
         gargs = self.wait_args(guest_out)
         self.assertEqual("127.0.0.1", gargs[gargs.index("--connect") + 1])
@@ -447,7 +491,9 @@ class MultiplayerFlowTests(unittest.TestCase):
             guest.api_mp_launch({})          # the guest is protected too
         self.assertFalse(guest_out.exists())
         guest.catalog.set_setting("allow_direct_connections", True)
-        guest.api_mp_launch({})
+        with self.assertRaisesRegex(AppError, "Confirm"):
+            guest.api_mp_launch({})
+        guest.api_mp_launch({"expose_address": True})
         self.wait_args(guest_out)
         host.api_mp_leave({}); guest.api_mp_leave({})
 

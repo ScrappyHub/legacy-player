@@ -13,12 +13,16 @@ from collections import deque
 
 
 class Relay:
-    def __init__(self, service, max_parked: int = 8, max_streams: int = 256) -> None:
+    def __init__(self, service, max_parked: int = 8, max_streams: int = 256, idle_seconds: float = 600.0,
+                 per_member: int = 2) -> None:
         self.service = service
         self.max_parked = max_parked
+        self.max_streams = max_streams
+        self.idle_seconds = idle_seconds
+        self.per_member = per_member
         self.parked: dict[str, deque] = {}          # session id -> idle host (reader, writer, paired future)
-        self.streams = asyncio.Semaphore(max_streams)
         self.active = 0
+        self.member_streams: dict[tuple[str, str], int] = {}
 
     @staticmethod
     def _reply(writer: asyncio.StreamWriter, ok: bool, **payload) -> None:
@@ -35,6 +39,11 @@ class Relay:
             return
         role = request.get("role")
         sid = session.session_id
+        member = (sid, participant_id)
+        if self.member_streams.get(member, 0) >= self.per_member or self.active >= self.max_streams:
+            self._reply(writer, False, error="too many relay connections; close one first")
+            await writer.drain()
+            return
         if role == "host":
             if participant_id != session.host_id:
                 self._reply(writer, False, error="only the host parks relay connections")
@@ -49,12 +58,18 @@ class Relay:
             queue.append((reader, writer, paired))
             self._reply(writer, True, parked=True)
             await writer.drain()
-            guest = await paired   # (reader, writer, done) of the guest, or None
+            watcher = asyncio.ensure_future(self._watch_parked(reader, paired))
+            guest = await paired   # (reader, writer, done, member) of the guest, or None
+            watcher.cancel()
             if guest is None:
                 return
+            self.member_streams[member] = self.member_streams.get(member, 0) + 1
+            self.member_streams[guest[3]] = self.member_streams.get(guest[3], 0) + 1
             try:
                 await self._pipe(reader, writer, guest[0], guest[1])
             finally:
+                for m in (member, guest[3]):
+                    self.member_streams[m] = max(0, self.member_streams.get(m, 1) - 1)
                 if not guest[2].done():
                     guest[2].set_result(True)
             return
@@ -72,24 +87,32 @@ class Relay:
             self._reply(writer, True, paired=True)
             await asyncio.gather(h_writer.drain(), writer.drain())
             done: asyncio.Future = asyncio.get_running_loop().create_future()
-            paired.set_result((reader, writer, done))
+            paired.set_result((reader, writer, done, member))
             await done   # the host-side coroutine runs the pipe and owns both writers
             return
         self._reply(writer, False, error="role must be host or guest")
         await writer.drain()
 
+    async def _watch_parked(self, reader: asyncio.StreamReader, paired: asyncio.Future) -> None:
+        """A parked host connection that hangs up (host crashed or relaunched) is dropped at once."""
+        try:
+            data = await reader.read(1)
+        except (OSError, asyncio.CancelledError):
+            return
+        if not paired.done():
+            paired.set_result(None)   # EOF or stray bytes: never hand this slot to a guest
+
     async def _pipe(self, a_r, a_w, b_r, b_w) -> None:
-        async with self.streams:
-            self.active += 1
-            try:
-                await asyncio.gather(_copy(a_r, b_w), _copy(b_r, a_w))
-            finally:
-                self.active -= 1
-                for w in (a_w, b_w):
-                    try:
-                        w.close()
-                    except Exception:
-                        pass
+        self.active += 1
+        try:
+            await asyncio.gather(_copy(a_r, b_w, self.idle_seconds), _copy(b_r, a_w, self.idle_seconds))
+        finally:
+            self.active -= 1
+            for w in (a_w, b_w):
+                try:
+                    w.close()
+                except Exception:
+                    pass
 
     def drop_session(self, sid: str) -> None:
         for _, w, paired in self.parked.pop(sid, ()):
@@ -98,15 +121,15 @@ class Relay:
             w.close()
 
 
-async def _copy(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+async def _copy(reader: asyncio.StreamReader, writer: asyncio.StreamWriter, idle_seconds: float = 600.0) -> None:
     try:
         while True:
-            data = await reader.read(65536)
+            data = await asyncio.wait_for(reader.read(65536), idle_seconds)
             if not data:
                 break
             writer.write(data)
             await writer.drain()
-    except (ConnectionError, asyncio.IncompleteReadError, OSError):
+    except (ConnectionError, asyncio.IncompleteReadError, OSError, TimeoutError):
         pass
     finally:
         try:

@@ -129,6 +129,7 @@ async def serve(
     shutdown = asyncio.Event()
     control = ServerControl(store.admin_token(), shutdown, service)
     relay = Relay(service)
+    service.relay = relay
     ssl_context = None
     if tls_cert is not None:
         ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)

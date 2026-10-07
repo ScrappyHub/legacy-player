@@ -48,11 +48,13 @@ class LobbyClient:
                         "Ask the host for the fingerprint shown in their app, or someone may be in the middle.")
         return sock
 
-    def open_relay(self, role: str, auth: dict, *, wait_paired: bool) -> socket.socket:
+    def open_relay(self, role: str, auth: dict, *, wait_paired: bool, on_socket=None) -> socket.socket:
         """Open a relay connection through the lobby server. Returns the raw socket once the
         server has parked it (host) or paired it (guest); the caller then speaks TLS-PSK over it."""
         try:
             sock = self._connect()
+            if on_socket is not None:
+                on_socket(sock)
             sock.sendall(json.dumps({"operation": "relay", "role": role, **auth}).encode() + b"\n")
             # Read exactly one line at a time, unbuffered: the bytes right after the last
             # line are the other player's TLS handshake and must stay in the socket.

@@ -58,10 +58,8 @@ authenticated room members.
 Requirements and honest limits:
 - RetroArch plus a libretro core for the console in `<retroarch folder>/cores` (the UI says
   exactly what is missing). Everyone needs the same core and the same game file version.
-- The RetroArch flags (`-L`, `--host`, `--connect`, `--port` default 55435, `--nick`) match
-  RetroArch's manual page; they are still unproven here against a real install.
-- RetroArch netplay traffic is not encrypted. For internet play use a VPN (Tailscale,
-  ZeroTier) or a forwarded port; the room and invite layer is encrypted only with TLS.
+- The RetroArch flags were verified against a real RetroArch 1.18 (host + 3 guests, 60 s, no desync).
+- RetroArch netplay traffic is wrapped in a TLS-PSK tunnel and, by default, relayed through the lobby server so players never learn each other's address. Dolphin NetPlay is neither encrypted nor relayed: use a VPN (Tailscale, ZeroTier).
 
 ## Dolphin (GameCube and Wii) guided NetPlay
 
@@ -131,9 +129,16 @@ See `docs/proposals/0003_OWNED_EMULATOR_SHELL.md`. In short: the **Engines** tab
 * **Open rooms**: tick *Open room* when hosting (optionally name it). Anyone on the server sees it under *Open rooms on this server* with the game, region, players/limit and line length, never who is inside. *Join* walks in; *Wait in line* queues you in the background so you can keep playing or hosting; you get a notice when your seat is ready and press *Switch to it*. Hosts can toggle open/private live.
 * **Seats free themselves**: a player who stops talking to the server is flagged after 45 s and removed after about 2 minutes so the line moves. Leaving a RetroArch/Dolphin match no longer ends it for everyone (lockstep matches still stop, as they must).
 * **Your server, shared safely**: *Let friends connect* starts the server with TLS using a certificate the app makes itself (no OpenSSL needed). Friends paste your address and the fingerprint shown on the card; the app refuses a server whose certificate does not match. Plaintext internet hosting is not offered. Limits (players per room, rooms, line length) are in Settings > Your server.
-* **Who sees what**: other players see `Name#tag` (random tag per install) and nothing else; the server sees your IP like any website does; guests in a direct match see the host's address because that is where the emulator connects (a relay mode that hides it is planned, proposal 0004).
+* **Who sees what**: other players see `Name#tag` (random tag per install) and nothing else; the server sees your IP like any website does; matches go through the server relay by default, so other players never see your address. A host can only choose a direct connection (which exchanges addresses) after turning on Settings > Privacy > Allow direct connections, and every guest must confirm too. One caveat in relay mode: RetroArch itself still listens on its port on every network interface (it has no bind option), so do not forward that port at your router.
 
 ### Server operations (wire protocol, newline JSON)
 
-create, join (invite code, join code, or open room by session id), validate, ready, input, poll, checkpoint, complete, status, join_status, decide_join, invite (priority flag), revoke_invites, kick, leave, heartbeat, set_priority, list_waiting, cancel_wait, browse, set_open, set_capacity, set_endpoint (optional psk), get_endpoint, events; admin (loopback + token): admin_status, admin_shutdown.
+create, join (invite code, join code, or open room by session id), validate, ready, input, poll, checkpoint, complete, status, join_status, decide_join, invite (priority flag), revoke_invites, kick, leave, heartbeat, set_priority, list_waiting, cancel_wait, browse, set_open, set_capacity, set_endpoint (kind direct/code/relay, optional psk), get_endpoint, relay (first line of a connection that becomes a byte pipe), events; admin (loopback + token): admin_status, admin_shutdown.
+
+## Your turn: switching from what you were playing
+
+While you wait in line you can play anything from the library. When your seat is ready the app
+says so; *It's my turn: switch* asks whether to close the game you are in (the emulator gets a
+normal close request, the same as clicking its X, so it writes saves as usual), leaves any
+room you were in, takes the seat, and joins the match at once if the host has launched.
 

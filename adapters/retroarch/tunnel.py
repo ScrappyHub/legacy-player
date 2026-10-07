@@ -137,6 +137,14 @@ class Tunnel:
                 pass
 
 
+def _wants_tracker(fn) -> bool:
+    import inspect
+    try:
+        return len(inspect.signature(fn).parameters) >= 1
+    except (TypeError, ValueError):
+        return False
+
+
 class RelayHost:
     """Host side of relay mode: keep a few connections parked at the lobby server; when the
     server pairs one with a guest, speak TLS-PSK over it and pipe to the local RetroArch."""
@@ -147,6 +155,8 @@ class RelayHost:
         self.stopped = threading.Event()
         self.threads: list[threading.Thread] = []
         self.errors: list[str] = []
+        self.open_sockets: set[socket.socket] = set()
+        self._lock = threading.Lock()
 
     def start(self) -> "RelayHost":
         for _ in range(self.slots):
@@ -157,12 +167,29 @@ class RelayHost:
 
     def stop(self) -> None:
         self.stopped.set()
+        with self._lock:
+            for s in list(self.open_sockets):
+                try:
+                    s.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    pass
+                try:
+                    s.close()
+                except OSError:
+                    pass
+            self.open_sockets.clear()
+
+    def _track(self, sock) -> None:
+        with self._lock:
+            self.open_sockets.add(sock)
 
     def _slot(self) -> None:
         while not self.stopped.is_set():
             try:
-                raw = self.dial()            # returns once a guest is paired with this connection
+                raw = self.dial(self._track) if _wants_tracker(self.dial) else self.dial()
             except Exception as exc:         # relay refused / server gone: back off, try again
+                if self.stopped.is_set():
+                    return
                 self.errors.append(str(exc)[:120])
                 del self.errors[:-10]
                 if self.stopped.wait(2.0):

@@ -90,6 +90,7 @@ class LauncherApp:
         self.skipped = {"unrecognized": 0, "duplicates": 0}
         self.room: dict | None = None
         self.waits: dict[str, dict] = {}   # rooms you are queued for while doing something else
+        self.running: dict | None = None   # the game started from the library, if any
         self.tunnel = None
         self.last_ping = 0.0
         self.bye_at = 0.0
@@ -337,6 +338,7 @@ class LauncherApp:
         except (OSError, FileNotFoundError) as exc:
             raise AppError(f"Could not start {check['emulator']}: {exc}") from exc
         self.catalog.record_play(game["id"])
+        self.running = {"pid": pid, "title": game["title"], "emulator": check["emulator"]}
         return {"launched": game["title"], "emulator": check["emulator"], "pid": pid}
 
     def api_emulators(self, body: dict) -> dict:
@@ -665,17 +667,34 @@ class LauncherApp:
         return result
 
     def api_mp_switch(self, body: dict) -> dict:
-        """Make a background wait the active room (leaving the current one if any)."""
+        """Your turn came: leave what you were doing and take the seat.
+
+        close_game=true asks the game you were playing to close politely (the emulator gets a
+        normal close request, so it writes its save files as it would when you click X).
+        auto_join=true then joins the match straight away if the host has launched."""
         sid = str(body.get("session_id", ""))
         record = self.waits.get(sid)
         if record is None:
             raise AppError("You are not waiting for that room.")
+        closed = None
+        if body.get("close_game") and self.running:
+            emulators.close_pid(self.running["pid"])
+            closed = self.running["title"]
+            self.running = None
         if self.room is not None:
             self.api_mp_leave({})
         del self.waits[sid]
         record.pop("ready_to_switch", None)
         self.room = record
-        return self.api_mp_state({})
+        state = self.api_mp_state({})
+        if body.get("auto_join"):
+            try:
+                launched = self.api_mp_launch({})
+                state["joined_match"] = launched
+            except AppError as exc:
+                state["join_note"] = str(exc)   # usually "the host has not launched yet"
+        state["closed_game"] = closed
+        return state
 
     def api_mp_cancel_wait(self, body: dict) -> dict:
         sid = str(body.get("session_id", ""))
@@ -775,6 +794,8 @@ class LauncherApp:
             "open": r.get("open", False),
             "pending": self._pending_requests(r),
             "launch": self._room_launch_state(r, session),
+            "relay_errors": list(getattr(self.tunnel, "errors", []) or [])[-3:],
+            "running": self.running,
         }, "waits": self._waits_view()}
 
     def _room_launch_state(self, room: dict, session: dict) -> dict:
@@ -875,11 +896,12 @@ class LauncherApp:
                         raise AppError("Encrypted matches need the Legacy Player app (Python 3.13+). Turn off 'Encrypt match traffic' in Settings to play unencrypted on a trusted network.")
                     key = netplay_tunnel.new_key()
                     if relay:
-                        # RetroArch listens on loopback only; the relay through the server is the only way in.
+                        # Guests reach RetroArch only through the relay. RetroArch itself still listens on
+                        # this port on every interface (it has no bind option): keep it unforwarded at the router.
                         ra_port = port
                         client, auth = self._client(), self._auth()
                         self.tunnel = netplay_tunnel.RelayHost(
-                            key, lambda: client.open_relay("host", auth, wait_paired=True), "127.0.0.1", ra_port,
+                            key, lambda track: client.open_relay("host", auth, wait_paired=True, on_socket=track), "127.0.0.1", ra_port,
                             slots=max(1, (room.get("max_players") or 4) - 1)).start()
                     else:
                         ra_port = port + 1 if port < 65535 else port - 1
@@ -902,9 +924,11 @@ class LauncherApp:
                     relay = True
                 else:
                     relay = False
-                    if not self.catalog.settings()["allow_direct_connections"] and not body.get("expose_address"):
+                    if not self.catalog.settings()["allow_direct_connections"]:
                         raise AppError("The host chose a direct connection, which shares their address with you and yours with them. "
                                        "Allow direct connections in Settings > Privacy (or ask the host to use the relay).")
+                    if not body.get("expose_address"):
+                        raise AppError("Confirm that you accept exchanging addresses with the host, or ask them to use the relay.")
                     connect_address, connect_port = endpoint["address"], endpoint["port"]
                     if endpoint.get("psk"):
                         self.tunnel = netplay_tunnel.Tunnel("guest", endpoint["psk"], "127.0.0.1", 0, connect_address, connect_port).start()

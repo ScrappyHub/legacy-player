@@ -42,3 +42,20 @@ Credentials are scoped to a participant and compared using constant-time compari
 - Most recent 1,024 released bundles retained
 - DSU controller delivery exists, but deterministic Dolphin frame control does not
 - Bounded active sessions, participants, request sizes, frame lead, history, and idle time
+
+## Operations added by the launcher phases (v1.1)
+
+Community lobby: `join` (by `invite_code`, by `join_code`, or `open: true` + `session_id`),
+`join_status`, `decide_join`, `invite` (`priority`), `revoke_invites`, `kick`, `leave`,
+`heartbeat`, `events` (`after_seq`), `set_priority`, `list_waiting`, `cancel_wait`,
+`set_capacity`, `browse` (no auth; returns no identities), `set_open`,
+`set_endpoint` (`kind`: `direct` | `code` | `relay`, optional `psk`), `get_endpoint`.
+
+`relay`: when it is the first line of a connection (`{"operation":"relay","role":"host"|"guest",
+session_id, participant_id, credential}`), the server answers one line (`parked` for a host,
+`paired` for both once a guest arrives) and from then on copies raw bytes between the two
+connections. It never inspects them; they carry the players' TLS-PSK tunnel.
+
+Admin (loopback + token in the state folder): `admin_status`, `admin_shutdown`.
+Server flags: `--max-players`, `--max-rooms`, `--max-waiting`, `--tls-cert/--tls-key`.
+
