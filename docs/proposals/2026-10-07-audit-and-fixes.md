@@ -48,12 +48,11 @@ This note does not choose a vendor.
 
 ## Still open
 
-- Calls that change shared state (`server_control` start/stop, rescans) still hold the global lock. Making them
-  non-blocking needs real per-area locking, a larger change.
+- Rescans still hold the global lock (start/stop of the server no longer does; see the follow-up below).
 - A one-time secret in a window's command line can be seen by other programs running as the same user. That is
   the same trust boundary as the player's own files; it removes the drive-by case, not a hostile program that
   already runs as the player.
-- Text contrast on gradient cards, and keyboard-only use of the new dialogs, still need a manual pass.
+- Text contrast on gradient cards still needs a manual pass.
 
 ## Still to verify on Windows
 
@@ -70,3 +69,15 @@ that room's own credential, so **making a fresh code never disconnects anyone al
 old code from letting new people in. The Servers page and the tray both have "Make a fresh code". The key lives in
 the server's state folder (`access_key.bin`, owner-only); the app reads its own server's current key from there.
 Friends who saved the old code reconnect with the new one.
+
+## Follow-up: second audit (same day)
+
+Found and fixed: (1) starting or stopping the server held the one big lock while it waited for the server, so
+every other click queued behind it; it now holds only its own lock and takes the big one just to save settings.
+(2) Dialogs had no common keyboard behaviour: Esc now means Cancel on the top dialog, Tab stays inside it, and
+focus returns to what opened it. (3) About twenty backend actions had no test (doctor, specs, update check, cover
+lookup consent, save folders, scans, network state, host-only room actions); `tests/test_app_actions.py` covers
+them, and the browser test checks Esc and Tab.
+
+Still open: Dolphin pad profiles, emulator fullscreen flags per emulator, contrast measurement, and everything
+under "Still to verify on Windows".

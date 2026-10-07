@@ -95,6 +95,16 @@ class UiSmokeTests(unittest.TestCase):
                 page.wait_for_selector(".ctx", timeout=8000)
             except Exception:
                 self.fail("the game menu did not open")
+            # dialogs: Tab stays inside, Esc means Cancel (the link is single-use, so this shares the page above)
+            page.evaluate("() => { window.__r = 'unset'; ask('Really?', 'Yes').then(v => { window.__r = v }); }")      # not returned: evaluate would wait for it
+            page.wait_for_selector(".modal")
+            for _ in range(4):
+                page.keyboard.press("Tab")
+            self.assertTrue(page.evaluate("!!document.activeElement.closest('.modal')"), "Tab left the dialog")
+            page.keyboard.press("Escape")
+            page.wait_for_timeout(300)
+            self.assertEqual(0, page.locator(".modal").count())
+            self.assertIs(False, page.evaluate("window.__r"))
             browser.close()
         self.assertEqual([], problems)
 

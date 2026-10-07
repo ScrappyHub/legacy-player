@@ -146,6 +146,8 @@ class LauncherApp:
         self.bye_at = 0.0
         self.quit_requested = False
         self._specs_lock = threading.Lock()
+        self.api_lock = threading.RLock()        # one ordinary API call at a time (the web layer takes it)
+        self._server_op_lock = threading.Lock()  # starting/stopping the server: one at a time, outside api_lock
         self.tray_mode = False   # the window is closed but the app keeps running in the tray
         self._net_running = False
         self.covers = CoverFetcher(self.data_dir / "covers")
@@ -1877,7 +1879,7 @@ class LauncherApp:
 
     # window lifetime (used by the packaged app so it quits when its window closes) ----------
     # calls that need no global lock: quick reads, or slow work that only touches its own cache
-    UNLOCKED = frozenset({"ping", "bye", "status", "specs", "server_status", "network_last"})
+    UNLOCKED = frozenset({"ping", "bye", "status", "specs", "server_status", "network_last", "server_control"})
 
     def api_ping(self, body: dict) -> dict:
         self.last_ping, self.bye_at, self.tray_mode = time.time(), 0.0, False
@@ -1978,19 +1980,21 @@ class LauncherApp:
         args = self._server_args(bool(body.get("share")) and action != "status")
         out = io.StringIO()
         try:
-            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
+            # slow (it waits for the server): holds only its own lock, so the rest of the app keeps answering
+            with self._server_op_lock, contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
                 code = {"start": cli.start, "stop": cli.stop, "restart": cli.restart, "status": cli.status}[action](args)
         except (OSError, ConnectionError, ValueError) as exc:
             raise AppError(f"The server did not respond: {exc}") from exc
         message = " ".join(out.getvalue().split()) or ("Done." if code == 0 else "That did not work.")
         if code != 0 and action != "status":
             raise AppError(message)
-        if args.tls_cert and body.get("share") and action in {"start", "restart"} and code == 0:
-            # the app itself must now talk TLS to its own server
-            self.catalog.set_setting("server_tls", True)
-            self.catalog.set_setting("server_fingerprint", self.server_fingerprint() or "-")
-        elif action in {"start", "restart"} and code == 0 and not body.get("share"):
-            self.catalog.set_setting("server_tls", False)
+        with self.api_lock:        # settings are shared state, so only this short part takes the big lock
+            if args.tls_cert and body.get("share") and action in {"start", "restart"} and code == 0:
+                # the app itself must now talk TLS to its own server
+                self.catalog.set_setting("server_tls", True)
+                self.catalog.set_setting("server_fingerprint", self.server_fingerprint() or "-")
+            elif action in {"start", "restart"} and code == 0 and not body.get("share"):
+                self.catalog.set_setting("server_tls", False)
         return {"message": message, "running": cli._is_running(args.state_dir), "shared": bool(body.get("share")),
                 "log": str(args.state_dir / "server.log"), "fingerprint": self.server_fingerprint(),
                 "limits": {"players": args.max_players, "rooms": args.max_rooms, "waiting": args.max_waiting}}

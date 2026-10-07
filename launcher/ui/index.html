@@ -2184,6 +2184,35 @@ async function homeArtTip(){
  await go();
  setTimeout(()=>{const b=$("#boot");if(b){b.classList.add("gone");setTimeout(()=>b.remove(),800)}},350);
  setTimeout(()=>autoNetTest(300),1200)})();
+
+/* Dialogs: Esc closes the top one, Tab stays inside it, and focus goes back to where it was. */
+(()=>{
+ const FOCUS='button:not([disabled]),[href],input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+ const top=()=>{const all=document.querySelectorAll(".modal");return all[all.length-1]||null};
+ const opener=new WeakMap();
+ new MutationObserver(list=>{for(const m of list){
+  for(const n of m.addedNodes){if(n.nodeType===1&&n.classList.contains("modal")){
+   opener.set(n,document.activeElement);
+   if(!n.contains(document.activeElement)){const f=n.querySelector(".primary")||n.querySelector(FOCUS);if(f)setTimeout(()=>{try{f.focus()}catch(e){}},0)}}}
+  for(const n of m.removedNodes){if(n.nodeType===1&&n.classList&&n.classList.contains("modal")){
+   const o=opener.get(n);if(o&&document.contains(o)&&!top()){try{o.focus()}catch(e){}}}}}
+ }).observe(document.body,{childList:true});
+ document.addEventListener("keydown",e=>{
+  const m=top();if(!m)return;
+  if(e.key==="Escape"){
+   if(document.querySelector(".learning"))return;                 // the key-learning box handles its own Esc
+   const btns=[...m.querySelectorAll("button")].filter(b=>!b.disabled);
+   const cancel=m.querySelector("[data-cancel]:not([disabled])")||btns.find(b=>/^(cancel|close|not now|no|done|back|later)\b/i.test((b.textContent||"").trim()));
+   if(cancel){e.preventDefault();e.stopPropagation();cancel.click()}
+   return}
+  if(e.key==="Tab"){
+   const f=[...m.querySelectorAll(FOCUS)].filter(x=>x.offsetParent!==null);if(!f.length)return;
+   const first=f[0],last=f[f.length-1],a=document.activeElement;
+   if(!m.contains(a)){e.preventDefault();first.focus()}
+   else if(e.shiftKey&&a===first){e.preventDefault();last.focus()}
+   else if(!e.shiftKey&&a===last){e.preventDefault();first.focus()}}
+ },true);
+})();
 </script>
 </body>
 </html>

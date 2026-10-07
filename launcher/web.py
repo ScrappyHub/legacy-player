@@ -48,7 +48,7 @@ class Launch:
 
 
 def make_handler(app: LauncherApp, token: str, port_getter, launch: Launch | None = None):
-    api_lock = threading.RLock()   # one API call at a time: the app state is not thread-safe by itself
+    api_lock = getattr(app, "api_lock", None) or threading.RLock()   # one API call at a time: the app state is not thread-safe by itself
 
     class Handler(BaseHTTPRequestHandler):
         server_version = "LegacyPlayerUI"
