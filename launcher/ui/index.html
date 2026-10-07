@@ -223,7 +223,7 @@ body.busy .brand .martin,.hop{animation:hop .55s ease-in-out infinite}
 .docsay{position:relative;z-index:3;margin-bottom:12px;background:#fff6c8;color:#2b3157;font:700 12px ui-monospace,Consolas,monospace;padding:8px 12px;box-shadow:0 -4px #2b3157,0 4px #2b3157,-4px 0 #2b3157,4px 0 #2b3157;max-width:78%;text-align:center}
 .desk{position:relative;z-index:4;width:84%;height:64px;border-radius:10px 10px 0 0;background:linear-gradient(#9a6a45,#7a4f31);box-shadow:0 -4px #b98457 inset,0 8px 0 #5d3a22;margin-bottom:0}
 .desk .plate{position:absolute;left:50%;top:18px;transform:translateX(-50%);background:#e6c46a;color:#4a3410;font:800 11px ui-monospace,monospace;letter-spacing:2px;padding:3px 12px;border-radius:3px}
-.desk .deskcat{position:absolute;right:12px;top:-42px}
+.desk .deskcat{position:absolute;right:14px;top:-78px;z-index:5}
 .clip{border:1px solid var(--line);border-radius:18px;padding:16px;background:var(--solid);position:relative}
 .clip::before{content:"";position:absolute;left:50%;top:-8px;width:70px;height:14px;transform:translateX(-50%);background:#9aa3b8;border-radius:5px}
 .clip .doc{max-width:none;min-width:0;flex:none}
@@ -368,6 +368,18 @@ textarea{background:var(--panel2);color:var(--text);border:1px solid var(--line)
 .unlist{max-height:180px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:6px 10px;margin-bottom:10px}
 .unrow{display:flex;flex-direction:column;padding:4px 0;border-bottom:1px solid var(--line);word-break:break-all}.unrow:last-child{border:0}
 .unopt{display:flex;gap:10px;align-items:flex-start;margin:8px 0}
+/* Martin sits on the desk: slow tail sway and a gentle head tilt, a quick wag and head rub while he is being petted */
+.sitcat{position:relative;display:block;cursor:pointer;filter:drop-shadow(0 4px 8px #0007)}
+.sitcat:focus-visible{outline:2px solid var(--link);outline-offset:4px;border-radius:8px}
+.sitcat .catpart{position:absolute;display:block}
+.sitcat .cattail{transform-origin:12% 94%;animation:tailidle 3.8s ease-in-out infinite}
+.sitcat .cathead{transform-origin:50% 92%;animation:headidle 6s ease-in-out infinite}
+.sitcat.petting .cattail{animation:tailwag .3s ease-in-out infinite}
+.sitcat.petting .cathead{animation:headrub .5s ease-in-out infinite}
+@keyframes tailidle{0%,100%{transform:rotate(-5deg)}50%{transform:rotate(7deg)}}
+@keyframes tailwag{0%,100%{transform:rotate(-16deg)}50%{transform:rotate(16deg)}}
+@keyframes headidle{0%,70%,100%{transform:rotate(0)}80%{transform:rotate(-3deg)}90%{transform:rotate(2deg)}}
+@keyframes headrub{0%,100%{transform:rotate(-7deg) translateY(1px)}50%{transform:rotate(7deg) translateY(2px)}}
 /* the doctor runs a scan on his own computer */
 .docterm{position:absolute;right:14px;bottom:86px;z-index:5;width:min(230px,46%);background:#06120c;color:#3be0a8;font:12px/1.35 ui-monospace,Consolas,monospace;border:3px solid #2a3350;border-radius:8px;padding:6px 9px 8px;box-shadow:0 0 22px #3be0a844,inset 0 0 18px #0a2a1a;animation:termon .45s ease-out}
 .docterm.off{opacity:0;transform:scale(.9);transition:all .6s}
@@ -525,6 +537,14 @@ const AVATARS={
  moon:{name:"Moon",rows:["..YYY...",".YYY....","YYY.....","YYY.....","YYY.....",".YYY....","..YYYY..","........"]},
 };
 function martin(size,cls){return pixels(MARTIN,size,"martin "+(cls||""))}
+/* Martin sitting up on the doctor's desk: head, body and tail are separate pieces so the head can rub and the tail can wag */
+const CAT_BODY=["....DWWWWWWD....","...DWWWWWWWWD...","..DWWWGWWGWWWD..","..DWWWWGGWWWWD..","..DWWWWWWWWWWD..","..DWWDWWWWDWWD..","..DWWDWWWWDWWD..","..DWWWDDDDWWWD..","...DDDD..DDDD..."];
+const CAT_TAIL=["...DD...","..DWWD..","..DWGD..","...DWD..","...DWWD.","..DWGD..",".DWWD...","DWWD....","DWD.....","DD......"];
+function sittingMartin(size){const u=size/16,r=Math.round;
+ const part=(rows,cls,left,top)=>{const e=pixels(rows,r(rows[0].length*u),"catpart "+cls);e.style.left=r(left*u)+"px";e.style.top=r(top*u)+"px";return e};
+ const el=h("div",{class:"sitcat",role:"button",tabindex:"0",title:"Pet Martin",style:`width:${r(21*u)}px;height:${r(21*u)}px`,onkeydown:e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();el.click()}}},
+  part(CAT_TAIL,"cattail",12,11),part(CAT_BODY,"catbody",0,12),part(MARTIN,"cathead",0,0));
+ return el}
 function avatarEl(id,size,cls){const a=AVATARS[id]||AVATARS.martin;return pixels(a.rows,size,"avatar "+(cls||""))}
 
 const S={tab:"home",console:null,q:"",fav:false,sort:"title",lib:null,settings:null,room:null,online:null,lastNotice:null,profile:null,netcheck:null,netBusy:false};
@@ -585,8 +605,9 @@ function say(text,el){let b=$("#bubble");if(el)pet.el=el;if(!b){b=h("div",{id:"b
  cancelAnimationFrame(pet.raf);placeBubble();clearTimeout(pet.timer);pet.timer=setTimeout(()=>{cancelAnimationFrame(pet.raf);const x=$("#bubble");if(x)x.remove()},3200)}
 function nextMeow(){let t;do{t=MEOWS[Math.floor(Math.random()*MEOWS.length)]}while(t===pet.text&&MEOWS.length>1);pet.text=t;return t}
 /* a bubble only appears right after a pet, never on its own */
-document.addEventListener("click",e=>{const m=e.target.closest&&e.target.closest(".martin");if(!m||m.closest("#boot"))return;
- pet.el=m;pet.last=Date.now();pet.n++;m.classList.remove("pet");void m.getBoundingClientRect();m.classList.add("pet");
+document.addEventListener("click",e=>{const m=e.target.closest&&e.target.closest(".martin,.sitcat");if(!m||m.closest("#boot"))return;
+ pet.el=m;pet.last=Date.now();pet.n++;
+ if(m.classList.contains("sitcat")){m.classList.add("petting");clearTimeout(m._pt);m._pt=setTimeout(()=>m.classList.remove("petting"),1700)}else{m.classList.remove("pet");void m.getBoundingClientRect();m.classList.add("pet")}
  const r=m.getBoundingClientRect();const hrt=pixels(AVATARS.heart.rows,18,"");hrt.classList.add("petheart");hrt.style.left=(r.left+r.width/2-9+(Math.random()*30-15))+"px";hrt.style.top=(r.top+4)+"px";document.body.append(hrt);setTimeout(()=>hrt.remove(),1000);
  say(pet.n%7===0?"you're the best!":nextMeow())});
 
@@ -785,7 +806,7 @@ function scanPanel(onDone,opts){opts=opts||{};
   const found=Object.entries(v.emulators||{}),pk=Object.entries(v.packages||{});
   const running=v.state==="running";
   box.replaceChildren(
-   running?h("div",{},h("div",{class:"row"},pixels(doctorRows("happy"),48,"doctor happy"),h("div",{class:"grow"},h("b",{},"Looking around your computer",h("span",{class:"dots"})),h("div",{class:"small muted"},v.visited+" folders checked"+(v.where?" · "+v.where.slice(-60):""))),h("button",{class:"btn",onclick:()=>api("scan_pc",{action:"cancel"})},"Stop")),h("div",{class:"bar live",style:"margin-top:10px"},h("i"))):null,
+   running?h("div",{},h("div",{class:"row"},pixels(doctorRows("happy"),48,"doctor happy"),h("div",{class:"grow"},h("b",{},"Looking around your computer",h("span",{class:"dots"})),h("div",{class:"small muted"},v.visited+" folders checked"+(v.where?" · "+(String(v.where).split(/[\\/]/).filter(Boolean).pop()||"").slice(0,40):""))),h("button",{class:"btn",onclick:()=>api("scan_pc",{action:"cancel"})},"Stop")),h("div",{class:"bar live",style:"margin-top:10px"},h("i"))):null,
    (v.state==="done"||v.state==="stopped")?h("div",{},h("p",{class:"good"},"✓ "+(v.state==="stopped"?"Stopped early. ":"Finished. ")+(found.length?found.length+" emulator program"+(found.length>1?"s":"")+" found: "+found.map(([,e])=>e.name).join(", ")+".":"No emulator programs found yet.")),
     pk.length?h("p",{class:"small warn"},"Found downloads that are not unpacked yet: "+pk.map(([,e])=>e.name+" ("+e.paths[0]+")").join("; ")+". Extract them, then add that folder under Emulators."):null):null,
    v.state==="error"?h("p",{class:"bad small"},"The scan stopped: "+v.where):null);
@@ -811,7 +832,7 @@ async function viewWelcome(m){
     h("div",{class:"card"},h("h3",{},"Who are you?"),h("div",{class:"row"},name),
      h("p",{class:"small muted"},"Other players see your name with a four-character tag, like #4821. The server you connect to gives the tag, and nobody active on it shares your name and tag."),h("h3",{},"Pick a picture"),grid,
      nav2(false,async()=>{const v=name.value.trim();if(!v){toast("Pick a name first","warn");return}const r=await act(()=>api("profile",{alias:v,avatar:pick}));if(!r)return;S.profile=r;renderWho();S.wizStep=1;go()})))}
-  else if(step===1){const roots=await api("roots");const inp=h("input",{type:"text",placeholder:"for example D:\\Games",value:(roots.roots||[])[0]||"",style:"min-width:min(480px,100%)"});
+  else if(step===1){const roots=await api("roots");const inp=h("input",{type:"text",placeholder:"for example D:\\Games",value:"",style:"min-width:min(480px,100%)"});
    box.append(h("div",{class:"card"},h("h3",{},"Where are your games?"),h("p",{class:"small muted"},"Paste the folder that holds your game files, sorted into folders like NES, SNES, PS2 (the example is just a placeholder). Legacy Player only reads it; nothing is moved or renamed. Don't have it handy? Skip this step and add it later under Library."),
     h("div",{class:"row"},inp),nav2(true,async()=>{const v=inp.value.trim();if(v){const cur=roots.roots||[];const r=await act(()=>api("roots",{roots:cur.includes(v)?cur:cur.concat([v])}));if(!r)return;const sc=await act(()=>api("rescan"));if(sc)toast("Found "+sc.games+" games")}S.wizStep=2;go()})))}
   else if(step===2){let done=false;
@@ -1570,7 +1591,7 @@ async function viewEmulators(m){
  m.append(h("h2",{},"Emulators"),h("div",{class:"why"},"Legacy Player does not replace emulators: it opens the right one for each console. It looks inside your games and emulator folders and on your PATH automatically, and Scan this computer searches everywhere else when you ask it to."),cardScan,
   h("div",{class:"card"},h("h3",{},whyInline("Emulator folders","Folders where you keep emulator programs. Legacy Player looks inside them (a few levels deep) and never changes anything there. Installers such as PCSX2 or PPSSPP setup files must be run first; then add the folder they installed to.")),
    ...(d.folders||[]).map(f=>h("div",{class:"row"},h("code",{class:"grow"},f),h("button",{class:"btn",onclick:async()=>{const r=await act(()=>api("emulators",{folder:f,remove:true}));if(r)go()}},"Remove"))),
-   (()=>{const inp=h("input",{type:"text",placeholder:"Paste a folder path, e.g. P:\\Downloads\\Emulator set ups",style:"min-width:min(480px,100%)"});return h("div",{class:"row"},inp,h("button",{class:"btn primary",onclick:async()=>{const r=await act(()=>api("emulators",{folder:inp.value.trim()}),"Folder added");if(r)go()}},"Add folder"))})()),
+   (()=>{const inp=h("input",{type:"text",placeholder:"Paste a folder path, e.g. D:\\Emulators",style:"min-width:min(480px,100%)"});return h("div",{class:"row"},inp,h("button",{class:"btn primary",onclick:async()=>{const r=await act(()=>api("emulators",{folder:inp.value.trim()}),"Folder added");if(r)go()}},"Add folder"))})()),
   h("div",{class:"card",style:"margin-top:12px"},h("table",{},h("thead",{},h("tr",{},h("th",{},"Emulator"),h("th",{},"Found at"),h("th",{},""))),h("tbody",{},...d.emulators.map(e=>{
     const inp=h("input",{type:"text",placeholder:"Full path to program",value:e.source==="you set this"?e.path:"",style:"width:100%"});
     return h("tr",{},h("td",{},e.name),h("td",{class:e.path?"":"muted"},e.path?e.path+"  ("+e.source+")":"not found"),h("td",{},inp,h("button",{class:"btn",onclick:async()=>{const r=await act(()=>api("emulators",{emulator:e.id,path:inp.value.trim()||null}),"Saved");if(r)go()}},"Set")))})))),
@@ -1939,7 +1960,7 @@ async function viewSetup(m){
   h("div",{class:"officegrid"},
    h("div",{class:"office"},h("div",{class:"wall"},
      h("div",{class:"decor win"},pixels(WINDOW,150)),h("div",{class:"decor dip"},pixels(DIPLOMA,92)),h("div",{class:"decor sign"},pixels(CROSS,40)),h("div",{class:"decor plant"},pixels(PLANT,64)),h("div",{class:"decor books"},pixels(BOOKS,130))),
-    h("div",{class:"deskzone"},say,spot,h("div",{class:"desk"},h("span",{class:"plate"},"DOC"),h("span",{class:"deskcat"},martin(52)))),h("div",{class:"fxlayer"}),start),
+    h("div",{class:"deskzone"},say,spot,h("div",{class:"desk"},h("span",{class:"plate"},"DOC"),h("span",{class:"deskcat"},sittingMartin(64)))),h("div",{class:"fxlayer"}),start),
    h("div",{class:"clip"},h("h3",{style:"margin:0 0 10px"},"Today's check-up"),report)),
   dr.issues.length?h("h3",{class:"sect"},"Case files"):"",caseCards(dr,refresh),
   h("h3",{class:"sect"},"In the waiting room: your emulators"),emulatorCards(dr),

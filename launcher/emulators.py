@@ -128,13 +128,16 @@ def launch(emulator_id: str, exe: str, rom_path: str, extra_args: list[str] | No
     return process.pid
 
 
+_NOWIN = getattr(subprocess, "CREATE_NO_WINDOW", 0)      # helper programs must not flash a console window
+
+
 def close_pid(pid: int, grace: float = 8.0) -> None:
     """Ask a game to close the way the X button does (WM_CLOSE on Windows, SIGTERM elsewhere),
     wait a little for it to write saves, then stop it for good if it is still there."""
     import time
     try:
         if sys.platform == "win32":
-            subprocess.run(["taskkill", "/PID", str(pid)], capture_output=True, timeout=10)   # no /F: polite
+            subprocess.run(["taskkill", "/PID", str(pid)], capture_output=True, timeout=10, creationflags=_NOWIN)   # no /F: polite
         else:
             os.kill(pid, signal.SIGTERM)
     except (OSError, subprocess.SubprocessError):
@@ -150,7 +153,7 @@ def close_pid(pid: int, grace: float = 8.0) -> None:
 def _alive(pid: int) -> bool:
     try:
         if sys.platform == "win32":
-            out = subprocess.run(["tasklist", "/FI", f"PID eq {pid}", "/NH"], capture_output=True, text=True, timeout=10).stdout
+            out = subprocess.run(["tasklist", "/FI", f"PID eq {pid}", "/NH"], capture_output=True, text=True, timeout=10, creationflags=_NOWIN).stdout
             return str(pid) in out
         os.kill(pid, 0)
         return True
@@ -161,7 +164,7 @@ def _alive(pid: int) -> bool:
 def stop_pid(pid: int) -> None:
     try:
         if sys.platform == "win32":
-            subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True, timeout=10)
+            subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True, timeout=10, creationflags=_NOWIN)
         else:
             os.kill(pid, signal.SIGTERM)
     except (OSError, subprocess.SubprocessError):

@@ -173,3 +173,14 @@ list is short and should be extended.
 - If the doctor has never scanned this computer, a visit now changes: he says his chart is blank, asks first, then runs
   Scan everything himself on a little terminal on his desk (new text, a typing animation and a scan line) and reads out
   what he found. The wizard's scan step also makes the save folders and re-reads the games folders.
+
+## Follow-up: Martin on the desk, no prefill, silent uninstall
+
+- Martin now sits on the doctor's desk as a whole cat (head, body, tail). The tail sways slowly; petting him wags it and
+  rubs his head, with the usual hearts and meow bubble.
+- The games-folder box starts empty and never shows a folder from this computer; the scan panel shows only the folder name
+  it is on, and the last personal example path in the app was replaced with a neutral one.
+- Uninstall opened many console windows showing "Pinging 127.0.0.1": the cleanup script was started as a detached process,
+  which makes Windows ignore "no window", so each `ping` (its wait between retries) got its own window and they kept coming
+  until Legacy Player was closed. It now starts with a hidden console only; `taskkill`, `tasklist` and archive tools also
+  run hidden. Needs a real uninstall on Windows to confirm.

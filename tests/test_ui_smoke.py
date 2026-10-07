@@ -132,6 +132,17 @@ class UiSmokeTests(unittest.TestCase):
             page.evaluate('S.wizStep=0;nav("welcome")')
             page.wait_for_selector("text=Hi, I'm the doctor.")
             self.assertNotIn("Hi, I'm Martin", page.inner_text("#main"))
+            # Martin sits on the doctor's desk; petting him wags the tail and moves the head
+            page.evaluate('nav("setup")')
+            page.wait_for_selector(".desk .sitcat")
+            self.assertEqual(3, page.locator(".sitcat .catpart").count())
+            page.locator(".sitcat").click(force=True)
+            self.assertTrue(page.evaluate('document.querySelector(".sitcat").classList.contains("petting")'))
+            self.assertEqual("", page.evaluate("getSelection().toString()"))
+            # the games-folder box never pre-fills anything from this computer
+            page.evaluate('S.wizStep=1;nav("welcome")')
+            page.wait_for_selector("text=Where are your games?")
+            self.assertEqual("", page.input_value("#main input[type=text]"))
             # a doctor who has never scanned offers to scan on his own computer
             page.evaluate('S.wizStep=0;nav("setup")')
             page.wait_for_selector(".pressstart")

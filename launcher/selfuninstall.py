@@ -149,6 +149,12 @@ def execute(data_dir: Path, keep_saves: bool, remove_program: bool) -> dict:
             "program_pending": bool(exe), "never_touched": pl["never_touched"]}
 
 
+def _hidden_flags() -> int:
+    """Run the cleanup script with a hidden console and nothing else. Not DETACHED_PROCESS: that makes Windows ignore
+    CREATE_NO_WINDOW, so every command in the script (each `ping`) would open its own visible console window."""
+    return getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200)
+
+
 def _spawn_cleanup(exe: Path | None, others: list, purge: Path | None) -> None:
     """After Legacy Player closes, remove the files that were in use. Retries for a while, then gives up quietly."""
     paths = ([exe] if exe else []) + list(others) + ([purge] if purge else [])
@@ -168,7 +174,7 @@ def _spawn_cleanup(exe: Path | None, others: list, purge: Path | None) -> None:
             fd, bat = tempfile.mkstemp(suffix=".bat", prefix="lp-clean-")
             with os.fdopen(fd, "w") as f:
                 f.write("\r\n".join(lines) + "\r\n")
-            flags = getattr(subprocess, "DETACHED_PROCESS", 8) | getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+            flags = _hidden_flags()
             subprocess.Popen(["cmd", "/c", bat], creationflags=flags, close_fds=True,
                              stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         else:

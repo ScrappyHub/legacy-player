@@ -158,7 +158,7 @@ def extract_7z(archive: Path, dest: Path) -> None:
     for tool in _seven_zip_tools():
         command = tool + ([str(archive), f"-o{dest}"] if tool[-1] == "-y" else [str(archive), "-C", str(dest)])
         try:
-            subprocess.run(command, check=True, capture_output=True, timeout=600)
+            subprocess.run(command, check=True, capture_output=True, timeout=600, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
             for item in dest.rglob("*"):  # nothing may have landed outside dest
                 _safe_member(dest, str(item.relative_to(dest)))
             return
