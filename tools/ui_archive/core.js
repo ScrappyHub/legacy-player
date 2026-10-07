@@ -11,6 +11,14 @@ async function api(name,body={}){const loud=!QUIET.has(name);if(loud){pending++;
  try{const r=await fetch("/api/"+name,{method:"POST",headers:{"Content-Type":"application/json","X-LP-Token":TOKEN},body:JSON.stringify(body)});
   const j=await r.json();if(!r.ok)throw new Error(j.error||"Request failed");return j}
  finally{if(loud){pending=Math.max(0,pending-1);if(!pending){clearTimeout(busyT);document.body.classList.remove("busy")}}}}
+function fld(label,el){return h("label",{class:"fld"},h("span",{class:"small muted"},label),el)}
+/* number boxes get tidy - / + buttons instead of the browser's tiny stacked arrows */
+function stepify(root){(root||document).querySelectorAll("input[type=number]:not([data-stepped])").forEach(inp=>{if(!inp.isConnected)return;inp.dataset.stepped="1";
+ const step=()=>+inp.step||1,bump=d=>{const lo=inp.min===""?-Infinity:+inp.min,hi=inp.max===""?Infinity:+inp.max,cur=+inp.value||0;inp.value=Math.min(hi,Math.max(lo,cur+d*step()));inp.dispatchEvent(new Event("input",{bubbles:true}));inp.dispatchEvent(new Event("change",{bubbles:true}))};
+ const minus=h("button",{type:"button",class:"stepbtn","aria-label":"Less",tabindex:"-1",onclick:()=>bump(-1)},"−"),plus=h("button",{type:"button",class:"stepbtn","aria-label":"More",tabindex:"-1",onclick:()=>bump(1)},"+");
+ const wrap=h("span",{class:"stepper"});inp.replaceWith(wrap);wrap.append(minus,inp,plus);inp.style.width="";
+ inp.addEventListener("keydown",e=>{if(e.key==="ArrowUp"){e.preventDefault();bump(1)}else if(e.key==="ArrowDown"){e.preventDefault();bump(-1)}})})}
+new MutationObserver(()=>stepify()).observe(document.documentElement,{childList:true,subtree:true});
 function toast(text,level){const t=h("div",{class:"toast "+(level||"")},text);$("#toasts").append(t);setTimeout(()=>t.remove(),level==="warn"?9000:5000)}
 function ask(text,yes){return new Promise(res=>{const done=v=>{ov.remove();res(v)};const ov=h("div",{class:"modal",role:"dialog","aria-modal":"true"},h("div",{class:"modalbox"},h("p",{},text),h("div",{class:"row",style:"justify-content:flex-end;gap:8px"},h("button",{class:"btn",onclick:()=>done(false)},"Cancel"),h("button",{class:"btn primary",onclick:()=>done(true)},yes||"OK"))));document.body.append(ov);ov.querySelector(".primary").focus()})}
 async function act(fn,ok){try{const r=await fn();if(ok)toast(ok);return r}catch(e){toast(e.message,"err")}}

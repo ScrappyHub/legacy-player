@@ -17,3 +17,7 @@ js=rep(js,'  h("h3",{},"Live test"),live,','  h("h3",{},"Keyboard"),kbSection(),
 js=rep(js,'  h("h3",{},"Your controllers"),padsBox,wizBox,','  inputBanner(),h("h3",{},"Your controllers"),padsBox,wizBox,')
 
 js=rep(js,'  h("div",{class:"row"},h("button",{class:"btn primary",onclick:()=>srvAct("start")},"Start")','  st.online?h("div",{class:"inbanner ok"},"Your server is running. Closing this window with X keeps Legacy Player in the tray (notification area) so it stays managed; right-click the tray icon to stop it, copy a fresh server code or exit."):"",\n  h("div",{class:"row"},h("button",{class:"btn primary",onclick:()=>srvAct("start")},"Start")')
+
+js=rep(js,"""h("div",{class:"row"},h("label",{class:"small"},"Players per room ",players),h("label",{class:"small"},"Rooms ",rooms),h("label",{class:"small"},"Waiting line ",line)),""","""h("div",{class:"fieldrow"},fld("Players per room",players),fld("Rooms",rooms),fld("Waiting line",line)),""")
+js=rep(js,"""h("div",{class:"row",style:"margin-top:8px"},h("label",{class:"small"},"Address friends use ",pub)),""","""h("div",{class:"fieldrow",style:"margin-top:10px"},fld("Address friends use",pub)),""")
+js=rep(js,"""placeholder:"blank = this computer's home-network address",style:"width:min(280px,100%)\"""","""placeholder:"blank = this computer's home-network address",style:"width:min(380px,100%)\"""")

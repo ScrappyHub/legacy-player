@@ -410,3 +410,10 @@ textarea{background:var(--panel2);color:var(--text);border:1px solid var(--line)
 .inpill{max-width:190px}header{flex-wrap:wrap}.wordmark{white-space:nowrap}#nav{flex-wrap:nowrap;white-space:nowrap}@media(max-width:1400px){.inpill{padding:5px 9px;margin-right:4px}}
 .hero .px.doctor,.doc .px.doctor{cursor:pointer}.px.doctor.poked{animation:hop .35s ease-in-out 2!important}
 #toasts{z-index:140}
+input[type=number]{-moz-appearance:textfield;appearance:textfield}input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+.stepper{display:inline-flex;align-items:stretch;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--panel2);vertical-align:middle}
+.stepper input{border:0!important;border-radius:0!important;background:transparent!important;width:72px;text-align:center;box-shadow:none!important;padding:8px 4px}
+.stepper:focus-within{border-color:var(--accent);box-shadow:0 0 0 2px #4f8cff40}
+.stepbtn{width:34px;border:0;background:#ffffff12;color:var(--text);font:600 17px/1 system-ui,sans-serif;cursor:pointer;padding:0}.stepbtn:hover{background:#ffffff26}.stepbtn:active{background:#ffffff38}
+.fieldrow{display:flex;flex-wrap:wrap;gap:14px 22px;align-items:flex-end}.fld{display:flex;flex-direction:column;gap:5px}
+.fieldrow .fld input[type=text]{width:380px;max-width:100%}

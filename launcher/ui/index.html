@@ -417,6 +417,13 @@ textarea{background:var(--panel2);color:var(--text);border:1px solid var(--line)
 .inpill{max-width:190px}header{flex-wrap:wrap}.wordmark{white-space:nowrap}#nav{flex-wrap:nowrap;white-space:nowrap}@media(max-width:1400px){.inpill{padding:5px 9px;margin-right:4px}}
 .hero .px.doctor,.doc .px.doctor{cursor:pointer}.px.doctor.poked{animation:hop .35s ease-in-out 2!important}
 #toasts{z-index:140}
+input[type=number]{-moz-appearance:textfield;appearance:textfield}input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+.stepper{display:inline-flex;align-items:stretch;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--panel2);vertical-align:middle}
+.stepper input{border:0!important;border-radius:0!important;background:transparent!important;width:72px;text-align:center;box-shadow:none!important;padding:8px 4px}
+.stepper:focus-within{border-color:var(--accent);box-shadow:0 0 0 2px #4f8cff40}
+.stepbtn{width:34px;border:0;background:#ffffff12;color:var(--text);font:600 17px/1 system-ui,sans-serif;cursor:pointer;padding:0}.stepbtn:hover{background:#ffffff26}.stepbtn:active{background:#ffffff38}
+.fieldrow{display:flex;flex-wrap:wrap;gap:14px 22px;align-items:flex-end}.fld{display:flex;flex-direction:column;gap:5px}
+.fieldrow .fld input[type=text]{width:380px;max-width:100%}
 </style>
 </head>
 <body>
@@ -453,6 +460,14 @@ async function api(name,body={}){const loud=!QUIET.has(name);if(loud){pending++;
  try{const r=await fetch("/api/"+name,{method:"POST",headers:{"Content-Type":"application/json","X-LP-Token":TOKEN},body:JSON.stringify(body)});
   const j=await r.json();if(!r.ok)throw new Error(j.error||"Request failed");return j}
  finally{if(loud){pending=Math.max(0,pending-1);if(!pending){clearTimeout(busyT);document.body.classList.remove("busy")}}}}
+function fld(label,el){return h("label",{class:"fld"},h("span",{class:"small muted"},label),el)}
+/* number boxes get tidy - / + buttons instead of the browser's tiny stacked arrows */
+function stepify(root){(root||document).querySelectorAll("input[type=number]:not([data-stepped])").forEach(inp=>{if(!inp.isConnected)return;inp.dataset.stepped="1";
+ const step=()=>+inp.step||1,bump=d=>{const lo=inp.min===""?-Infinity:+inp.min,hi=inp.max===""?Infinity:+inp.max,cur=+inp.value||0;inp.value=Math.min(hi,Math.max(lo,cur+d*step()));inp.dispatchEvent(new Event("input",{bubbles:true}));inp.dispatchEvent(new Event("change",{bubbles:true}))};
+ const minus=h("button",{type:"button",class:"stepbtn","aria-label":"Less",tabindex:"-1",onclick:()=>bump(-1)},"−"),plus=h("button",{type:"button",class:"stepbtn","aria-label":"More",tabindex:"-1",onclick:()=>bump(1)},"+");
+ const wrap=h("span",{class:"stepper"});inp.replaceWith(wrap);wrap.append(minus,inp,plus);inp.style.width="";
+ inp.addEventListener("keydown",e=>{if(e.key==="ArrowUp"){e.preventDefault();bump(1)}else if(e.key==="ArrowDown"){e.preventDefault();bump(-1)}})})}
+new MutationObserver(()=>stepify()).observe(document.documentElement,{childList:true,subtree:true});
 function toast(text,level){const t=h("div",{class:"toast "+(level||"")},text);$("#toasts").append(t);setTimeout(()=>t.remove(),level==="warn"?9000:5000)}
 function ask(text,yes){return new Promise(res=>{const done=v=>{ov.remove();res(v)};const ov=h("div",{class:"modal",role:"dialog","aria-modal":"true"},h("div",{class:"modalbox"},h("p",{},text),h("div",{class:"row",style:"justify-content:flex-end;gap:8px"},h("button",{class:"btn",onclick:()=>done(false)},"Cancel"),h("button",{class:"btn primary",onclick:()=>done(true)},yes||"OK"))));document.body.append(ov);ov.querySelector(".primary").focus()})}
 async function act(fn,ok){try{const r=await fn();if(ok)toast(ok);return r}catch(e){toast(e.message,"err")}}
@@ -1108,7 +1123,7 @@ async function viewServers(m){
  const srvAct=async action=>{const r=await act(()=>api("server_control",{action,share:share.checked}));if(r){toast(r.message);go()}};
  const num=(key,min,max)=>h("input",{type:"number",value:V[key],min,max,style:"width:90px","aria-label":key});
  const players=num("server_max_players",2,8),rooms=num("server_max_rooms",1,10000),line=num("server_max_waiting",0,500);
- const pub=h("input",{type:"text",value:V.server_public_address||"",placeholder:"blank = this computer's home-network address",style:"width:min(280px,100%)","aria-label":"Address friends use"});
+ const pub=h("input",{type:"text",value:V.server_public_address||"",placeholder:"blank = this computer's home-network address",style:"width:min(380px,100%)","aria-label":"Address friends use"});
  const saveLimits=async restart=>{
   for(const[k,el]of[["server_max_players",players],["server_max_rooms",rooms],["server_max_waiting",line]]){const r=await act(()=>api("settings",{key:k,value:+el.value}));if(!r)return;S.settings=r.values}
   const r=await act(()=>api("settings",{key:"server_public_address",value:pub.value.trim()}));if(!r)return;
@@ -1120,8 +1135,8 @@ async function viewServers(m){
   h("div",{class:"row"},h("button",{class:"btn primary",onclick:()=>srvAct("start")},"Start"),h("button",{class:"btn",onclick:()=>srvAct("restart")},"Restart"),h("button",{class:"btn",onclick:()=>srvAct("stop")},"Stop"),
    h("label",{class:"small"},share," Let friends connect (encrypted with this app's own certificate)")),
   h("h3",{style:"margin-top:16px"},whyInline("Limits","Players per room is the most any room may hold. Rooms is how many your server will keep. Waiting line is how many people can queue for a full room (0 turns lines off). They apply the next time the server starts.")),
-  h("div",{class:"row"},h("label",{class:"small"},"Players per room ",players),h("label",{class:"small"},"Rooms ",rooms),h("label",{class:"small"},"Waiting line ",line)),
-  h("div",{class:"row",style:"margin-top:8px"},h("label",{class:"small"},"Address friends use ",pub)),
+  h("div",{class:"fieldrow"},fld("Players per room",players),fld("Rooms",rooms),fld("Waiting line",line)),
+  h("div",{class:"fieldrow",style:"margin-top:10px"},fld("Address friends use",pub)),
   h("div",{class:"row",style:"margin-top:10px"},h("button",{class:"btn primary",onclick:()=>saveLimits(true)},st.online?"Save and restart":"Save"),st.online?h("button",{class:"btn",onclick:()=>saveLimits(false)},"Save for next start"):null)));
  // 2. invite friends
  const codeBox=h("div",{});
