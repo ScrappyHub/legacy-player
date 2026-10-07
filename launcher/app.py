@@ -117,6 +117,7 @@ class LauncherApp:
         self.tunnel = None
         self.last_ping = 0.0
         self.bye_at = 0.0
+        self.quit_requested = False
         self.setup = Setup(self.data_dir, self._retroarch_path,
                            lambda path: self.catalog.set_mapping("emulator_paths", "retroarch", path))
         self.installer = EngineInstaller(self.data_dir / "emulators")
@@ -1121,11 +1122,32 @@ class LauncherApp:
         self.last_ping, self.bye_at = time.time(), 0.0
         return {"ok": True}
 
+    def api_status(self, body: dict) -> dict:
+        """A tiny summary for the window title (shown when hovering the taskbar button). No network calls."""
+        room, out = self.room, {"game": None, "room": None, "waits": []}
+        if self.running:
+            out["game"] = self.running.get("title")
+        if room is not None:
+            stats = (room.get("stats") or {}).get("average", {})
+            session = room.get("session") or {}
+            out["room"] = {"game": room["game"], "role": room["role"], "players": len(session.get("participants") or {}),
+                           "max": room.get("max_players"), "ping_ms": stats.get("ping_ms"), "state": session.get("state")}
+        out["waits"] = [{"game": w["game"], "position": (w.get("queue") or {}).get("position")} for w in self.waits.values()]
+        return out
+
+    def api_quit(self, body: dict) -> dict:
+        """Full close: leave rooms politely, then stop the app."""
+        self.quit_requested = True
+        self.shutdown()
+        return {"ok": True}
+
     def api_bye(self, body: dict) -> dict:
         self.bye_at = time.time() + 5  # a reload pings again within seconds and cancels this
         return {"ok": True}
 
     def should_exit(self, now: float, grace: float = 180.0, started: float = 0.0) -> bool:
+        if self.quit_requested:
+            return True
         if self.bye_at and now > self.bye_at:
             return True
         if self.last_ping:

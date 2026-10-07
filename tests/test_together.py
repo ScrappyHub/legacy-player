@@ -103,3 +103,22 @@ class AppConnectTests(unittest.TestCase):
             app.room = {"role": "guest"}
             with self.assertRaises(AppError):
                 app.api_mp_consent({})                    # guest did not agree
+
+
+class WindowStatusTests(unittest.TestCase):
+    def test_status_summary_and_quit(self):
+        import tempfile, time
+        from pathlib import Path
+        from launcher.app import LauncherApp
+        with tempfile.TemporaryDirectory() as tmp:
+            app = LauncherApp(Path(tmp))
+            self.assertEqual({"game": None, "room": None, "waits": []}, app.api_status({}))
+            app.running = {"title": "Mario Kart 64"}
+            app.room = {"game": "Mario Kart 64", "role": "host", "max_players": 4,
+                        "session": {"participants": {"a": {}, "b": {}}}, "stats": {"average": {"ping_ms": 28.4}}}
+            got = app.api_status({})
+            self.assertEqual(("Mario Kart 64", 2, 4, 28.4), (got["game"], got["room"]["players"], got["room"]["max"], got["room"]["ping_ms"]))
+            self.assertFalse(app.should_exit(time.time()))
+            app.room = None
+            app.api_quit({})
+            self.assertTrue(app.should_exit(time.time()))

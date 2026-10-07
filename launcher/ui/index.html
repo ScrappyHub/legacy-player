@@ -60,6 +60,7 @@ a{color:var(--accent)}
   <div class="logo">Legacy <b>Player</b></div>
   <nav id="nav" aria-label="Sections"></nav>
   <div class="grow"></div>
+  <button class="btn" id="quitbtn" title="Close Legacy Player completely. Minimize the window instead to keep it in the taskbar." style="margin-right:10px">Quit</button>
   <span class="small muted" id="srv"><span class="dot" id="srvdot"></span> <span id="srvtxt">server…</span></span>
 </header>
 <main id="main"></main>
@@ -711,6 +712,17 @@ function viewHelp(m){
 }
 
 setInterval(()=>{api("ping").catch(()=>{})},5000);
+/* The window title is what Windows shows when you hover the taskbar button, so keep it informative. */
+async function refreshTitle(){try{const d=await api("status");const bits=["Legacy Player"];
+ if(d.game)bits.push("Playing "+d.game);
+ if(d.room){const r=d.room;bits.push((r.role==="host"?"Hosting ":"In room: ")+r.game+" · "+r.players+(r.max?"/"+r.max:"")+" players"+(r.ping_ms!=null?" · "+Math.round(r.ping_ms)+" ms":""))}
+ d.waits.forEach(w=>bits.push("In line for "+w.game+(w.position?" (#"+w.position+")":"")));
+ bits.push(S.online===true?"Server online":S.online===false?"Server offline":"");
+ document.title=bits.filter(Boolean).join(" — ")}catch(e){}}
+setInterval(refreshTitle,4000);setTimeout(refreshTitle,800);
+$("#quitbtn").addEventListener("click",async()=>{const busy=S.room||(S.waits&&S.waits.length)||S.running;
+ if(await ask(busy?"Quit Legacy Player? You will leave your room"+(S.running?" and your game keeps running in its own window":"")+". Your server, if you started one, keeps running.":"Quit Legacy Player? A server you started keeps running. To keep the app open, minimize the window instead.","Quit")){
+  try{await api("quit")}catch(e){}document.title="Legacy Player closed";try{window.close()}catch(e){}document.body.replaceChildren(h("p",{style:"padding:40px"},"Legacy Player has closed. You can close this window."))}});
 window.addEventListener("pagehide",()=>{try{fetch("/api/bye",{method:"POST",keepalive:true,headers:{"Content-Type":"application/json","X-LP-Token":TOKEN},body:"{}"})}catch(e){}});
 (async function init(){try{const s=await api("settings");S.settings=s.values;document.documentElement.dataset.theme=s.values.theme}catch(e){}
  const r=await api("mp_state").catch(()=>({room:null}));S.room=r.room;S.waits=r.waits||[];if(S.room||S.waits.length)poll();pingServer();setInterval(pingServer,15000);
