@@ -59,14 +59,21 @@ def allow(port: int, run=_run) -> dict:
     """Add the rule, asking Windows for approval when not already an administrator."""
     if not supported():
         return {"supported": False, "allowed": True, "message": "Not needed on this system."}
+    already = status(port, run)
+    if already["allowed"]:
+        return already
     try:
+        if exists(run):          # an old rule for another port or program would never match: replace it, do not pile up copies
+            remove(run)
         direct = run(["netsh"] + rule_args(port))
         if direct.returncode != 0:
             _elevated(rule_args(port), run)
     except (OSError, subprocess.SubprocessError) as exc:
         return {"supported": True, "allowed": False, "message": f"Windows did not allow the change ({exc})."}
     now = status(port, run)
-    if not now["allowed"]:
+    if now["allowed"]:
+        now["message"] = "Done. Windows Firewall now lets friends connect to your server."
+    else:
         now["message"] = "The rule was not added (the approval box was closed or refused). Friends on other networks may be blocked."
     return now
 

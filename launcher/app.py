@@ -2365,14 +2365,15 @@ class LauncherApp:
         if code != 0 and action != "status":
             self.reports.capture("server-control-failed", None, message, {"action": action, "shared": bool(body.get("share"))})
             raise AppError(message)
-        reach = self._manage_router(action, code, bool(body.get("share")), args.port)
         with self.api_lock:        # settings are shared state, so only this short part takes the big lock
+            # first, before the (slow) router step: the moment the server answers in TLS the app must talk TLS to it,
+            # or every call in between is cut off ("connection aborted")
             if args.tls_cert and body.get("share") and action in {"start", "restart"} and code == 0:
-                # the app itself must now talk TLS to its own server
                 self.catalog.set_setting("server_tls", True)
                 self.catalog.set_setting("server_fingerprint", self.server_fingerprint() or "-")
             elif action in {"start", "restart"} and code == 0 and not body.get("share"):
                 self.catalog.set_setting("server_tls", False)
+        reach = self._manage_router(action, code, bool(body.get("share")), args.port)
         return {"message": message, "running": cli._is_running(args.state_dir), "shared": bool(body.get("share")),
                 "log": str(args.state_dir / "server.log"), "fingerprint": self.server_fingerprint(),
                 "limits": {"players": args.max_players, "rooms": args.max_rooms, "waiting": args.max_waiting}, "reach": reach}

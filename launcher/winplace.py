@@ -248,6 +248,19 @@ def overlay_open(fragment: str) -> bool:
     return bool(_titled(fragment))
 
 
+def focus_titled(fragment: str) -> bool:
+    """Bring a window whose title contains the text to the front (restoring it if minimised). False when there is none."""
+    wins = _titled(fragment)
+    if not wins:
+        return False
+    user32 = _user32()
+    hwnd = wins[0]["hwnd"]
+    if user32.IsIconic(hwnd):
+        user32.ShowWindow(hwnd, 9)                      # SW_RESTORE
+    _to_front(hwnd)
+    return True
+
+
 def close_titled(fragment: str) -> bool:
     """Politely close every window whose title contains the text (the same as pressing its X)."""
     wins = _titled(fragment)

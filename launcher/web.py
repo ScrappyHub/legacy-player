@@ -16,6 +16,9 @@ UI_FILE = Path(__file__).parent / "ui" / "index.html"
 MAX_BODY = 1024 * 1024    # room for a shrunk cover picture (the page sends it as base64)
 
 
+WINDOW_TITLE_MARK = "Legacy Player \u2014"      # every app window's title starts like this (the overlay's does not)
+
+
 class Launch:
     """Who may open the page. Each window gets a one-time secret in its address; the page then lives on a cookie
     only that window holds. A program that merely finds the port can no longer fetch the page (and its API token)."""
@@ -201,10 +204,20 @@ def serve(app: LauncherApp, port: int = 8780, open_browser: bool = True, opener=
     print(f"Legacy Player is open at {url_for_window()}  (press Ctrl+C to quit)", flush=True)
     instance_file = Path(app.data_dir) / "instance.json"
     tray = None
+
+    def show_existing() -> bool:
+        """The app window is already on screen (maybe minimised or behind others): bring it forward instead of opening another."""
+        try:
+            from . import winplace
+            return winplace.focus_titled(WINDOW_TITLE_MARK)
+        except Exception:
+            return False
     if exit_when_closed and opener is not None and sys.platform == "win32":
         from .tray import TrayController
 
         def reopen() -> None:
+            if not app.tray_mode and show_existing():                            # already open: bring that one forward
+                return
             app.last_ping, app.bye_at, app.tray_mode = time.time(), 0.0, False   # fresh grace while the window loads
             opener(url_for_window())
         tray = TrayController(app, reopen)
@@ -239,6 +252,8 @@ def serve(app: LauncherApp, port: int = 8780, open_browser: bool = True, opener=
                     return
         threading.Thread(target=watch, daemon=True).start()
     def show_window() -> None:
+        if not app.tray_mode and show_existing():
+            return
         app.last_ping, app.bye_at, app.tray_mode = time.time(), 0.0, False
         (opener or webbrowser.open)(url_for_window())
     launch.on_wake = show_window

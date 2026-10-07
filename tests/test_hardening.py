@@ -189,3 +189,27 @@ class Round4Tests(unittest.TestCase):
             self.app.games["g1"] = {"id": "g1"}
             self.app._maybe_auto_agree(room, events)
             self.assertEqual("consent_start", call.call_args[0][0]["operation"])
+
+    def test_firewall_allow_does_nothing_when_the_rule_is_there_and_replaces_a_stale_one(self):
+        calls = []
+
+        def run(args, timeout=15.0):
+            calls.append(args)
+            out = mock.Mock(returncode=0, stdout="Rule Name: Legacy Player server\nLocalPort: 8765\n")
+            return out
+        with mock.patch("launcher.firewall.supported", return_value=True):
+            self.assertTrue(firewall.allow(8765, run)["allowed"])
+            self.assertFalse(any("add" in c for c in calls))
+            calls.clear()
+
+            def stale(args, timeout=15.0):
+                calls.append(args)
+                return mock.Mock(returncode=0, stdout="Rule Name: Legacy Player server\nLocalPort: 9999\n")
+            firewall.allow(8765, stale)
+            self.assertTrue(any("delete" in c for c in calls))
+            self.assertTrue(any("add" in c for c in calls))
+
+    def test_focus_titled_is_false_without_a_window(self):
+        from launcher import winplace
+        with mock.patch.object(winplace, "_titled", return_value=[]):
+            self.assertFalse(winplace.focus_titled("Legacy Player —"))

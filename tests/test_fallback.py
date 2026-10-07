@@ -65,8 +65,9 @@ class FirewallTests(unittest.TestCase):
 
         def run(cmd, timeout=15.0):
             calls.append(cmd)
-            out = mock.Mock(stdout="Rule Name: Legacy Player server\nAction: Allow\nLocalPort: 8765", stderr="")
-            out.returncode = 1 if cmd[0] == "netsh" and "add" in cmd else 0
+            added = any(c[0] == "powershell" for c in calls)          # the rule exists only once the approval box ran
+            out = mock.Mock(stdout="Rule Name: Legacy Player server\nAction: Allow\nLocalPort: 8765" if added else "", stderr="")
+            out.returncode = 1 if cmd[0] == "netsh" and ("add" in cmd or not added) else 0
             return out
         with mock.patch("launcher.firewall.supported", return_value=True):
             r = firewall.allow(8765, run)
