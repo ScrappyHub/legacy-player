@@ -167,3 +167,12 @@ class AppHookTests(unittest.TestCase):
         app.reports.capture("internal-error", boom(), context={"api": "x"})
         self.assertEqual("off", app.api_ping({})["report_prompt"]["mode"])
         self.assertIsNone(app.api_ping({})["report_prompt"])
+
+
+class ScrubberExtraTests(unittest.TestCase):
+    def test_forward_slash_unc_and_host_names_do_not_leak(self):
+        from launcher.reports import Scrubber
+        s = Scrubber({"al": "<user>"})
+        for raw, leak in (("C:/Games/Secret Dir/foo.iso", "Secret"), ("\\\\NAS01\\roms\\x.iso", "NAS01"), ("bob-home.duckdns.org:8780", "duckdns")):
+            self.assertNotIn(leak, s.text("failed: " + raw))
+        self.assertIn("https://example.com", s.text("https://example.com/a?b=1")[:30])

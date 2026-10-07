@@ -25,6 +25,7 @@ from .engines import ENGINES
 from .setup import SetupError, extract_7z
 
 GITHUB_HOSTS = {"api.github.com", "github.com", "objects.githubusercontent.com", "release-assets.githubusercontent.com"}
+PLAYER_DATA = ("User", "saves", "states", "memcards", "portable.txt", "config", "retroarch.cfg", "sys_config")   # kept across an update
 MAX_ASSET_BYTES = 400 * 1024 * 1024
 
 
@@ -193,11 +194,31 @@ class EngineInstaller:
                     except SetupError as exc:
                         raise InstallError(str(exc)) from exc
                 dest = self.install_root / engine_id
-                if dest.exists():
-                    shutil.rmtree(dest)
                 dest.parent.mkdir(parents=True, exist_ok=True)
+                aside = dest.with_name(dest.name + ".old")
+                if aside.exists():
+                    shutil.rmtree(aside, ignore_errors=True)
+                had_old = dest.exists()
+                if had_old:
+                    dest.rename(aside)                         # the old install is kept until the new one is in place
                 inner = [p for p in staging.iterdir()]
-                shutil.move(str(inner[0] if len(inner) == 1 and inner[0].is_dir() else staging), str(dest))
+                try:
+                    shutil.move(str(inner[0] if len(inner) == 1 and inner[0].is_dir() else staging), str(dest))
+                except Exception:
+                    if had_old and not dest.exists():
+                        aside.rename(dest)                     # put the old one back; an update must never leave nothing
+                    raise
+                if had_old:
+                    for name in PLAYER_DATA:                   # a portable emulator's saves and settings come along
+                        keep = aside / name
+                        if keep.exists():
+                            target = dest / name
+                            if target.is_dir() and not target.is_symlink():
+                                shutil.rmtree(target, ignore_errors=True)
+                            elif target.exists():
+                                target.unlink()
+                            shutil.move(str(keep), str(target))
+                    shutil.rmtree(aside, ignore_errors=True)
             self._set(step="Installed", percent=100, path=str(dest), **({"state": "done"} if final else {}))
             self._log(f"Installed {spec['name']} into {dest}. Nothing was run.")
         except InstallError as exc:

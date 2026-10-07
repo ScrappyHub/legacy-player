@@ -194,7 +194,6 @@ list is short and should be extended.
 - **Games open in front, full screen or windowed, on the chosen screen.** `launcher/winplace.py` finds the game window, brings it forward, and (full screen on a chosen monitor) makes it borderless on that monitor. Each emulator asks once (Full screen / Windowed, screen if more than one, "Remember"); change it later under Display and video > Where games open. Unverified on real Windows until tested by hand.
 - **Fix:** clicking the doctor repeatedly could leave speech bubbles on the top bar; bubbles now only appear for elements still on the page.
 - **Force quit game.** A button beside "game running" stops the running game immediately (`api_force_quit`, process tree, no waiting on the emulator's own "are you sure?").
-- **Planned, not built yet: in-game overlay + key/controller bind to open it.** Needs a design decision (see chat): a topmost mini window with Force quit, volume/screen, room code and chat, opened by a global hotkey and a controller button combo.
 
 ## Follow-up: in-game overlay
 
@@ -202,3 +201,27 @@ list is short and should be extended.
 - The overlay is a small always-on-top window (its own browser profile, top-right of the chosen screen). It shows the running game, Back to the game, Full screen / Windowed, Force quit (press twice), and the room invite code with Copy. It has no heartbeat, so closing it never ends the app, and it can be driven by a controller (D-pad moves, A presses, B closes) or Esc.
 - Also in the tray menu ("Open the in-game overlay").
 - Limits, stated plainly: it is a separate window floating above the game, not drawn inside the game, so exclusive-fullscreen games may hide it (borderless or windowed shows it). Only XInput (Xbox-style) pads are read by the combo; other pads work through Steam Input / DS4Windows. Unverified on real Windows until tested by hand.
+
+## Audit of 0.7.2 (security, Windows code, data safety, release and docs)
+
+Fixed:
+- **Overlay:** every settings save left another controller watcher running (one press then fired several times and toggled the overlay shut); the shortcut thread could race on restart. Each start now has its own stop signal, waits until the shortcut is registered, and joins the old threads. Controllers are tracked by slot.
+- **Running game:** nothing cleared it when a game closed itself, so Force quit could have been aimed at a reused process number. A game is now only "running" while that exact process (number plus start time, `launcher/procs.py`) is alive; netplay launches are tracked too; the overlay says so if no browser can open it and ignores a second press while it is starting.
+- **Windows window code:** handle types declared (64-bit safe), DPI awareness set once, switching back to Windowed restores the title bar and size, Full screen from the overlay works without a chosen screen (uses the screen the game is on), one placement at a time. No `psutil` needed any more.
+- **Uninstall:** refuses a data folder that is a drive root, your home, one of your own folders, or does not look like Legacy Player's; keeps an emulator folder that also holds your saves (for example a portable Dolphin memory card) when you keep saves; the doctor asks about the save and backup folders he made in places you chose and removes only the exact shapes he creates.
+- **Settings file:** a damaged or wrongly typed file is set aside under a dated name instead of crashing; saves are serialized and retried on Windows.
+- **Engine updates:** the old install is kept until the new one is in place and its saves/settings are carried over.
+- **Problem reports:** forward-slash and network paths, dynamic-DNS/home host names and short user names are scrubbed; the sender no longer follows redirects; the receiver has a read timeout, constant-time token check, never overwrites a report, and caps problems per day and total size.
+- **Lobby:** `claim_alias` needs the server key and checks its cap before adding.
+- **Router (UPnP):** only plain-http addresses on this network are accepted for the router and its control URL.
+- **Installer:** a release without a checksum file now stops the install; the zip is unpacked aside before it is copied in.
+- **Release:** a `v*` tag must equal `VERSION`; the smoke test also requests the app's page.
+- **UI:** the favourite star no longer opens the game on Enter; Full screen/Windowed report their state; Esc means "Never mind" in the uninstall dialog; progress text is announced.
+
+Known and left alone (say if you want any changed):
+- The server code's certificate fingerprint is a 40-bit prefix; an active attacker on the path could in theory forge it. Lengthening it changes every server code.
+- The firewall rule is for any network profile and is not removed by the uninstaller.
+- UPnP mappings are permanent until the app stops them; if the app crashes, the mapping stays until the router is restarted.
+- The installer's checksum comes from the same release as the zip, so it catches a damaged download, not a tampered release. Signing the exe is the real fix.
+- Anyone holding the app's page token can start any program as the player; the token is single-use per window and loopback-only.
+- Game uninstall deletes saves by file name, so two games with the same file name in one folder can share one save; engine downloads are not hash-checked beyond size.

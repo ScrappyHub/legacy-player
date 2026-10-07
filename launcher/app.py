@@ -30,6 +30,7 @@ from adapters.dolphin.netplay_guide import (
 from adapters.retroarch import tunnel as netplay_tunnel
 
 from . import overlay as overlaymod
+from . import procs
 from . import controllers, emulators, engines, pads, savefolders, saves
 from .installer import EngineInstaller, InstallError, latest_release, pick_asset
 from . import dolphinpads, firewall, gameinfo, portmap, winplace, keyboard, memprobe, netcheck, reports, selfuninstall, sysinfo
@@ -141,6 +142,7 @@ class LauncherApp:
         self.skipped = {"unrecognized": 0, "duplicates": 0}
         self.room: dict | None = None
         self.waits: dict[str, dict] = {}   # rooms you are queued for while doing something else
+        self._overlay_launched = 0.0
         self.overlay_opener = None            # set by the web server: opens the overlay window
         self.overlay_listeners = None         # global shortcut + controller watcher
         self.running: dict | None = None   # the game started from the library, if any
@@ -402,7 +404,7 @@ class LauncherApp:
         net = {"address_kind": last.get("address_kind"), "server_is_local": last.get("server_is_local"),
                "server_uses_tls": bool(s.get("server_tls")), "direct_connections_allowed": bool(s.get("allow_direct_connections"))}
         room = self.room or {}
-        doing = {"playing": bool(self.running), "emulator": (self.running or {}).get("emulator"),
+        doing = {"playing": bool(self._running_now()), "emulator": (self.running or {}).get("emulator"),
                  "in_room": bool(room), "room_role": room.get("role"), "console": room.get("console")}
         return {"network": net, "doing": doing, "_roots": list(self.catalog.data.get("roots", []))}
 
@@ -602,14 +604,24 @@ class LauncherApp:
             return None, prefs["monitor"], True
         return ("fullscreen" if self._video_for(console)["fullscreen"] else "windowed"), prefs["monitor"], False
 
-    def _bring_forward(self, pid: int, eid: str, mode: str | None = None, monitor_key: str | None = None) -> None:
+    def _note_running(self, pid: int, title: str, emulator: str, eid: str) -> None:
+        self.running = {"pid": pid, "title": title, "emulator": emulator, "emulator_id": eid, "started": procs.start_time(pid)}
+
+    def _running_now(self) -> dict | None:
+        """The game started from here, but only if it is still running (a closed game, or a reused process number, clears it)."""
+        r = self.running
+        if r and r.get("pid") and not procs.is_alive(r["pid"], r.get("started")):
+            self.running = r = None
+        return r
+
+    def _bring_forward(self, pid: int, eid: str, mode: str | None = None, monitor_key: str | None = None, explicit: bool = False) -> None:
         """Once the game's window exists: in front of Legacy Player, on the chosen monitor, full screen or windowed."""
         prefs = self._display_prefs()
         mode = mode or prefs["modes"].get(eid)
         mode = mode if mode in ("fullscreen", "windowed") else "windowed"
         key = prefs["monitor"] if monitor_key is None else monitor_key
         has_flag = eid == "retroarch" or bool(emulators.EMULATORS.get(eid, {}).get("fullscreen"))
-        winplace.arrange_async(pid, self._monitor_for(key), mode, has_flag)
+        winplace.arrange_async(pid, self._monitor_for(key), mode, has_flag, explicit=explicit)
 
     def api_monitors(self, body: dict) -> dict:
         return {"monitors": winplace.list_monitors()}
@@ -663,7 +675,7 @@ class LauncherApp:
             raise AppError(f"Could not start {check['emulator']}: {exc}") from exc
         self._bring_forward(pid, eid, mode, monitor)
         self.catalog.record_play(game["id"])
-        self.running = {"pid": pid, "title": game["title"], "emulator": check["emulator"], "emulator_id": eid}
+        self._note_running(pid, game["title"], check["emulator"], eid)
         return {"launched": game["title"], "emulator": check["emulator"], "pid": pid}
 
     def api_emulators(self, body: dict) -> dict:
@@ -1660,7 +1672,7 @@ class LauncherApp:
         if record is None:
             raise AppError("You are not waiting for that room.")
         closed = None
-        if body.get("close_game") and self.running:
+        if body.get("close_game") and self._running_now():
             emulators.close_pid(self.running["pid"])
             closed = self.running["title"]
             self.running = None
@@ -1784,7 +1796,7 @@ class LauncherApp:
             "pending": self._pending_requests(r),
             "launch": self._room_launch_state(r, session),
             "relay_errors": list(getattr(self.tunnel, "errors", []) or [])[-3:],
-            "running": self.running,
+            "running": self._running_now(),
         }, "waits": self._waits_view()}
 
     def _room_launch_state(self, room: dict, session: dict) -> dict:
@@ -1980,6 +1992,7 @@ class LauncherApp:
                 command = build_guest_command(check["exe"], check["core"], game["path"], connect_address, connect_port, nick, extra)
             pid = emulators.launch_command(command)
             self._bring_forward(pid, "retroarch")
+            self._note_running(pid, game["title"], "RetroArch", "retroarch")
             if room["role"] == "host":  # publish only once RetroArch is starting
                 request = {"operation": "set_endpoint", "address": address, "port": port, **self._auth()}
                 if relay:
@@ -2046,6 +2059,7 @@ class LauncherApp:
             self._prepare_dolphin(check["exe"], game["console"])
             pid = emulators.launch_command(dolphin_open_command(check["exe"], game["path"]))
             self._bring_forward(pid, "dolphin")
+            self._note_running(pid, game["title"], "Dolphin", "dolphin")
             if room["role"] == "host" and mode == "direct":
                 self._call({"operation": "set_endpoint", "kind": "direct", "address": address, "port": port, **self._auth()})
         except DolphinNetplayError as exc:
@@ -2091,7 +2105,7 @@ class LauncherApp:
     def api_status(self, body: dict) -> dict:
         """A tiny summary for the window title (shown when hovering the taskbar button). No network calls."""
         room, out = self.room, {"game": None, "room": None, "waits": []}
-        if self.running:
+        if self._running_now():
             out["game"] = self.running.get("title")
         if room is not None:
             stats = (room.get("stats") or {}).get("average", {})
@@ -2101,11 +2115,17 @@ class LauncherApp:
         out["waits"] = [{"game": w["game"], "position": (w.get("queue") or {}).get("position")} for w in self.waits.values()]
         return out
 
+    def _managed_console_ids(self) -> list[str]:
+        return [c.id for c in CONSOLES if c.id in CORES]
+
     def api_self_uninstall(self, body: dict) -> dict:
         """Uninstall Legacy Player itself. Without `confirm` it only lists what would go; with it, the doctor cleans up."""
         if not body.get("confirm"):
             return selfuninstall.plan(self.data_dir, self.catalog.data.get("save_root") or "",
-                                      self.catalog.data.get("backup_root") or "")
+                                      self.catalog.data.get("backup_root") or "", self._managed_console_ids())
+        why = selfuninstall.check_data_dir(self.data_dir)
+        if why:
+            raise AppError(why)               # checked before anything is stopped
         self.shutdown()
         server_stopped = False
         try:      # the server is its own background program; it must not be running while its folder is removed
@@ -2115,8 +2135,16 @@ class LauncherApp:
                 server_stopped = not cli._is_running(self.data_dir / "server")
         except (AppError, OSError):
             pass
-        report = selfuninstall.execute(self.data_dir, keep_saves=bool(body.get("keep_saves", True)),
-                                       remove_program=bool(body.get("remove_program", True)))
+        created = selfuninstall.created_folders(self.catalog.data.get("save_root") or "", self.catalog.data.get("backup_root") or "",
+                                                self._managed_console_ids(), self.data_dir)
+        keep_paths = [self._save_root(), *self.catalog.data.get("save_sources", {}).values()]
+        try:
+            report = selfuninstall.execute(self.data_dir, keep_saves=bool(body.get("keep_saves", True)),
+                                           remove_program=bool(body.get("remove_program", True)),
+                                           created=created, delete_created=bool(body.get("delete_created", False)),
+                                           keep_paths=keep_paths)
+        except ValueError as exc:
+            raise AppError(str(exc)) from exc
         report["server_stopped"] = server_stopped
         self.catalog.save = lambda: None      # never write the settings file back after it was removed
         return report
@@ -2146,14 +2174,19 @@ class LauncherApp:
         opener = self.overlay_opener
         if opener is None:
             raise AppError("The overlay opens from the Windows app.")
-        opener()
+        if time.time() - self._overlay_launched < 3.0:
+            return {"open": True}                      # it is still starting: a second press must not open a second window
+        if opener() is False:
+            raise AppError("I could not open the overlay window (Edge or Chrome is needed).")
+        self._overlay_launched = time.time()
         prefs = self._display_prefs()
         winplace.pin_titled(overlaymod.TITLE, self._monitor_for(prefs["monitor"]) or next((m for m in winplace.list_monitors() if m.get("primary")), None))
         return {"open": True}
 
     def api_overlay_state(self, body: dict) -> dict:
         room = self.room
-        return {"game": ({"title": self.running["title"], "emulator": self.running["emulator"]} if self.running else None),
+        running = self._running_now()
+        return {"game": ({"title": running["title"], "emulator": running["emulator"]} if running else None),
                 "room": ({"game": room.get("game"), "role": room.get("role"), "invite_code": room.get("invite_code")} if room else None),
                 "hotkey": self._overlay_prefs()["hotkey"], "pad": self._overlay_prefs()["pad"]}
 
@@ -2163,17 +2196,17 @@ class LauncherApp:
         return {"pressed": overlaymod.names_of(max(masks, key=lambda m: bin(m).count("1"))) if masks else [], "connected": len(masks)}
 
     def api_game_window(self, body: dict) -> dict:
-        if not self.running:
+        if not self._running_now():
             raise AppError("No game is running from Legacy Player.")
         mode = body.get("mode")
         if mode not in ("fullscreen", "windowed"):
             raise AppError("Pick full screen or windowed.")
-        self._bring_forward(self.running["pid"], self.running.get("emulator_id") or "", mode)
+        self._bring_forward(self.running["pid"], self.running.get("emulator_id") or "", mode, explicit=True)
         return {"mode": mode}
 
     def api_force_quit(self, body: dict) -> dict:
         """Stop the running game now, even if the emulator is showing its own "are you sure?" box. No saves are written."""
-        if not self.running:
+        if not self._running_now():
             raise AppError("No game is running from Legacy Player.")
         title = self.running["title"]
         emulators.stop_pid(self.running["pid"])

@@ -43,7 +43,7 @@ if __name__ == "__main__":
 
 class ForceQuitTests(DisplayChoiceTests):
     def test_force_quit_stops_the_game(self):
-        with mock.patch("launcher.emulators.stop_pid") as stop:
+        with mock.patch("launcher.emulators.stop_pid") as stop, mock.patch("launcher.procs.is_alive", return_value=True):
             self.app.running = {"pid": 4242, "title": "T", "emulator": "E"}
             self.assertEqual({"stopped": "T"}, self.app.api_force_quit({}))
             stop.assert_called_once_with(4242)

@@ -213,7 +213,7 @@ def serve(app: LauncherApp, port: int = 8780, open_browser: bool = True, opener=
         from .overlay import Listeners
         from .shell import make_overlay_opener
         overlay_window = make_overlay_opener(app.data_dir)
-        app.overlay_opener = lambda: overlay_window(url_for_window() + "&overlay=1")
+        app.overlay_opener = lambda: overlay_window(url_for_window() + "&overlay=1")   # returns False when no browser can open it
         app.overlay_listeners = Listeners(lambda: app.api_overlay_open({}))
         app.overlay_listeners.start(app._overlay_prefs())
     if exit_when_closed:

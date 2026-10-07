@@ -87,7 +87,22 @@ class Gateway:
         self.service = ""
         self._describe()
 
+    @staticmethod
+    def _local_http(url: str) -> bool:
+        """Only plain http to an address on this network: a device answering the search can not send us to the internet."""
+        import ipaddress
+        parts = urllib.parse.urlparse(url)
+        if parts.scheme != "http" or not parts.hostname:
+            return False
+        try:
+            ip = ipaddress.ip_address(parts.hostname)
+        except ValueError:
+            return False
+        return ip.is_private or ip.is_link_local or ip.is_loopback
+
     def _describe(self) -> None:
+        if not self._local_http(self.location):
+            raise PortMapError("The router's address is not on this network.")
         try:
             with urllib.request.urlopen(self.location, timeout=self.timeout) as r:
                 text = r.read(200_000).decode("utf-8", "replace")
@@ -103,7 +118,10 @@ class Gateway:
             if kind in WAN_SERVICES:
                 url = (svc.findtext("controlURL") or "").strip()
                 if url:
-                    self.service, self.control = kind, urllib.parse.urljoin(self.location, url)
+                    control = urllib.parse.urljoin(self.location, url)
+                    if not self._local_http(control) or urllib.parse.urlparse(control).hostname != urllib.parse.urlparse(self.location).hostname:
+                        raise PortMapError("The router pointed somewhere else, so I stopped.")
+                    self.service, self.control = kind, control
                     return
         raise PortMapError("This router does not offer port mapping.")
 

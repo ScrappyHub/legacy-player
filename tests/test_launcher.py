@@ -621,3 +621,16 @@ class MultiplayerFlowTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CatalogRobustnessTests(unittest.TestCase):
+    def test_damaged_settings_files_are_set_aside_not_fatal(self):
+        import tempfile
+        from pathlib import Path
+        from launcher.catalog import Catalog
+        for bad in (b"[1, 2]", b"\xff\xfe\x00bad", b"{not json", b'{"roots": "C:", "favorites": 5}'):
+            d = Path(tempfile.mkdtemp())
+            (d / "user_data.json").write_bytes(bad)
+            c = Catalog(d)
+            self.assertIsInstance(c.data["roots"], list)
+            self.assertIsInstance(c.data["favorites"], list)

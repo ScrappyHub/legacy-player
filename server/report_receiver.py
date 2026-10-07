@@ -16,6 +16,7 @@ know; use it only to keep the endpoint from being filled by strangers when you a
 from __future__ import annotations
 
 import argparse
+import hmac
 import json
 import re
 import threading
@@ -27,6 +28,8 @@ from pathlib import Path
 MAX_BODY = 64 * 1024
 PER_MINUTE = 120
 PER_PROBLEM_PER_DAY = 200
+MAX_PROBLEMS_PER_DAY = 500                 # different problems in one day
+MAX_TOTAL_BYTES = 512 * 1024 * 1024        # all reports together
 SCHEMA = "legacy_player.report.v1"
 STRING_LIMIT = 6000
 
@@ -59,6 +62,7 @@ class Store:
         self.lock = threading.Lock()
         self.minute = (0, 0)
         self.daily: dict[tuple[str, str], int] = {}
+        self.bytes_written = sum(p.stat().st_size for p in self.folder.rglob('*.json')) if self.folder.is_dir() else 0
 
     def accept(self, report: dict) -> str:
         """Returns "ok", "limit" or "bad"."""
@@ -77,10 +81,20 @@ class Store:
             key = (day, report["fingerprint"])
             if self.daily.get(key, 0) >= PER_PROBLEM_PER_DAY:
                 return "limit"
+            if key not in self.daily and sum(1 for k in self.daily if k[0] == day) >= MAX_PROBLEMS_PER_DAY:
+                return "limit"                         # a sender inventing fingerprints can not fill the disk with new folders
+            text = json.dumps(report, indent=2) + "\n"
+            if self.bytes_written + len(text) > MAX_TOTAL_BYTES:
+                return "limit"
             self.daily[key] = self.daily.get(key, 0) + 1
             target = self.folder / day / report["fingerprint"]
             target.mkdir(parents=True, exist_ok=True)
-            (target / f"{report['id']}.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8", newline="\n")
+            try:
+                with (target / f"{report['id']}.json").open("x", encoding="utf-8", newline="\n") as f:    # never overwrite an earlier report
+                    f.write(text)
+            except FileExistsError:
+                return "ok"
+            self.bytes_written += len(text)
             line = {"day": day, "fingerprint": report["fingerprint"], "id": report["id"], "kind": report.get("kind"),
                     "version": (report.get("app") or {}).get("version"), "error": (report.get("error") or {}).get("type"),
                     "message": str((report.get("error") or {}).get("message", ""))[:160]}
@@ -92,6 +106,7 @@ class Store:
 def make_handler(store: Store, token: str | None):
     class Handler(BaseHTTPRequestHandler):
         server_version = "LegacyPlayerReports"
+        timeout = 10                                 # a sender that stalls does not hold a thread open
 
         def log_message(self, *args) -> None:       # no request log: who sent what is deliberately not kept
             pass
@@ -108,7 +123,7 @@ def make_handler(store: Store, token: str | None):
             self._answer(200, "Legacy Player report receiver\n") if self.path in ("/", "/health") else self._answer(404)
 
         def do_POST(self) -> None:
-            if token and self.headers.get("X-Report-Token") != token:
+            if token and not hmac.compare_digest((self.headers.get("X-Report-Token") or "").encode("utf-8", "replace"), token.encode("utf-8")):
                 return self._answer(401)
             try:
                 length = int(self.headers.get("Content-Length", "-1"))

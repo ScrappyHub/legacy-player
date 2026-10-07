@@ -25,6 +25,12 @@ yet, so Windows SmartScreen says "unknown publisher": More info, then Run anyway
   Each game shows how many people can play it and whether it is single-player, co-op or versus.
 - **Emulators:** finds or installs them (RetroArch, Dolphin, mGBA, DuckStation, PCSX2 and others), full-screen and
   controller options per emulator, Dolphin pad profiles written for you (and restorable).
+- **Quick play:** hover a game's cover and it splits into Play and Online (host a room or join with a code).
+- **Games open where you want:** in front of Legacy Player, full screen or windowed, on the screen you pick (asked once per emulator,
+  changeable under Display and video > Where games open).
+- **In-game overlay:** press Ctrl+Shift+L, or hold Back + Start on an Xbox-style controller, for a small window over any game with
+  Force quit, full screen/windowed and your room code. Both binds can be changed in Settings. Force quit also sits next to
+  "game running" in the app.
 - **Controllers:** pad and keyboard mapping per console, up to four players.
 - **Saves:** finds each emulator's save files, one-click backups and restores.
 - **Play together:** run your own server, or join a friend's.
@@ -36,13 +42,13 @@ yet, so Windows SmartScreen says "unknown publisher": More info, then Run anyway
 - **Problem reports (opt in):** off by default. If something fails, the app asks once and shows exactly what would be sent;
   names, IP addresses, codes and folder paths are removed first (`docs/proposals/2026-10-07-audit-and-fixes.md`).
 - **Tools:** computer specs, network check, Dolphin memory probe (any GameCube or Wii game), storage by console, a doctor
-  that checks what is missing, and an uninstaller that removes only what Legacy Player created.
+  that checks what is missing, and an uninstaller that removes only what Legacy Player created. The doctor asks whether to keep or delete the save folders he made, and leaves you a prescription.
 - Close the window with X and it stays in the tray with the server running; right-click the tray icon for server controls.
 
 ## Honest status
 
 What is verified: the launcher, library, saves, settings, server, rooms and relay code are covered by automated tests
-(about 260) and a headless-browser click-through of every page.
+(about 300) and a headless-browser click-through of every page.
 
 What is not yet verified on real hardware: the Windows pieces (tray menu, Recycle Bin move, Dolphin pad names, firewall
 rule, memory probe), opening a real router, a real shared server, and actual online play between two networks. Netplay

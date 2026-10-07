@@ -40,9 +40,47 @@ def pick_window(windows: list[dict]) -> dict | None:
 
 # ---- Windows plumbing --------------------------------------------------------------------------------------------
 
+_DPI_DONE = False
+_ORIG: dict[int, tuple[int, tuple[int, int, int, int]]] = {}    # window -> (style, rect) from before we made it borderless
+
+
 def _user32():
+    """user32 with the handle types declared (so 64-bit window handles are never cut to 32 bits), and the process made
+    DPI-aware once (so monitor sizes and window positions are real pixels on scaled screens)."""
     import ctypes
-    return ctypes.windll.user32
+    from ctypes import wintypes
+    global _DPI_DONE
+    u = ctypes.windll.user32
+    if not _DPI_DONE:
+        _DPI_DONE = True
+        try:
+            ctypes.windll.shcore.SetProcessDpiAwareness(2)                  # per-monitor
+        except Exception:
+            try:
+                u.SetProcessDPIAware()
+            except Exception:
+                pass
+        try:
+            H, B, I = wintypes.HWND, wintypes.BOOL, ctypes.c_int
+            u.GetForegroundWindow.restype = H
+            u.SetWindowPos.argtypes = [H, H, I, I, I, I, wintypes.UINT]
+            u.SetWindowPos.restype = B
+            u.BringWindowToTop.argtypes = [H]
+            u.SetForegroundWindow.argtypes = [H]
+            u.IsIconic.argtypes = [H]
+            u.ShowWindow.argtypes = [H, I]
+            u.GetWindowLongW.argtypes = [H, I]
+            u.SetWindowLongW.argtypes = [H, I, ctypes.c_long]
+            u.GetWindowRect.argtypes = [H, ctypes.POINTER(wintypes.RECT)]
+            u.GetWindowThreadProcessId.argtypes = [H, ctypes.POINTER(wintypes.DWORD)]
+            u.IsWindowVisible.argtypes = [H]
+            u.GetWindowTextLengthW.argtypes = [H]
+            u.GetWindowTextW.argtypes = [H, wintypes.LPWSTR, I]
+            u.AttachThreadInput.argtypes = [wintypes.DWORD, wintypes.DWORD, B]
+            u.PostMessageW.argtypes = [H, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
+        except Exception:
+            pass
+    return u
 
 
 def list_monitors() -> list[dict]:
@@ -52,6 +90,7 @@ def list_monitors() -> list[dict]:
     try:
         import ctypes
         from ctypes import wintypes
+        _user32()                                   # makes the process DPI-aware before asking for sizes
 
         class MONITORINFOEXW(ctypes.Structure):
             _fields_ = [("cbSize", wintypes.DWORD), ("rcMonitor", wintypes.RECT), ("rcWork", wintypes.RECT),
@@ -80,7 +119,7 @@ def list_monitors() -> list[dict]:
 def _windows_of(pids: set[int] | None) -> list[dict]:
     import ctypes
     from ctypes import wintypes
-    user32 = ctypes.windll.user32
+    user32 = _user32()
     out: list[dict] = []
     proc_t = ctypes.WINFUNCTYPE(ctypes.c_int, wintypes.HWND, wintypes.LPARAM)
 
@@ -100,25 +139,32 @@ def _windows_of(pids: set[int] | None) -> list[dict]:
 
 
 def _family(pid: int) -> set[int]:
-    pids = {pid}
-    try:
-        import psutil
-        pids.update(c.pid for c in psutil.Process(pid).children(recursive=True))
-    except Exception:
-        pass
-    return pids
+    from . import procs
+    return procs.children(pid)
 
 
 def _apply(hwnd, win: dict, mon: dict | None, mode: str, has_flag: bool) -> None:
     import ctypes
-    user32 = ctypes.windll.user32
+    user32 = _user32()
     todo = plan((win["x"], win["y"], win["w"], win["h"]), mon, mode, has_flag)
     if user32.IsIconic(hwnd):
         user32.ShowWindow(hwnd, 9)                      # SW_RESTORE
+    GWL_STYLE, WS_CAPTION, WS_THICKFRAME = -16, 0x00C00000, 0x00040000
     if todo["borderless"]:
-        GWL_STYLE, WS_CAPTION, WS_THICKFRAME = -16, 0x00C00000, 0x00040000
         style = user32.GetWindowLongW(hwnd, GWL_STYLE)
+        _ORIG.setdefault(int(hwnd), (style, (win["x"], win["y"], win["w"], win["h"])))
         user32.SetWindowLongW(hwnd, GWL_STYLE, style & ~(WS_CAPTION | WS_THICKFRAME))
+    elif mode == "windowed" and int(hwnd) in _ORIG:
+        # we made it borderless earlier: give back its title bar and its old size, then place it on the monitor
+        style, (ox, oy, ow, oh) = _ORIG.pop(int(hwnd))
+        user32.SetWindowLongW(hwnd, GWL_STYLE, style)
+        if mon:
+            back = plan((ox, oy, ow, oh), mon, "windowed", has_flag)
+            ox, oy, ow, oh = back["move"] or (ox, oy, ow, oh)
+            if ow >= mon["w"] and oh >= mon["h"]:                        # it was already as big as the screen: make it a window
+                ow, oh = int(mon["w"] * 0.8), int(mon["h"] * 0.8)
+                ox, oy = mon["x"] + (mon["w"] - ow) // 2, mon["y"] + (mon["h"] - oh) // 2
+        todo = {"move": (ox, oy, ow, oh), "borderless": False}
     if todo["move"]:
         x, y, w, h = todo["move"]
         user32.SetWindowPos(hwnd, None, x, y, w, h, 0x0004 | 0x0020 | 0x0040)   # NOZORDER | FRAMECHANGED | SHOWWINDOW
@@ -128,7 +174,7 @@ def _apply(hwnd, win: dict, mon: dict | None, mode: str, has_flag: bool) -> None
 def _to_front(hwnd) -> None:
     """Windows refuses to let a background program steal focus; attaching to the current foreground thread allows it."""
     import ctypes
-    user32, kernel32 = ctypes.windll.user32, ctypes.windll.kernel32
+    user32, kernel32 = _user32(), ctypes.windll.kernel32
     fore = user32.GetForegroundWindow()
     me = kernel32.GetCurrentThreadId()
     there = user32.GetWindowThreadProcessId(fore, None) if fore else 0
@@ -143,7 +189,7 @@ def _to_front(hwnd) -> None:
             user32.AttachThreadInput(me, there, False)
 
 
-def arrange(pid: int, monitor: dict | None, mode: str, has_flag: bool, wait: float = 30.0) -> None:
+def arrange(pid: int, monitor: dict | None, mode: str, has_flag: bool, wait: float = 30.0, explicit: bool = False) -> None:
     """Wait for the game's window, then bring it forward and place it. Re-checks twice because many emulators open a small
     start-up window first and the real one a moment later. Never raises."""
     if sys.platform != "win32":
@@ -156,11 +202,11 @@ def arrange(pid: int, monitor: dict | None, mode: str, has_flag: bool, wait: flo
             win = pick_window(_windows_of(_family(pid)))
             if win and (seen is None or win["hwnd"] != seen):
                 seen = win["hwnd"]
-                _apply(win["hwnd"], win, monitor, mode, has_flag)
-                done_at = [time.time() + 2.5, time.time() + 6.0]
+                _apply(win["hwnd"], win, monitor or (_monitor_of(win) if explicit else None), mode, has_flag)
+                done_at = [time.time() + 2.5, time.time() + 6.0] if not explicit else [time.time() + 0.5]
             elif win and done_at and time.time() >= done_at[0]:
                 done_at.pop(0)
-                _apply(win["hwnd"], win, monitor, mode, has_flag)
+                _apply(win["hwnd"], win, monitor or (_monitor_of(win) if explicit else None), mode, has_flag)
                 if not done_at:
                     return
             time.sleep(0.4)
@@ -168,9 +214,25 @@ def arrange(pid: int, monitor: dict | None, mode: str, has_flag: bool, wait: flo
         return
 
 
-def arrange_async(pid: int, monitor: dict | None, mode: str, has_flag: bool) -> None:
+def _monitor_of(win: dict) -> dict | None:
+    """The monitor a window is mostly on (the primary one if it is on none)."""
+    mons = list_monitors()
+    cx, cy = win["x"] + win["w"] // 2, win["y"] + win["h"] // 2
+    for m in mons:
+        if m["x"] <= cx < m["x"] + m["w"] and m["y"] <= cy < m["y"] + m["h"]:
+            return m
+    return next((m for m in mons if m.get("primary")), mons[0] if mons else None)
+
+
+_ARRANGE_LOCK = threading.Lock()
+
+
+def arrange_async(pid: int, monitor: dict | None, mode: str, has_flag: bool, explicit: bool = False) -> None:
     if sys.platform == "win32":
-        threading.Thread(target=arrange, args=(pid, monitor, mode, has_flag), daemon=True).start()
+        def run() -> None:
+            with _ARRANGE_LOCK:                      # two quick clicks must not fight over the same window
+                arrange(pid, monitor, mode, has_flag, explicit=explicit)
+        threading.Thread(target=run, daemon=True).start()
 
 
 def _titled(fragment: str) -> list[dict]:
@@ -205,7 +267,7 @@ def pin_titled(fragment: str, mon: dict | None, wait: float = 12.0, margin: int 
             wins = _titled(fragment)
             if wins:
                 w = wins[0]
-                user32 = ctypes.windll.user32
+                user32 = _user32()
                 x, y = w["x"], w["y"]
                 if mon:
                     x, y = mon["x"] + mon["w"] - w["w"] - margin, mon["y"] + margin

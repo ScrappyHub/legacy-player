@@ -77,6 +77,9 @@ class AppOverlayTests(unittest.TestCase):
 
     def test_state_shows_game_and_room(self):
         self.assertIsNone(self.app.api_overlay_state({})["game"])
+        self.alive = mock.patch("launcher.procs.is_alive", return_value=True)
+        self.alive.start()
+        self.addCleanup(self.alive.stop)
         self.app.running = {"pid": 1, "title": "T", "emulator": "E", "emulator_id": "retroarch"}
         self.app.room = {"game": "T", "role": "host", "invite_code": "ABC"}
         st = self.app.api_overlay_state({})
@@ -87,11 +90,33 @@ class AppOverlayTests(unittest.TestCase):
         with self.assertRaises(AppError):
             self.app.api_game_window({"mode": "windowed"})
         self.app.running = {"pid": 7, "title": "T", "emulator": "E", "emulator_id": "retroarch"}
-        with self.assertRaises(AppError):
-            self.app.api_game_window({"mode": "sideways"})
-        with mock.patch.object(self.app, "_bring_forward") as bf:
-            self.app.api_game_window({"mode": "fullscreen"})
-            bf.assert_called_once_with(7, "retroarch", "fullscreen")
+        with mock.patch("launcher.procs.is_alive", return_value=True):
+            with self.assertRaises(AppError):
+                self.app.api_game_window({"mode": "sideways"})
+            with mock.patch.object(self.app, "_bring_forward") as bf:
+                self.app.api_game_window({"mode": "fullscreen"})
+                bf.assert_called_once_with(7, "retroarch", "fullscreen", explicit=True)
+
+    def test_a_game_that_has_closed_is_forgotten_and_never_killed(self):
+        self.app.running = {"pid": 4242, "title": "T", "emulator": "E", "emulator_id": "retroarch", "started": 5}
+        with mock.patch("launcher.procs.is_alive", return_value=False), mock.patch("launcher.emulators.stop_pid") as stop:
+            self.assertIsNone(self.app.api_overlay_state({})["game"])
+            with self.assertRaises(AppError):
+                self.app.api_force_quit({})
+            stop.assert_not_called()
+        self.assertIsNone(self.app.running)
+
+    def test_overlay_without_a_browser_says_so_and_a_second_press_does_not_double_open(self):
+        self.app.overlay_opener = lambda: False
+        with mock.patch("launcher.winplace.close_titled", return_value=False):
+            with self.assertRaises(AppError):
+                self.app.api_overlay_open({})
+        opened = []
+        self.app.overlay_opener = lambda: opened.append(1)
+        with mock.patch("launcher.winplace.close_titled", return_value=False), mock.patch("launcher.winplace.pin_titled"):
+            self.app.api_overlay_open({})
+            self.app.api_overlay_open({})
+        self.assertEqual([1], opened)
 
     def test_open_toggles_closed_when_already_open(self):
         with mock.patch("launcher.winplace.close_titled", return_value=True):

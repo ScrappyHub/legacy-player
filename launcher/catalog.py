@@ -3,6 +3,7 @@ Stored as one JSON file, written atomically. Game files are never touched."""
 from __future__ import annotations
 
 import json
+import threading
 import os
 import tempfile
 import time
@@ -199,12 +200,20 @@ class Catalog:
         self.dir.mkdir(parents=True, exist_ok=True)
         self.path = self.dir / "user_data.json"
         self.data = json.loads(json.dumps(DEFAULT_DATA))
+        self._lock = threading.RLock()
         if self.path.exists():
             try:
                 loaded = json.loads(self.path.read_text(encoding="utf-8"))
-                self.data.update({k: v for k, v in loaded.items() if k in DEFAULT_DATA})
-            except (OSError, json.JSONDecodeError):
-                self.path.replace(self.path.with_suffix(".corrupt"))
+                if not isinstance(loaded, dict):
+                    raise ValueError("the settings file is not a settings object")
+                # keep only values of the same kind as the defaults, so a damaged file can not put text where a list belongs
+                self.data.update({k: v for k, v in loaded.items()
+                                  if k in DEFAULT_DATA and (DEFAULT_DATA[k] is None or isinstance(v, type(DEFAULT_DATA[k])))})
+            except (OSError, ValueError):                       # includes bad JSON and bad text encoding
+                try:
+                    self.path.replace(self.path.with_name("user_data." + time.strftime("%Y%m%d-%H%M%S") + ".corrupt"))
+                except OSError:
+                    pass
         if not self.data.get("install_id"):
             import secrets
             self.data["install_id"] = secrets.token_hex(2)
@@ -215,16 +224,24 @@ class Catalog:
         return f"{self.settings()['display_name']}#{self.data.get('alias_tag') or self.data['install_id']}"
 
     def save(self) -> None:
-        fd, tmp = tempfile.mkstemp(prefix=".ud-", dir=self.dir)
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as stream:
-                json.dump(self.data, stream, indent=2, sort_keys=True)
-                stream.flush()
-                os.fsync(stream.fileno())
-            os.replace(tmp, self.path)
-        finally:
-            if os.path.exists(tmp):
-                os.unlink(tmp)
+        with self._lock:
+            fd, tmp = tempfile.mkstemp(prefix=".ud-", dir=self.dir)
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as stream:
+                    json.dump(self.data, stream, indent=2, sort_keys=True)
+                    stream.flush()
+                    os.fsync(stream.fileno())
+                for attempt in range(5):                       # Windows refuses the swap for a moment if a scanner has the file open
+                    try:
+                        os.replace(tmp, self.path)
+                        break
+                    except PermissionError:
+                        if attempt == 4:
+                            raise
+                        time.sleep(0.05)
+            finally:
+                if os.path.exists(tmp):
+                    os.unlink(tmp)
 
     # settings -----------------------------------------------------------
     def settings(self) -> dict:

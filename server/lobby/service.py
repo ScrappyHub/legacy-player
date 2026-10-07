@@ -877,9 +877,9 @@ class LobbyService:
                 if not free:
                     raise LobbyError("that name is used by too many active players; pick another")
                 tag = secrets.choice(free)
+        if f"{low}#{tag}" not in self.aliases and len(self.aliases) >= 50000:
+            raise LobbyError("too many active names on this server")      # checked before adding, so a flood can not grow memory
         self.aliases[f"{low}#{tag}"] = {"install": install, "seen": now}
-        if len(self.aliases) > 50000:
-            raise LobbyError("too many active names on this server")
         return {"alias": alias, "tag": tag, "player": f"{alias}#{tag}"}
 
     def _stats_view(self, session: Session) -> dict:
@@ -940,7 +940,7 @@ class LobbyService:
                 "waiting_on": [p for p in session.participants if p not in present]}
 
     # What a brand-new person needs the server code's key for. Everything else needs a room credential they already hold.
-    KEYED_OPERATIONS = frozenset({"create", "join", "browse"})
+    KEYED_OPERATIONS = frozenset({"create", "join", "browse", "claim_alias"})
     access_key: str | None = None      # set by the running server; None (tests, embedded use) means no key is required
 
     def dispatch(self, request: dict) -> dict:

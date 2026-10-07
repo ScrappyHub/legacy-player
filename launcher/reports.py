@@ -52,9 +52,20 @@ _SERVER_CODE = re.compile(r"\bLP-[A-Z0-9-]{8,}\b", re.I)
 _INVITE = re.compile(r"\b[A-Z0-9]{5}-[A-Z0-9]{5}\b")
 _SECRETISH = re.compile(r"\b(?=[A-Za-z0-9_-]*\d)(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9_-]{24,}\b")
 _URL_QUERY = re.compile(r"(\?[^\s'\"]+)")
-_WIN_PATH = re.compile(r"[A-Za-z]:\\(?:[^\\/:*?\"<>|\r\n']+\\)*[^\\/:*?\"<>|\r\n'\s]*")
+_WIN_PATH = re.compile(r"(?<!\w)[A-Za-z]:[\\/](?:[^\\/:*?\"<>|\r\n']+[\\/])*[^\\/:*?\"<>|\r\n'\s]*")
+_UNC_PATH = re.compile(r"\\\\[\w.$-]+(?:\\[^\\/:*?\"<>|\r\n'\s]+)*")
+_HOSTNAME = re.compile(r"\b(?:[A-Za-z0-9-]+\.)+(?:duckdns\.org|ddns\.net|no-ip\.(?:org|com|biz)|dyndns\.[a-z]+|hopto\.org|zapto\.org|ngrok(?:-free)?\.(?:io|app|dev)|trycloudflare\.com|tailscale\.net|ts\.net|local|lan|home|internal)(?::\d{1,5})?\b", re.I)
 _NIX_PATH = re.compile(r"(?<![\w:/])/(?:[\w.@+-]+/)+[\w.@+-]*")
 _CODE_DIRS = ("launcher", "server", "adapters", "runtime", "frontend", "tools", "site-packages", "lib", "Lib")
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args, **kwargs):          # a report goes to the address that was set, never somewhere it points to
+        return None
+
+
+def _no_redirect_open(request, timeout=10):
+    return urllib.request.build_opener(_NoRedirect).open(request, timeout=timeout)
 
 
 def _now() -> str:
@@ -65,7 +76,7 @@ class Scrubber:
     """Removes what identifies a person or opens a door. `names` are exact strings to blank (user name, PC name, ...)."""
 
     def __init__(self, names: dict[str, str] | None = None, folders: dict[str, str] | None = None) -> None:
-        self.names = {k: v for k, v in (names or {}).items() if k and len(k) >= 3}
+        self.names = {k: v for k, v in (names or {}).items() if k and len(k) >= 2}
         self.folders = sorted(((k, v) for k, v in (folders or {}).items() if k and len(k) >= 4), key=lambda kv: -len(kv[0]))
 
     def _path(self, match: re.Match) -> str:
@@ -82,7 +93,9 @@ class Scrubber:
         for folder, label in self.folders:
             s = re.sub(re.escape(folder), label, s, flags=re.I)
             s = re.sub(re.escape(folder.replace("\\", "/")), label, s, flags=re.I)
+        s = _UNC_PATH.sub(self._path, s)
         s = _WIN_PATH.sub(self._path, s)
+        s = _HOSTNAME.sub("<host>", s)
         s = _NIX_PATH.sub(self._path, s)
         for name, label in self.names.items():
             s = re.sub(re.escape(name), label, s, flags=re.I)
@@ -128,7 +141,7 @@ class ReportCenter:
         self.sent_at: collections.deque = collections.deque(maxlen=MAX_SENDS_PER_HOUR)
         self.last_prompt = 0.0
         self.t0 = time.time()
-        self.opener = urllib.request.urlopen
+        self.opener = _no_redirect_open
         self.last_error = ""
 
     # --- settings ---------------------------------------------------------------------------------------

@@ -1,6 +1,6 @@
 # Legacy Player Documentation Index
 
-**Updated:** 2026-08-20
+**Updated:** 2026-10-07
 
 This page identifies which document answers each project question and prevents older planning artifacts from being mistaken for current proof.
 

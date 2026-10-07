@@ -86,10 +86,14 @@ class ComboWatcher:
         return False
 
 
-def read_pads() -> list[int]:
-    """Button masks of every connected Xbox-style (XInput) controller. Empty off Windows or with none connected."""
+_XINPUT = None
+
+
+def read_pad_slots() -> dict[int, int]:
+    """{controller slot: button mask} for every connected Xbox-style (XInput) controller. Empty off Windows."""
+    global _XINPUT
     if sys.platform != "win32":
-        return []
+        return {}
     try:
         import ctypes
         from ctypes import wintypes
@@ -101,37 +105,45 @@ def read_pads() -> list[int]:
         class STATE(ctypes.Structure):
             _fields_ = [("packet", wintypes.DWORD), ("pad", PAD)]
 
-        dll = None
-        for name in ("xinput1_4", "xinput1_3", "xinput9_1_0"):
+        if _XINPUT is None:
+            dll = None
+            for name in ("xinput1_4", "xinput1_3", "xinput9_1_0"):
+                try:
+                    dll = ctypes.WinDLL(name)
+                    break
+                except OSError:
+                    continue
+            if dll is None:
+                return {}
             try:
-                dll = ctypes.WinDLL(name)
-                break
-            except OSError:
-                continue
-        if dll is None:
-            return []
-        try:
-            fn = dll[100]                                  # XInputGetStateEx: the same, plus the Guide button
-        except (AttributeError, OSError):
-            fn = dll.XInputGetState
-        out = []
+                _XINPUT = dll[100]                         # XInputGetStateEx: the same, plus the Guide button
+            except (AttributeError, OSError):
+                _XINPUT = dll.XInputGetState
+        out = {}
         for slot in range(4):
             st = STATE()
-            if fn(slot, ctypes.byref(st)) == 0:
-                out.append(int(st.pad.buttons))
+            if _XINPUT(slot, ctypes.byref(st)) == 0:
+                out[slot] = int(st.pad.buttons)
         return out
     except Exception:
-        return []
+        return {}
+
+
+def read_pads() -> list[int]:
+    return list(read_pad_slots().values())
 
 
 class Listeners:
-    """Runs the global hotkey and the controller watcher in the background and calls `on_open` when either fires."""
+    """Runs the global hotkey and the controller watcher in the background and calls `on_open` when either fires.
+    Each start() gets its own stop event and its own threads, so restarting after a settings change never leaves an old
+    watcher behind (which would fire the overlay twice and toggle it straight shut)."""
 
     def __init__(self, on_open) -> None:
         self.on_open = on_open
-        self._stop = threading.Event()
+        self._lock = threading.Lock()
+        self._stop: threading.Event | None = None
         self._threads: list[threading.Thread] = []
-        self._hotkey_tid = 0
+        self._tids: list[int] = []
         self.error = ""
 
     def start(self, prefs: dict) -> None:
@@ -139,50 +151,68 @@ class Listeners:
         self.error = ""
         if sys.platform != "win32" or not prefs.get("enabled", True):
             return
-        self._stop = threading.Event()
-        if prefs.get("hotkey"):
-            t = threading.Thread(target=self._hotkey, args=(prefs["hotkey"],), daemon=True, name="overlay-hotkey")
-            t.start()
-            self._threads.append(t)
-        if prefs.get("pad"):
-            t = threading.Thread(target=self._pad, args=(list(prefs["pad"]), float(prefs.get("hold", 0.8))), daemon=True, name="overlay-pad")
-            t.start()
-            self._threads.append(t)
+        with self._lock:
+            ev = self._stop = threading.Event()
+            if prefs.get("hotkey"):
+                ready = threading.Event()
+                t = threading.Thread(target=self._hotkey, args=(prefs["hotkey"], ev, ready), daemon=True, name="overlay-hotkey")
+                t.start()
+                ready.wait(2.0)                       # the thread has registered (or failed) before we return
+                self._threads.append(t)
+            if prefs.get("pad"):
+                t = threading.Thread(target=self._pad, args=(list(prefs["pad"]), float(prefs.get("hold", 0.8)), ev), daemon=True, name="overlay-pad")
+                t.start()
+                self._threads.append(t)
 
     def stop(self) -> None:
-        self._stop.set()
-        if self._hotkey_tid and sys.platform == "win32":
-            try:
-                import ctypes
-                ctypes.windll.user32.PostThreadMessageW(self._hotkey_tid, 0x0012, 0, 0)   # WM_QUIT
-            except Exception:
-                pass
-        self._hotkey_tid = 0
-        self._threads = []
+        with self._lock:
+            if self._stop is not None:
+                self._stop.set()
+            if sys.platform == "win32":
+                try:
+                    import ctypes
+                    for tid in self._tids:
+                        ctypes.windll.user32.PostThreadMessageW(tid, 0x0012, 0, 0)   # WM_QUIT
+                except Exception:
+                    pass
+            for t in self._threads:
+                t.join(timeout=1.0)
+            self._threads, self._tids, self._stop = [], [], None
 
-    def _hotkey(self, spec: str) -> None:
+    def _hotkey(self, spec: str, ev: threading.Event, ready: threading.Event) -> None:
+        tid = 0
         try:
             import ctypes
             from ctypes import wintypes
             flags, vk, _ = parse_hotkey(spec)
             user32, kernel32 = ctypes.windll.user32, ctypes.windll.kernel32
-            self._hotkey_tid = kernel32.GetCurrentThreadId()
-            if not user32.RegisterHotKey(None, 1, flags | 0x4000, vk):         # MOD_NOREPEAT
+            msg = wintypes.MSG()
+            user32.PeekMessageW(ctypes.byref(msg), None, 0x0400, 0x0400, 0)         # gives this thread a message queue
+            if not user32.RegisterHotKey(None, 1, flags | 0x4000, vk):              # MOD_NOREPEAT
                 self.error = "Another program already uses that shortcut. Pick a different one."
                 return
-            msg = wintypes.MSG()
-            while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
-                if msg.message == 0x0312:                                        # WM_HOTKEY
+            tid = kernel32.GetCurrentThreadId()
+            self._tids.append(tid)
+            ready.set()
+            while not ev.is_set() and user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
+                if msg.message == 0x0312:                                            # WM_HOTKEY
                     self._fire()
             user32.UnregisterHotKey(None, 1)
         except Exception as exc:
             self.error = str(exc)[:120]
+        finally:
+            if tid and tid in self._tids:
+                self._tids.remove(tid)
+            ready.set()
 
-    def _pad(self, combo: list[str], hold: float) -> None:
+    def _pad(self, combo: list[str], hold: float, ev: threading.Event) -> None:
         watchers: dict[int, ComboWatcher] = {}
-        while not self._stop.wait(0.05):
+        while not ev.wait(0.05):
             now = time.time()
-            for slot, mask in enumerate(read_pads()):
+            slots = read_pad_slots()
+            for gone in [k for k in watchers if k not in slots]:
+                del watchers[gone]
+            for slot, mask in slots.items():
                 if watchers.setdefault(slot, ComboWatcher(combo, hold)).feed(mask, now):
                     self._fire()
 

@@ -213,6 +213,13 @@ class UiSmokeTests(unittest.TestCase):
             page.wait_for_selector("text=Problem reports")
             page.wait_for_selector("text=In-game overlay")
             self.assertIn("touch grass", page.evaluate('prescription().textContent').lower())
+            # the doctor's uninstall dialog asks about the folders he made, and Esc is "Never mind"
+            page.evaluate('void retireClinic()')
+            page.wait_for_selector(".retire")
+            self.assertIn("Start the clean-up", page.inner_text(".retire"))
+            page.keyboard.press("Escape")
+            page.wait_for_timeout(300)
+            self.assertEqual(0, page.locator(".retire").count())
             # the overlay window's own view (last, because it takes over the page)
             page.evaluate('void overlayInit()')
             page.wait_for_selector(".ovl")

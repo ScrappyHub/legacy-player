@@ -41,12 +41,14 @@ try {
         $actual = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
         if ($expected -ne $actual) { throw "The download is damaged or was changed (checksum mismatch). Nothing was installed." }
         Write-Host "Checksum OK."
-    } else { Write-Warning "This release has no checksum file; skipping the check." }
+    } else { throw "This release has no checksum file, so I can not check the download. Nothing was installed." }
 
     $dest = Join-Path $env:LOCALAPPDATA 'Programs\LegacyPlayer'
     Get-Process -Name LegacyPlayer -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "Closing the running Legacy Player..."; $_.CloseMainWindow() | Out-Null; Start-Sleep 2; if (-not $_.HasExited) { $_.Kill() } }
     New-Item -ItemType Directory -Path $dest -Force | Out-Null
-    Expand-Archive -Path $zip -DestinationPath $dest -Force
+    $stage = Join-Path $tmp 'unpacked'
+    Expand-Archive -Path $zip -DestinationPath $stage -Force          # unpack aside first, so a bad archive never leaves a half-installed app
+    Copy-Item -Path (Join-Path $stage '*') -Destination $dest -Recurse -Force
     Get-ChildItem $dest -Recurse -File | Unblock-File
 
     $exe = Join-Path $dest 'LegacyPlayer.exe'
