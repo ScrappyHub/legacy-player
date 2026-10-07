@@ -1417,7 +1417,7 @@ async function viewServers(m){
  const code=h("input",{type:"text",placeholder:"LP-XXXX-XXXX-XXXX-XXXX-XX",style:"width:min(300px,100%)","aria-label":"Server code"});
  const mine=V.server_host==="127.0.0.1";
  m.append(h("div",{class:"card",style:"margin-top:14px"},h("h3",{},"Connect to a server"),
-  h("p",{class:"small"},"Connected to: ",h("b",{},mine?"your own server (this computer)":h("span",{},ipSpan(V.server_host),":"+V.server_port)),mine?"":h("span",{class:"small muted"}," (encrypted, certificate checked)")),
+  h("p",{class:"small"},"Connected to: ",h("b",{},mine?"your own server (this computer)":h("span",{},ipSpan(V.server_host),":"+(V.server_remote_port||V.server_port))),mine?"":h("span",{class:"small muted"}," (encrypted, certificate checked)")),
   h("div",{class:"row"},code,h("button",{class:"btn good",onclick:async()=>{const r=await act(()=>api("server_connect",{code:code.value}));if(!r)return;toast(r.connected?"Connected to the server":r.message,r.connected?"":"warn");go();if(r.connected)autoNetTest(0)}},"Connect"),
    mine?null:h("button",{class:"btn",onclick:async()=>{await act(()=>api("server_connect",{local:true}),"Back to your own server");go()}},"Use my own server"))));
  // 4. rooms on the connected server

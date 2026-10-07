@@ -313,6 +313,16 @@ class TrayController:
         """Look again soon (after a click, or because the menu was just opened)."""
         self._wake.set()
 
+    def window_hidden(self) -> bool:
+        """True when Legacy Player is only in the tray (window closed), or there is no app window on screen."""
+        if self.app.tray_mode:
+            return True
+        try:
+            from . import winplace
+            return sys.platform == "win32" and not winplace.window_exists(winplace.APP_TITLE_MARK)
+        except Exception:
+            return False
+
     def server_running(self) -> bool:
         return bool(self._state["running"])
 
@@ -331,14 +341,20 @@ class TrayController:
                 line += "  ·  this computer only"
         else:
             line = "Server stopped" if st["known"] else "Checking the server..."
-        items = [("open", "Open Legacy Player", True, True)]
+        items = []
+        if self.window_hidden():                       # only when it lives in the tray; with the window open the item is just noise
+            items.append(("open", "Open Legacy Player", True, True))
         game = app._running_now()
         if game:                                       # the overlay only exists while a game is running
             from .overlay_window import duration
             since = game.get("since")
-            items += [None, ("open", f"Playing {game['title']}" + (f"  ·  {duration(time.time() - since)}" if since else ""), True),
+            if items:
+                items.append(None)
+            items += [("open", f"Playing {game['title']}".replace("&", "&&") + (f"  ·  {duration(time.time() - since)}" if since else ""), True),
                       ("overlay", "Open game overlay", True)]
-        items += [None, ("open", line, True)]
+        if items:
+            items.append(None)
+        items.append(("open", line, True))
         if room:
             who = room.get("game", "a game")
             items.append(("open", f"In a room: {who}" + (" (you are hosting)" if room.get("role") == "host" else ""), True))

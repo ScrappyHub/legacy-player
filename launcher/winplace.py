@@ -41,6 +41,7 @@ def pick_window(windows: list[dict]) -> dict | None:
 # ---- Windows plumbing --------------------------------------------------------------------------------------------
 
 _DPI_DONE = False
+_U32_LOCK = threading.RLock()
 _ORIG: dict[int, tuple[int, tuple[int, int, int, int]]] = {}    # window -> (style, rect) from before we made it borderless
 
 
@@ -51,8 +52,9 @@ def _user32():
     from ctypes import wintypes
     global _DPI_DONE
     u = ctypes.windll.user32
-    if not _DPI_DONE:
-        _DPI_DONE = True
+    with _U32_LOCK:                                   # two threads must not use it half prepared
+        if _DPI_DONE:
+            return u
         try:
             ctypes.windll.shcore.SetProcessDpiAwareness(2)                  # per-monitor
         except Exception:
@@ -76,10 +78,12 @@ def _user32():
             u.IsWindowVisible.argtypes = [H]
             u.GetWindowTextLengthW.argtypes = [H]
             u.GetWindowTextW.argtypes = [H, wintypes.LPWSTR, I]
+            u.GetClassNameW.argtypes = [H, wintypes.LPWSTR, I]
             u.AttachThreadInput.argtypes = [wintypes.DWORD, wintypes.DWORD, B]
             u.PostMessageW.argtypes = [H, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
         except Exception:
             pass
+        _DPI_DONE = True
     return u
 
 
@@ -235,11 +239,25 @@ def arrange_async(pid: int, monitor: dict | None, mode: str, has_flag: bool, exp
         threading.Thread(target=run, daemon=True).start()
 
 
+APP_TITLE_MARK = "Legacy Player \u2014"        # every app window's title starts like this (the overlay's does not)
+_BROWSER_CLASSES = {"Chrome_WidgetWin_1", "MozillaWindowClass"}     # Edge, Chrome, Brave, Firefox
+
+
+def _class_of(hwnd) -> str:
+    import ctypes
+    buf = ctypes.create_unicode_buffer(128)
+    _user32().GetClassNameW(hwnd, buf, 128)
+    return buf.value
+
+
 def _titled(fragment: str) -> list[dict]:
     if sys.platform != "win32":
         return []
     try:
-        return [w for w in _windows_of(None) if fragment.lower() in w["title"].lower()]
+        found = [w for w in _windows_of(None) if fragment.lower() in w["title"].lower()]
+        if fragment == APP_TITLE_MARK:        # only our own browser window, never another program that happens to say "Legacy Player -"
+            found = [w for w in found if _class_of(w["hwnd"]) in _BROWSER_CLASSES]
+        return found
     except Exception:
         return []
 
@@ -248,7 +266,8 @@ def overlay_open(fragment: str) -> bool:
     return bool(_titled(fragment))
 
 
-APP_TITLE_MARK = "Legacy Player \u2014"        # every app window's title starts like this (the overlay's does not)
+def window_exists(fragment: str) -> bool:
+    return bool(_titled(fragment))
 
 
 def minimize_titled(fragment: str) -> bool:

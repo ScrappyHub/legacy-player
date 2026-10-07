@@ -152,6 +152,10 @@ SETTINGS_SCHEMA: dict[str, dict] = {
         "type": "int", "default": 16, "min": 0, "max": 500, "group": "Your server",
         "label": "Waiting line per room", "help": "0 turns waiting lines off: a full room simply says it is full.",
     },
+    "server_remote_port": {
+        "type": "int", "default": 8765, "min": 1, "max": 65535, "group": "Multiplayer", "hidden": True,
+        "label": "Friend's server port", "help": "Set for you when you connect with a server code.",
+    },
     "server_tls": {
         "type": "bool", "default": False, "group": "Multiplayer",
         "label": "Encrypted connection (TLS)",

@@ -621,7 +621,8 @@ class LauncherApp:
         hidden = winplace.minimize_titled(winplace.APP_TITLE_MARK)
         while procs.is_alive(pid, started):
             time.sleep(1.0)
-        if hidden and not self.quit_requested:
+        other = self._running_now()
+        if hidden and not self.quit_requested and not (other and other.get("pid") != pid):   # not while another game is still going
             winplace.restore_titled(winplace.APP_TITLE_MARK)
 
     def _running_now(self) -> dict | None:
@@ -1426,7 +1427,8 @@ class LauncherApp:
         key = s["server_access_key"]
         if s["server_host"] in {"127.0.0.1", "localhost", "::1"}:      # our own server: always read its current key
             key = self._own_server_key() or key
-        return LobbyClient(s["server_host"], s["server_port"], tls=s["server_tls"], verify=s["server_tls_verify"],
+        local = s["server_host"] in {"127.0.0.1", "localhost", "::1"}
+        return LobbyClient(s["server_host"], s["server_port"] if local else s["server_remote_port"], tls=s["server_tls"], verify=s["server_tls_verify"],
                            fingerprint=fingerprint, access_key=key)
 
     def _own_server_key(self) -> str:
@@ -1450,9 +1452,12 @@ class LauncherApp:
     _auto_started_at = 0.0
 
     def _own_server_refused(self, exc: Exception) -> bool:
+        """Only a refused call to our own server, never while quitting and never right after the player stopped it."""
         s = self.catalog.settings()
-        return s["server_host"] in {"127.0.0.1", "localhost", "::1"} and isinstance(exc.__cause__, ConnectionRefusedError) \
-            and bool(s.get("server_autostart", True))
+        return (s["server_host"] in {"127.0.0.1", "localhost", "::1"} and isinstance(exc.__cause__, ConnectionRefusedError)
+                and bool(s.get("server_autostart", True)) and not self.quit_requested and not self._user_stopped)
+
+    _user_stopped = False
 
     def _start_own_server(self) -> bool:
         """Your own server is not running (the app was restarted, or it stopped): start it, so hosting just works.
@@ -1460,7 +1465,7 @@ class LauncherApp:
         if time.monotonic() - self._auto_started_at < 30:
             return False
         self._auto_started_at = time.monotonic()
-        share = bool(self.catalog.settings().get("server_tls"))
+        share = bool(self.catalog.data.get("server_share_wanted"))     # shared only if the player last started it that way
         try:
             self.api_server_control({"action": "start", "share": share})
             return True
@@ -2308,8 +2313,9 @@ class LauncherApp:
     def _overlay_actions(self) -> dict:
         def window(mode: str):
             def run() -> None:
-                if self._running_now():
-                    self._bring_forward(self.running["pid"], self.running.get("emulator_id") or "", mode, explicit=True)
+                r = self._running_now()
+                if r:
+                    self._bring_forward(r["pid"], r.get("emulator_id") or "", mode, explicit=True)
             return run
 
         def open_app() -> None:
@@ -2333,27 +2339,28 @@ class LauncherApp:
         return {"pressed": overlaymod.names_of(max(masks, key=lambda m: bin(m).count("1"))) if masks else [], "connected": len(masks)}
 
     def api_game_window(self, body: dict) -> dict:
-        if not self._running_now():
+        r = self._running_now()
+        if not r:
             raise AppError("No game is running from Legacy Player.")
         mode = body.get("mode")
         if mode not in ("fullscreen", "windowed"):
             raise AppError("Pick full screen or windowed.")
-        self._bring_forward(self.running["pid"], self.running.get("emulator_id") or "", mode, explicit=True)
+        self._bring_forward(r["pid"], r.get("emulator_id") or "", mode, explicit=True)
         return {"mode": mode}
 
     def api_force_quit(self, body: dict) -> dict:
         """Stop the running game now, even if the emulator is showing its own "are you sure?" box. No saves are written."""
-        if not self._running_now():
+        r = self._running_now()
+        if not r:
             raise AppError("No game is running from Legacy Player.")
-        title = self.running["title"]
-        emulators.stop_pid(self.running["pid"])
+        emulators.stop_pid(r["pid"])
         self.running = None
-        return {"stopped": title}
+        return {"stopped": r["title"]}
 
     def api_quit(self, body: dict) -> dict:
         """Full close: leave rooms politely, then stop the app."""
+        self.quit_at = time.time()                       # first: the watcher must never see "quit" without the time
         self.quit_requested = True
-        self.quit_at = time.time()
         self.shutdown()
         return {"ok": True}
 
@@ -2430,6 +2437,15 @@ class LauncherApp:
                 self.catalog.set_setting("server_fingerprint", self.server_fingerprint() or "-")
             elif action in {"start", "restart"} and code == 0 and not body.get("share"):
                 self.catalog.set_setting("server_tls", False)
+        if code == 0:
+            if action == "stop":
+                self._user_stopped = True                  # no auto-start behind the player's back
+                self.catalog.data["server_share_wanted"] = False
+                self.catalog.set_setting("server_tls", False)
+            elif action in {"start", "restart"}:
+                self._user_stopped = False
+                self.catalog.data["server_share_wanted"] = bool(body.get("share"))
+                self.catalog.save()
         reach = self._manage_router(action, code, bool(body.get("share")), args.port)
         return {"message": message, "running": cli._is_running(args.state_dir), "shared": bool(body.get("share")),
                 "log": str(args.state_dir / "server.log"), "fingerprint": self.server_fingerprint(),
@@ -2459,7 +2475,8 @@ class LauncherApp:
             self._close_router_mapping()                      # a mapping left by a crashed run goes first
             self.port_map = portmap.open_port(port)
             if self.port_map["state"] == "mapped":
-                self.catalog.data["router_mapped"] = {"port": self.port_map.get("port", port), "location": self.port_map.get("location", "")}
+                self.catalog.data["router_mapped"] = {"port": self.port_map.get("port", port), "location": self.port_map.get("location", ""),
+                                                      "local_ip": self.port_map.get("local_ip", ""), "external_ip": self.port_map.get("external_ip", "")}
                 self.catalog.save()
                 self._start_router_renewal(self.port_map)
                 self.fallback_active = False
@@ -2489,8 +2506,19 @@ class LauncherApp:
         stop = self._renew_stop = threading.Event()
 
         def loop() -> None:
+            from urllib.parse import urlparse
             while not stop.wait(portmap.RENEW_SECONDS):
-                portmap.renew_port(int(mapping.get("port", 0)), str(mapping.get("location", "")), str(mapping.get("local_ip", "")))
+                location = str(mapping.get("location", ""))
+                try:
+                    mine = portmap._local_address_towards(urlparse(location).hostname or "") or str(mapping.get("local_ip", ""))
+                except OSError:
+                    mine = str(mapping.get("local_ip", ""))
+                ok = portmap.renew_port(int(mapping.get("port", 0)), location, mine)
+                if not ok:
+                    self.port_map = {**self.port_map, "renew_failed": True,
+                                     "message": "Your router stopped keeping the port open (it may have restarted). Press Test my router, or restart the server."}
+                elif self.port_map.get("renew_failed"):
+                    self.port_map = {k: v for k, v in self.port_map.items() if k != "renew_failed"}
         threading.Thread(target=loop, daemon=True, name="router-renew").start()
 
     def _tidy_old_router_mapping(self) -> None:
@@ -2499,6 +2527,12 @@ class LauncherApp:
             from server import cli
             if not cli._is_running(self.data_dir / "server"):
                 self._close_router_mapping()
+                return
+            rec = self.catalog.data.get("router_mapped") or {}
+            if rec.get("location") and rec.get("port"):       # the server outlived the app: keep its port open again
+                self.port_map = {"state": "mapped", "port": int(rec["port"]), "location": rec["location"], "local_ip": rec.get("local_ip", ""),
+                                 "external_ip": rec.get("external_ip", ""), "kind": "public", "message": "Port still open on your router."}
+                self._start_router_renewal(self.port_map)
         except Exception:
             pass
 
@@ -2545,7 +2579,7 @@ class LauncherApp:
         state = self.data_dir / "server"
         s = self.catalog.settings()
         if self.fallback_active and self._fallback_code():
-            return {"code": self._fallback_code(), "address": s["server_host"], "port": s["server_port"], "fingerprint": s.get("server_fingerprint"),
+            return {"code": self._fallback_code(), "address": s["server_host"], "port": s["server_remote_port"], "fingerprint": s.get("server_fingerprint"),
                     "rotated": False, "reach": "Your own connection can't be reached from outside, so you and your friends meet on the shared server. This is its code.",
                     "reach_state": "fallback"}
         rotated = False
@@ -2579,17 +2613,24 @@ class LauncherApp:
             found = servercode.decode(str(body.get("code", "")))
         except servercode.CodeError as exc:
             raise AppError(str(exc)) from exc
-        for key, value in (("server_host", found["host"]), ("server_port", found["port"]),
+        keys = ("server_host", "server_remote_port", "server_tls", "server_fingerprint", "server_access_key")
+        before = {k: self.catalog.settings()[k] for k in keys}
+        for key, value in (("server_host", found["host"]), ("server_remote_port", found["port"]),
                            ("server_tls", True), ("server_fingerprint", found["fingerprint"]), ("server_access_key", found.get("key", ""))):
             self.catalog.set_setting(key, value)
+
+        def undo(message: str) -> dict:                   # a wrong code must not leave the app pointed at a dead server
+            for k, v in before.items():
+                self.catalog.set_setting(k, v)
+            return {"connected": False, "host": found["host"], "message": message + " Nothing was changed: you are still on your previous server."}
         status = self.api_server_status({})
         if status.get("online"):      # the key is only checked on browse/create/join, so ask for something it guards
             try:
                 self._client().call({"operation": "browse"})
             except LobbyClientError as exc:
-                return {"connected": False, "host": found["host"], "message": str(exc)}
+                return undo(str(exc))
         if not status.get("online"):
-            return {"connected": False, "host": found["host"], "message": status.get("message") or "That server did not answer. Check the code, and that the host has started it with 'Let friends connect'."}
+            return undo(status.get("message") or "That server did not answer. Check the code, and that the host has started it with 'Let friends connect'.")
         return {"connected": True, "host": found["host"]}
 
     def api_server_status(self, body: dict) -> dict:

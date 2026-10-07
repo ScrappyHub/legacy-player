@@ -47,15 +47,18 @@ class NativeOverlay:
         self._thread: threading.Thread | None = None
         self._ready = threading.Event()
         self._open = False
+        self._lock = threading.RLock()
+        self._stopping = False
         self.error = ""
 
     # --- called from any thread ---------------------------------------------------------------------------
     def toggle(self) -> bool:
         """Show the overlay, or hide it if it is showing. Returns whether it is open afterwards."""
-        self._ensure()
-        self._open = not self._open
-        self._q.put("show" if self._open else "hide")
-        return self._open
+        with self._lock:
+            self._ensure()
+            self._open = not self._open
+            self._q.put("show" if self._open else "hide")
+            return self._open
 
     def close(self) -> None:
         if self._thread and self._open:
@@ -66,14 +69,21 @@ class NativeOverlay:
         return self._open
 
     def stop(self) -> None:
-        if self._thread:
-            self._q.put("quit")
+        with self._lock:
+            if self._thread:
+                self._stopping = True
+                self._open = False
+                self._q.put("quit")
 
     def _ensure(self) -> None:
-        if self._thread and self._thread.is_alive():
+        if self._thread and self._thread.is_alive() and not self._stopping:
             return
         if tk is None:
             raise RuntimeError("tkinter is not available")
+        if self._thread and self._thread.is_alive():          # one that was asked to quit: let it finish first
+            self._thread.join(2.0)
+        self._stopping = False
+        self.error = ""
         self._ready.clear()
         self._thread = threading.Thread(target=self._run, daemon=True, name="overlay-window")
         self._thread.start()
@@ -112,6 +122,15 @@ class NativeOverlay:
 
     def _pump(self) -> None:
         try:
+            self._pump_once()
+        except Exception as exc:                        # one bad frame must never end the overlay for the rest of the session
+            self.error = ""
+            print(f"overlay: {type(exc).__name__}: {exc}", flush=True)
+        if not self._stopping:
+            self.root.after(60, self._pump)
+
+    def _pump_once(self) -> None:
+        try:
             while True:
                 cmd = self._q.get_nowait()
                 if cmd == "show":
@@ -127,6 +146,7 @@ class NativeOverlay:
                 elif cmd == "hide":
                     self.win.withdraw()
                 elif cmd == "quit":
+                    self._stopping = True
                     self.root.destroy()
                     return
         except queue.Empty:
@@ -135,7 +155,6 @@ class NativeOverlay:
             self._poll_pad()
             if time.time() - getattr(self, "_drawn", 0) > 1.0:
                 self._tick()
-        self.root.after(60, self._pump)
 
     def _signature(self, s: dict) -> str:
         g, r = s.get("game") or {}, s.get("room") or {}
@@ -152,7 +171,7 @@ class NativeOverlay:
             self._hide()                                    # the game ended: nothing left to manage
             return
         if self._signature(s) != getattr(self, "_sig", None):
-            self._draw()
+            self._draw(force=True)                      # the card grew or shrank (a room appeared): resize the window to fit
             return
         game = s.get("game")
         if game and game.get("since") and getattr(self, "_timer", None) is not None:

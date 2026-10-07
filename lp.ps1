@@ -6,7 +6,7 @@ param(
     [Parameter(Position = 0)][string]$Command = 'help',
     [Parameter(Position = 1)][string]$Tag = '',
     [string]$Repo = 'ScrappyHub/legacy-player',
-    [string]$Token = $env:GITHUB_TOKEN,
+    [string]$Token = "",
     [switch]$NoLaunch
 )
 $usage = @'
@@ -80,7 +80,8 @@ switch ($Command.ToLower()) {
     'source' {
         $py = Get-Command python -ErrorAction SilentlyContinue
         if (-not $py) { throw 'Python 3.13+ was not found. Install it from python.org (tick "Add to PATH") and try again.' }
-        & python -m launcher
+        Push-Location $PSScriptRoot                  # the repository folder, wherever the command was typed
+        try { & python -m launcher } finally { Pop-Location }
     }
     default { Write-Host $usage }
 }

@@ -35,7 +35,7 @@ class ReleaseFilesTests(unittest.TestCase):
 
     def test_workflow_publishes_everything_in_the_release_folder_and_checks_the_tag(self):
         wf = text("tools/release.workflow.yml")
-        self.assertIn("dist/release/*", wf)
+        self.assertIn("Get-ChildItem dist/release", wf)
         self.assertIn("does not match VERSION", wf)
 
     def test_cli_has_its_commands(self):
@@ -52,3 +52,21 @@ class ReleaseFilesTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class VersionExamplesTests(unittest.TestCase):
+    def test_version_examples_match_version(self):
+        import re
+        from launcher.version import VERSION
+        for rel in ("README.md", "docs/RELEASE.md", "lp.ps1", "install.ps1"):
+            for m in re.findall(r"v\d+\.\d+\.\d+", text(rel)):
+                self.assertEqual(m, "v" + VERSION, rel)
+
+
+class FirewallExactPortTests(unittest.TestCase):
+    def test_short_port_does_not_match_longer_one(self):
+        from unittest import mock
+        from launcher import firewall
+        out = mock.Mock(returncode=0, stdout="LocalPort:                           8765\n")
+        with mock.patch.object(firewall, "supported", return_value=True):
+            self.assertFalse(firewall.status(87, run=lambda *a, **k: out)["allowed"])

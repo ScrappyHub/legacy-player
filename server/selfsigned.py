@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import os
+import threading
 import secrets
 import time
 from pathlib import Path
@@ -156,16 +158,23 @@ def make_certificate(common_name: str = "legacy-player", days: int = 3650, bits:
     return _pem("CERTIFICATE", cert), _pem("RSA PRIVATE KEY", private), hashlib.sha256(cert).hexdigest()
 
 
+_CERT_LOCK = threading.Lock()
+
+
 def ensure_certificate(folder: Path, common_name: str = "legacy-player") -> tuple[Path, Path, str]:
     """Create cert.pem/key.pem in folder if missing; return their paths and the fingerprint."""
     folder = Path(folder)
     folder.mkdir(parents=True, exist_ok=True)
     cert_path, key_path = folder / "cert.pem", folder / "key.pem"
-    if not (cert_path.exists() and key_path.exists()):
-        cert_pem, key_pem, _ = make_certificate(common_name)
-        key_path.touch(mode=0o600)
-        key_path.write_text(key_pem, encoding="utf-8")
-        cert_path.write_text(cert_pem, encoding="utf-8")
+    with _CERT_LOCK:                                   # two callers must never write one half each
+        if not (cert_path.exists() and key_path.exists()):
+            cert_pem, key_pem, _ = make_certificate(common_name)
+            tmp_key, tmp_cert = key_path.with_suffix(".tmp"), cert_path.with_suffix(".tmp")
+            tmp_key.touch(mode=0o600)
+            tmp_key.write_text(key_pem, encoding="utf-8")
+            tmp_cert.write_text(cert_pem, encoding="utf-8")
+            os.replace(tmp_key, key_path)
+            os.replace(tmp_cert, cert_path)
     return cert_path, key_path, fingerprint_of(cert_path)
 
 

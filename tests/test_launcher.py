@@ -623,7 +623,7 @@ class MultiplayerFlowTests(unittest.TestCase):
         host = self.apps["Host"]
         host.catalog.set_setting("server_port", 1)
         host.catalog.set_setting("server_autostart", False)          # otherwise the app would start the server itself
-        with self.assertRaisesRegex(AppError, "Is it running"):
+        with self.assertRaisesRegex(AppError, "may not be running"):
             host.api_mp_host({"id": self.gid(host)})
 
 

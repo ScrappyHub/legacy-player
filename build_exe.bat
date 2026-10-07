@@ -28,13 +28,13 @@ if exist dist\LegacyPlayer.exe (
   echo Quit Legacy Player from the tray icon, or end LegacyPlayer.exe in Task Manager ^(run this window as administrator if it was started that way^), then run this again.
   exit /b 1
 )
-python -m pip install --upgrade pip pyinstaller || exit /b 1
+python -m pip install --upgrade pip pyinstaller==6.22.3 psutil==7.2.2 || exit /b 1
 python -m PyInstaller --noconfirm --clean --onefile --windowed --name LegacyPlayer --icon "launcher\ui\legacy-player.ico" ^
   --paths . ^
   --add-data "launcher\ui;launcher\ui" ^
   --collect-submodules launcher --collect-submodules server ^
   --collect-submodules adapters --collect-submodules runtime --collect-submodules frontend ^
-  --collect-submodules tools --add-data "game_packs;game_packs" ^
+  --hidden-import tkinter --hidden-import psutil --collect-submodules tools --add-data "game_packs;game_packs" ^
   legacy_player_app.py || exit /b 1
 echo.
 del /f /q dist\LegacyPlayer.old-*.exe >nul 2>&1

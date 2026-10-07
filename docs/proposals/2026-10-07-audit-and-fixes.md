@@ -207,7 +207,7 @@ list is short and should be extended.
 Fixed:
 - **Overlay:** every settings save left another controller watcher running (one press then fired several times and toggled the overlay shut); the shortcut thread could race on restart. Each start now has its own stop signal, waits until the shortcut is registered, and joins the old threads. Controllers are tracked by slot.
 - **Running game:** nothing cleared it when a game closed itself, so Force quit could have been aimed at a reused process number. A game is now only "running" while that exact process (number plus start time, `launcher/procs.py`) is alive; netplay launches are tracked too; the overlay says so if no browser can open it and ignores a second press while it is starting.
-- **Windows window code:** handle types declared (64-bit safe), DPI awareness set once, switching back to Windowed restores the title bar and size, Full screen from the overlay works without a chosen screen (uses the screen the game is on), one placement at a time. No `psutil` needed any more.
+- **Windows window code:** handle types declared (64-bit safe), DPI awareness set once, switching back to Windowed restores the title bar and size, Full screen from the overlay works without a chosen screen (uses the screen the game is on), one placement at a time. `psutil` is only used by the Dolphin memory probe; the packaged exe bundles it.
 - **Uninstall:** refuses a data folder that is a drive root, your home, one of your own folders, or does not look like Legacy Player's; keeps an emulator folder that also holds your saves (for example a portable Dolphin memory card) when you keep saves; the doctor asks about the save and backup folders he made in places you chose and removes only the exact shapes he creates.
 - **Settings file:** a damaged or wrongly typed file is set aside under a dated name instead of crashing; saves are serialized and retried on Windows.
 - **Engine updates:** the old install is kept until the new one is in place and its saves/settings are carried over.
@@ -268,3 +268,9 @@ Still true: UPnP maps "forever" until closed; the firewall rule is for any profi
 - Legacy Player minimises when you start a game and comes back (in front) when the game closes. Setting "Minimise Legacy Player while a game runs" (Playing), on by default. It only restores the window if it minimised it.
 - build_exe.bat deletes the old `dist\LegacyPlayer.old-*.exe` leftovers (they were the renamed copy of a locked exe).
 - Not verified on real Windows: the panel over a full-screen game (exclusive full screen hides any overlay; borderless works), keyboard focus on the panel, controller navigation, minimise/restore timing.
+
+## Hardening round 4 (0.7.6)
+
+Release and connection audit. Fixed: autostart no longer restarts a server the player stopped or while quitting; a failed "connect by code" rolls back to the previous server, and remote servers use their own port (`server_remote_port`) instead of the local one; the router mapping renewal recomputes the local address; the firewall check matches the exact port and program; the server caps connections per address and when busy, with a TLS handshake timeout; the self-signed certificate is created under a lock; the quit/reopen path is debounced; window matching is limited to the right class; the release workflow publishes every file in `dist/release`; version examples in the docs and scripts now match `VERSION` (tested).
+
+Still open: per-address invite lockout, access-key throttling, log scrubber gaps, IPv6/hostname codes, unsigned releases, no hosted shared server or report receiver yet. Not verified on real Windows: tray behaviour, overlay, firewall elevation, UPnP, the installer and `lp` script, the GitHub release run.

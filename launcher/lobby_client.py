@@ -98,7 +98,7 @@ class LobbyClient:
         except (OSError, ssl.SSLError) as exc:
             raise LobbyClientError(
                 f"Could not reach the multiplayer server at {self.host}:{self.port} ({exc}). "
-                "Is it running? Start it with: python -m server.cli start --detach"
+                "The server may not be running, or a firewall or router is blocking it (ask the host to check Windows Firewall and their router), or the server code is out of date."
             ) from exc
         try:
             response = json.loads(line)

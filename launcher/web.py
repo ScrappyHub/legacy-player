@@ -16,6 +16,11 @@ UI_FILE = Path(__file__).parent / "ui" / "index.html"
 MAX_BODY = 1024 * 1024    # room for a shrunk cover picture (the page sends it as base64)
 
 
+def _same(a: str, b: str) -> bool:
+    """Constant-time comparison that also copes with non-ASCII text (compare_digest raises on it)."""
+    return secrets.compare_digest(str(a).encode("utf-8"), str(b).encode("utf-8"))
+
+
 QUIT_FAREWELL_SECONDS = 6.0               # how long the window keeps answering so it can say goodbye
 WINDOW_TITLE_MARK = "Legacy Player \u2014"      # every app window's title starts like this (the overlay's does not)
 
@@ -109,7 +114,7 @@ def make_handler(app: LauncherApp, token: str, port_getter, launch: Launch | Non
                 return self._send(200, page.encode(), "text/html; charset=utf-8")
             if self.path.startswith("/cover/"):
                 u = parsed
-                if not secrets.compare_digest(parse_qs(u.query).get("t", [""])[0], token):
+                if not _same(parse_qs(u.query).get("t", [""])[0], token):
                     return self._json(403, {"error": "missing or wrong token"})
                 found = app.cover_file(u.path[len("/cover/"):].removesuffix(".png"))
                 if found is None:
@@ -129,13 +134,13 @@ def make_handler(app: LauncherApp, token: str, port_getter, launch: Launch | Non
             if not self._host_ok():
                 return self._json(403, {"error": "bad host"})
             if self.path == "/__wake" and launch is not None:
-                if not secrets.compare_digest(self.headers.get("X-LP-Wake", ""), launch.wake_secret) or launch.on_wake is None:
+                if not _same(self.headers.get("X-LP-Wake", ""), launch.wake_secret) or launch.on_wake is None:
                     return self._json(403, {"error": "no"})
                 threading.Thread(target=launch.on_wake, daemon=True).start()
                 return self._json(200, {"ok": True})
             if not self.path.startswith("/api/"):
                 return self._json(404, {"error": "not found"})
-            if not secrets.compare_digest(self.headers.get("X-LP-Token", ""), token):
+            if not _same(self.headers.get("X-LP-Token", ""), token):
                 return self._json(403, {"error": "missing or wrong token"})
             if "application/json" not in (self.headers.get("Content-Type") or ""):
                 return self._json(415, {"error": "JSON required"})
@@ -223,18 +228,26 @@ def serve(app: LauncherApp, port: int = 8780, open_browser: bool = True, opener=
     if exit_when_closed and opener is not None and sys.platform == "win32":
         from .tray import TrayController
 
+        reopen_lock = threading.Lock()
+        reopened = [0.0]
+
         def reopen() -> None:
-            if not app.tray_mode and show_existing():                            # already open: bring that one forward
-                return
-            app.last_ping, app.bye_at, app.tray_mode = time.time(), 0.0, False   # fresh grace while the window loads
-            opener(url_for_window())
+            with reopen_lock:                                                    # a double-click is two clicks: one window only
+                if time.time() - reopened[0] < 2.0:
+                    return
+                if not app.tray_mode and show_existing():                        # already open: bring that one forward
+                    reopened[0] = time.time()
+                    return
+                reopened[0] = time.time()
+                app.last_ping, app.bye_at, app.tray_mode = time.time(), 0.0, False   # fresh grace while the window loads
+                opener(url_for_window())
         tray = TrayController(app, reopen)
         if not tray.start():
             tray = None
         from .overlay import Listeners
         from .shell import make_overlay_opener
-        overlay_window = make_overlay_opener(app.data_dir)
-        app.overlay_opener = lambda: overlay_window(url_for_window() + "&overlay=1")   # returns False when no browser can open it
+        browser_overlay = make_overlay_opener(app.data_dir)
+        app.overlay_opener = lambda: browser_overlay(url_for_window() + "&overlay=1")   # returns False when no browser can open it
         from . import overlay_window
         if overlay_window.available():                 # the real overlay panel (frameless, always on top); the browser window is the fallback
             from . import overlay as overlaymod

@@ -1,6 +1,6 @@
 name: release
 
-# Push a tag like v0.7.0 (git tag v0.7.0 && git push origin v0.7.0) to build the Windows app and publish it as a release.
+# Push a tag like v0.7.6 (git tag v0.7.6 && git push origin v0.7.6) to build the Windows app and publish it as a release.
 on:
   push:
     tags: ['v*']
@@ -23,6 +23,9 @@ jobs:
         run: |
           $v = (Select-String -Path launcher/version.py -Pattern '^VERSION\s*=\s*"([^"]+)"').Matches[0].Groups[1].Value
           if ("v$v" -ne "${{ github.ref_name }}") { Write-Error "Tag ${{ github.ref_name }} does not match VERSION $v in launcher/version.py"; exit 1 }
+      - name: Python has what the app needs bundled
+        shell: pwsh
+        run: python -c "import tkinter, ctypes; print('tkinter', tkinter.TkVersion)"
       - name: Build the zip
         shell: pwsh
         run: ./tools/package_release.ps1
@@ -38,13 +41,17 @@ jobs:
           if ($p.HasExited) { Write-Error "LegacyPlayer.exe exited early (code $($p.ExitCode))"; exit 1 }
           $log = Join-Path $env:LOCALAPPDATA 'LegacyPlayer/app.log'
           if ((Test-Path $log) -and (Select-String -Path $log -Pattern 'Traceback' -Quiet)) { Get-Content $log; exit 1 }
-          $p.Kill()
+          taskkill /f /t /pid $p.Id | Out-Null      # the one-file exe starts a child: end both
       - name: Publish the release
         if: startsWith(github.ref, 'refs/tags/v')
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${{ github.ref_name }}" dist/release/* --title "Legacy Player ${{ github.ref_name }}" --generate-notes
+        run: |
+          # PowerShell does not expand * for a program like gh, so list the files ourselves
+          $files = Get-ChildItem dist/release -File | ForEach-Object { $_.FullName }
+          if (-not $files) { Write-Error "Nothing to publish in dist/release"; exit 1 }
+          gh release create "${{ github.ref_name }}" @files --title "Legacy Player ${{ github.ref_name }}" --generate-notes
       - name: Keep the build for manual runs
         if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
         uses: actions/upload-artifact@v4

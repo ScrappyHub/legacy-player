@@ -14,7 +14,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Run Legacy Player release verification")
     parser.add_argument("--require-dolphin", action="store_true")
     args = parser.parse_args()
-    run(sys.executable, "-m", "compileall", "-q", "adapters", "runtime", "server", "tools", "tests")
+    run(sys.executable, "-m", "compileall", "-q", "adapters", "runtime", "server", "tools", "tests", "launcher", "frontend", "legacy_player_app.py")
     run(sys.executable, "-m", "unittest", "discover", "-s", "tests", "-v")
     run(sys.executable, "tools/validate_repository.py")
     if args.require_dolphin:

@@ -1,4 +1,5 @@
 import unittest
+from unittest import mock
 
 from launcher import servercode
 from server.lobby import LobbyError
@@ -82,7 +83,13 @@ class AppConnectTests(unittest.TestCase):
             result = app.api_server_connect({"code": code})
             self.assertFalse(result["connected"])
             s = app.catalog.settings()
-            self.assertEqual(("10.1.2.3", 9100, True, "aaaaaaaaaa"), (s["server_host"], s["server_port"], s["server_tls"], s["server_fingerprint"]))
+            self.assertEqual(("127.0.0.1", False), (s["server_host"], s["server_tls"]))     # failed connect rolls back
+            self.assertIn("Nothing was changed", result["message"])
+            app.api_server_status = lambda body: {"online": True}
+            app._client = lambda: mock.Mock(call=lambda req: {})
+            self.assertTrue(app.api_server_connect({"code": code})["connected"])
+            s = app.catalog.settings()
+            self.assertEqual(("10.1.2.3", 9100, True, "aaaaaaaaaa", 8765), (s["server_host"], s["server_remote_port"], s["server_tls"], s["server_fingerprint"], s["server_port"]))
             with self.assertRaises(AppError):
                 app.api_server_connect({"code": "nonsense"})
             app.api_server_connect({"local": True})
@@ -540,6 +547,7 @@ class TrayTests(unittest.TestCase):
         self.assertNotIn("Stop server", labels)
         tray._state = {"running": True, "players": 3, "live": 2, "open_rooms": 1, "cert": True, "known": True, "shared": True}
         app.room = {"game": "Mario", "invite_code": "ABCDE-FGHIJ", "role": "host"}
+        app.tray_mode = True                       # only then is "Open Legacy Player" offered
         items = tray.menu()
         labels = [i[1] for i in items if i]
         self.assertIn("Server running  ·  3 players  ·  2 rooms", labels)
@@ -574,6 +582,16 @@ class TrayTests(unittest.TestCase):
             allow.reset_mock()
             tray.command("server_start")
             allow.assert_not_called()
+
+    def test_open_item_only_when_the_app_lives_in_the_tray(self):
+        app, tray = self._tray()
+        tray._state = {"running": False, "players": 0, "live": 0, "open_rooms": 0, "cert": False, "known": True, "shared": False}
+        with mock.patch.object(tray, "window_hidden", return_value=False):
+            items = tray.menu()
+            self.assertNotIn("Open Legacy Player", [i[1] for i in items if i])
+            self.assertIsNotNone(items[0], "no stray separator at the top")
+        with mock.patch.object(tray, "window_hidden", return_value=True):
+            self.assertEqual("Open Legacy Player", tray.menu()[0][1])
 
     def test_opening_the_menu_never_waits_on_the_server(self):
         import time

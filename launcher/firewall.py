@@ -7,6 +7,7 @@ systems everything here says "not needed".
 """
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 
@@ -50,7 +51,11 @@ def status(port: int, run=_run) -> dict:
     except (OSError, subprocess.SubprocessError):
         return {"supported": True, "allowed": False, "message": "Could not read the Windows Firewall."}
     text = out.stdout or ""
-    allowed = out.returncode == 0 and f"{int(port)}" in text          # (words like "Allow" are translated on other languages)
+    ports = re.findall(r"^\s*LocalPort:\s*(\S+)", text, re.M)          # exact port, not a substring (87 must not match 8765); other Windows languages: bare number
+    port_ok = str(int(port)) in [x.strip() for x in ports] or (not ports and re.search(rf"(?<!\d){int(port)}(?!\d)", text) is not None)
+    program = rule_args(port)[-1][len("program="):] if rule_args(port)[-1].startswith("program=") else ""
+    program_ok = (not program) or (program.lower() in text.lower())      # a rule left by an older install location does not count
+    allowed = out.returncode == 0 and port_ok and program_ok
     return {"supported": True, "allowed": allowed,
             "message": "Windows Firewall already lets friends in." if allowed else "Windows Firewall has no rule for your server yet."}
 

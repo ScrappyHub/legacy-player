@@ -19,6 +19,15 @@ from server.state_store import StateStore
 MAX_REQUEST_BYTES = 64 * 1024
 MAX_REQUESTS_PER_CONNECTION = 256
 CLIENT_IDLE_SECONDS = 30
+MAX_CONNECTIONS_PER_IP = 16
+_PER_IP: dict[str, int] = {}
+
+
+def _is_loopback(host: str) -> bool:
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
 
 
 async def handle_client(
@@ -29,8 +38,27 @@ async def handle_client(
     control: ServerControl | None = None,
     relay: Relay | None = None,
 ) -> None:
+    peer = writer.get_extra_info("peername")
+    ip = peer[0] if peer else ""
+    counted = False
     if connection_limit is not None:
+        if connection_limit.locked():                        # full: say so at once instead of queueing every stranger forever
+            writer.write(b'{"ok":false,"error":"the server is busy, try again in a moment"}\n')
+            try:
+                await writer.drain()
+            except (OSError, ConnectionError):
+                pass
+            writer.close()
+            return
         await connection_limit.acquire()
+    if ip and not _is_loopback(ip):
+        if _PER_IP.get(ip, 0) >= MAX_CONNECTIONS_PER_IP:     # one address cannot hold every slot
+            if connection_limit is not None:
+                connection_limit.release()
+            writer.close()
+            return
+        _PER_IP[ip] = _PER_IP.get(ip, 0) + 1
+        counted = True
     try:
         request_count = 0
         while True:
@@ -91,6 +119,10 @@ async def handle_client(
             pass
         if connection_limit is not None:
             connection_limit.release()
+        if counted:
+            _PER_IP[ip] = max(0, _PER_IP.get(ip, 1) - 1)
+            if not _PER_IP[ip]:
+                _PER_IP.pop(ip, None)
 
 
 async def _periodic(seconds: float, action) -> None:
@@ -143,6 +175,7 @@ async def serve(
         port,
         limit=MAX_REQUEST_BYTES * 2,
         ssl=ssl_context,
+        ssl_handshake_timeout=8 if ssl_context is not None else None,      # a stranger that never finishes the handshake cannot hold a slot
     )
     bound = server.sockets[0].getsockname()
     store.write_info(

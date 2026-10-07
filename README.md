@@ -68,7 +68,7 @@ GameCube and Wii work per game and need a game pack (Mario Party 4 is the first)
 
 ## Run from source
 
-Python 3.13+ and `pip install psutil`:
+Python 3.13+ (the Dolphin memory probe also needs `pip install psutil`; the packaged exe already has it):
 
 ```powershell
 python -m launcher --games "D:\Games"       # opens the app; add folders inside it too
