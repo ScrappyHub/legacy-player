@@ -17,9 +17,16 @@ exit /b %RC%
 :build
 python --version || (echo Python was not found. Install Python 3.13+ from python.org and try again. & exit /b 1)
 rem A running copy locks dist\LegacyPlayer.exe ("Access is denied"), so close it first.
-taskkill /f /im LegacyPlayer.exe >nul 2>&1
+taskkill /f /t /im LegacyPlayer.exe
 if exist dist\LegacyPlayer.exe del /f /q dist\LegacyPlayer.exe
-if exist dist\LegacyPlayer.exe (echo dist\LegacyPlayer.exe is still locked. Close Legacy Player and any antivirus scan of the dist folder, then run this again. & exit /b 1)
+rem Windows lets a running exe be renamed even though it can not be deleted, so move a stubborn one aside.
+if exist dist\LegacyPlayer.exe move /y dist\LegacyPlayer.exe dist\LegacyPlayer.old-%RANDOM%.exe >nul
+if exist dist\LegacyPlayer.exe (
+  echo dist\LegacyPlayer.exe can not be removed or renamed. Something still holds it:
+  tasklist /fi "imagename eq LegacyPlayer.exe"
+  echo Quit Legacy Player from the tray icon, or end LegacyPlayer.exe in Task Manager ^(run this window as administrator if it was started that way^), then run this again.
+  exit /b 1
+)
 python -m pip install --upgrade pip pyinstaller || exit /b 1
 python -m PyInstaller --noconfirm --clean --onefile --windowed --name LegacyPlayer --icon "launcher\ui\legacy-player.ico" ^
   --paths . ^
