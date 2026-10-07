@@ -91,3 +91,17 @@ def add_game_folders(exe: str | Path, folders: list, *, recursive: bool = True) 
 def add_game_folder(exe: str | Path, folder: str | Path) -> dict:
     out = add_game_folders(exe, [folder])
     return {"added": bool(out["added"]), **{k: v for k, v in out.items() if k in {"file", "why"}}}
+
+
+def missing_folders(exe: str | Path, folders: list) -> dict:
+    """Read only. Which of these folders Dolphin's game list does not have yet. `known` is False when its settings can't be found."""
+    try:
+        user = find_user_dir(exe)
+        if user is None:
+            return {"known": False, "missing": []}
+        target = user / "Config" / "Dolphin.ini"
+        text = target.read_text(encoding="utf-8", errors="replace") if target.exists() else ""
+        have = {_norm(m.group(2)) for l in text.splitlines() if (m := _KEY.match(l))}
+        return {"known": True, "missing": [str(f) for f in folders if _norm(Path(f).as_posix()) not in have]}
+    except OSError:
+        return {"known": False, "missing": []}

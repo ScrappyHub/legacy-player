@@ -1622,6 +1622,16 @@ class LauncherApp:
                 else:
                     issues.append({"key": "bios:" + kind, "kind": "bios", "text": f"{engines.BIOS[kind]['name']} not found; {v['name']} needs it.",
                                    "dismissed": ("bios:" + kind) in dismissed})
+        dolphin_exe = found.get("dolphin", {}).get("path")
+        gc_folders = sorted({str(Path(g["path"]).parent) for g in self.games.values() if g.get("console") in {"gamecube", "wii"}})
+        if dolphin_exe and gc_folders:
+            gap = dolphinpaths.missing_folders(dolphin_exe, gc_folders)
+            if gap["known"] and gap["missing"]:
+                issues.append({"key": "dolphin-folders", "kind": "dolphin-folders", "dismissed": "dolphin-folders" in dismissed,
+                               "text": f"Dolphin's game list is missing {len(gap['missing'])} of your GameCube/Wii folders, so online play can say 'game not found'."})
+            if not self.catalog.settings()["allow_direct_connections"]:
+                issues.append({"key": "dolphin-direct", "kind": "dolphin-direct", "dismissed": "dolphin-direct" in dismissed,
+                               "text": "Dolphin online play connects players directly, and 'Allow direct connections' is off, so it can't start."})
         active = [i for i in issues if not i["dismissed"]]
         if not self.games or not have:
             mood = "sad"

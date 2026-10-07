@@ -850,7 +850,7 @@ function doctorCard(dr,opts){opts=opts||{};
     h("button",{class:"btn primary",style:"margin:10px 3px 0;width:calc(100% - 6px)",onclick:()=>scanEverything(refresh)},"Scan everything"));
   box.replaceChildren(h("div",{class:"row",style:"align-items:center;flex-wrap:nowrap;gap:14px"},opts.office?null:pixels(doctorRows(dr.mood),104,"doctor "+dr.mood),report),
    ...(opts.noWorries?[]:active).map(i=>h("div",{class:"worry"},h("span",{class:"grow"},i.text),
-    i.kind==="core"?h("button",{class:"btn",onclick:()=>{const el=$("#supplies");if(el)el.scrollIntoView({behavior:"smooth"})}},"Fix"):(i.kind==="emulator"||i.kind==="bios")?h("button",{class:"btn",onclick:()=>nav("engines")},"Fix"):null,
+    i.kind==="dolphin-folders"||i.kind==="dolphin-direct"?h("button",{class:"btn",onclick:()=>fixDolphin(i,refresh)},"Fix"):i.kind==="core"?h("button",{class:"btn",onclick:()=>{const el=$("#supplies");if(el)el.scrollIntoView({behavior:"smooth"})}},"Fix"):(i.kind==="emulator"||i.kind==="bios")?h("button",{class:"btn",onclick:()=>nav("engines")},"Fix"):null,
     h("button",{class:"btn",title:"I do not want to install that. Stop worrying about it.",onclick:async()=>{await act(()=>api("doctor_dismiss",{key:i.key}));refresh()}},"I don't need it"))),
    quiet.length&&!opts.noWorries?h("div",{class:"small muted",style:"margin-top:6px"},quiet.length+" worr"+(quiet.length>1?"ies":"y")+" set aside. ",h("a",{href:"#",onclick:async e=>{e.preventDefault();for(const q of quiet)await api("doctor_dismiss",{key:q.key,undo:true});refresh()}},"Bring back")):null);
   if(opts.onDraw)opts.onDraw(dr)};
@@ -2126,12 +2126,15 @@ function showRx(){const scene=$(".office");if(!scene||$(".rx"))return;const n=S.
  const body=n>=10?["Stay home.","Play video games.","(Stop messing with me.)"]:n>=6?["Stay home.","Play games.","Let me sleep."]:n>=3?["Stay home.","Play games."]:["Stay home.","Play video games.","Repeat daily."];
  scene.append(h("div",{class:"rx"},h("div",{class:"rxh"},"℞ PRESCRIPTION"+(n>2?" #"+n:"")),...body.map(x=>h("div",{},x)),h("div",{class:"rxs"},"— Doc")))}
 const GRADS=[["#3b6bff","#7a5cff"],["#d9468f","#ff8a5c"],["#0aa57a","#2bd1b0"],["#7b4dff","#4fc3ff"],["#e8a21a","#ff6a3d"],["#2b8cff","#3be0a8"]];
+async function fixDolphin(i,refresh){
+ if(i.kind==="dolphin-folders"){const r=await act(()=>api("dolphin_folders",{}));if(r){toast(r.added?"Added "+r.added+" game folder(s) to Dolphin.":"Dolphin already has them.");refresh()}}
+ else{if(!await ask("Dolphin online play lets the other players see your address. Allow direct connections?","Allow"))return;if(await act(()=>api("settings",{key:"allow_direct_connections",value:true}),"Allowed"))refresh()}}
 function caseCards(dr,refresh){const act=dr.issues.filter(i=>!i.dismissed),quiet=dr.issues.filter(i=>i.dismissed);
  const ic={core:AVATARS.gem,emulator:AVATARS.controller,bios:AVATARS.ghost};
- const fix=i=>i.kind==="core"?{t:"Install the core",fn:()=>{const el=$("#supplies");if(el)el.scrollIntoView({behavior:"smooth"});toast("Press “Install missing cores” in the supply cabinet","")}}:{t:i.kind==="bios"?"Find BIOS files":"Find an emulator",fn:()=>nav("engines")};
+ const fix=i=>i.kind==="dolphin-folders"||i.kind==="dolphin-direct"?{t:i.kind==="dolphin-folders"?"Add the folders":"Allow it",fn:()=>fixDolphin(i,refresh)}:i.kind==="core"?{t:"Install the core",fn:()=>{const el=$("#supplies");if(el)el.scrollIntoView({behavior:"smooth"});toast("Press “Install missing cores” in the supply cabinet","")}}:{t:i.kind==="bios"?"Find BIOS files":"Find an emulator",fn:()=>nav("engines")};
  return h("div",{},act.length?h("div",{class:"cases"},...act.map((i,n)=>{const g=GRADS[n%GRADS.length],f=fix(i);
    return h("div",{class:"case",style:`--c1:${g[0]};--c2:${g[1]}`},h("span",{class:"stamp"},"NEEDS A DOCTOR"),pixels((ic[i.kind]||AVATARS.gem).rows,44,"caseicon"),
-    h("div",{class:"ct"},i.kind==="core"?"Missing core":i.kind==="bios"?"Missing BIOS":"Missing emulator"),h("p",{},i.text),
+    h("div",{class:"ct"},i.kind==="dolphin-folders"?"Dolphin can't see your games":i.kind==="dolphin-direct"?"Dolphin online is switched off":i.kind==="core"?"Missing core":i.kind==="bios"?"Missing BIOS":"Missing emulator"),h("p",{},i.text),
     h("div",{class:"row",style:"gap:8px"},h("button",{class:"btn primary",onclick:f.fn},f.t),
      h("button",{class:"btn",title:"I do not want to install that. Stop worrying about it.",onclick:async()=>{await act(()=>api("doctor_dismiss",{key:i.key}));refresh()}},"I don't need it")))})):null,
   quiet.length?h("div",{class:"small muted",style:"margin-top:8px"},quiet.length+" worr"+(quiet.length>1?"ies":"y")+" set aside. ",h("a",{href:"#",onclick:async e=>{e.preventDefault();for(const q of quiet)await api("doctor_dismiss",{key:q.key,undo:true});refresh()}},"Bring back")):null)}

@@ -78,3 +78,41 @@ class DolphinPathsTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DoctorTests(unittest.TestCase):
+    def test_missing_folders_read_only(self):
+        with tempfile.TemporaryDirectory() as t:
+            user = Path(t)
+            (user / "Config").mkdir()
+            ini = user / "Config" / "Dolphin.ini"
+            ini.write_text("[General]\nISOPaths = 1\nISOPath0 = C:/Have\n")
+            with mock.patch("launcher.dolphinpaths.find_user_dir", return_value=user):
+                out = dolphinpaths.missing_folders("d.exe", ["C:/Have", "C:/Need"])
+                self.assertEqual(out, {"known": True, "missing": ["C:/Need"]})
+            self.assertEqual(ini.read_text(), "[General]\nISOPaths = 1\nISOPath0 = C:/Have\n")
+            with mock.patch("launcher.dolphinpaths.find_user_dir", return_value=None):
+                self.assertFalse(dolphinpaths.missing_folders("d.exe", ["C:/x"])["known"])
+
+
+class DoctorAppTests(unittest.TestCase):
+    def test_doctor_flags_dolphin_gaps_and_folder_fix(self):
+        from tests.test_app_actions import make_app
+        app, base = make_app()
+        gc = base / "gc"
+        gc.mkdir()
+        (gc / "Mario Kart.iso").write_bytes(b"0" * 64)
+        app.games = {"g1": {"id": "g1", "console": "gamecube", "path": str(gc / "Mario Kart.iso"), "title": "Mario Kart"}}
+        user = base / "dolphin-user"
+        (user / "Config").mkdir(parents=True)
+        (user / "Config" / "Dolphin.ini").write_text("[General]\n")
+        found = {"dolphin": {"name": "Dolphin", "path": "dolphin.exe"}}
+        with mock.patch("launcher.app.emulators.find_emulators", return_value=found), \
+             mock.patch("launcher.dolphinpaths.find_user_dir", return_value=user):
+            keys = {i["key"] for i in app.api_doctor({})["issues"]}
+            self.assertIn("dolphin-folders", keys)
+            self.assertIn("dolphin-direct", keys)
+            out = app.api_dolphin_folders({})
+            self.assertEqual(out["added"], 1)
+            keys = {i["key"] for i in app.api_doctor({})["issues"]}
+            self.assertNotIn("dolphin-folders", keys)
