@@ -81,7 +81,7 @@ function whyInline(label,text){const[b,box]=why(text);return h("span",{},label,b
 const NETPLAY={strong:"Good fit",["per-game"]:"Needs a game pack","experimental":"Experimental","not-practical":"Not practical yet"};
 
 const S={tab:"library",console:null,q:"",fav:false,sort:"title",lib:null,settings:null,room:null,online:null,lastNotice:null};
-const TABS=[["library","Library"],["together","Play Together"],["servers","Servers"],["console","Console mode"],["setup","Setup"],["engines","Engines"],["controllers","Controllers"],["saves","Saves"],["emulators","Emulators"],["settings","Settings"],["credits","Credits"],["help","How it works"]];
+const TABS=[["library","Library"],["together","Server Info"],["servers","Servers"],["console","Console mode"],["setup","Setup"],["engines","Engines"],["controllers","Controllers"],["saves","Saves"],["emulators","Emulators"],["settings","Settings"],["credits","Credits"],["help","How it works"]];
 
 function renderNav(){const n=$("#nav");n.replaceChildren(...TABS.map(([id,l])=>h("button",{class:S.tab===id?"on":"",onclick:()=>{S.tab=id;go()}},l+(id==="together"&&S.room?" ●":""))))}
 async function go(){renderNav();const m=$("#main");m.replaceChildren();({library:viewLibrary,together:viewTogether,servers:viewServers,console:viewConsole,setup:viewSetup,engines:viewEngines,controllers:viewControllers,saves:viewSaves,emulators:viewEmulators,settings:viewSettings,credits:viewCredits,welcome:viewWelcome,help:viewHelp})[S.tab](m)}
@@ -141,7 +141,7 @@ async function openGame(id){
   h("h3",{},whyInline("Playing with friends",
     "Online play works by sending each player's button presses to everyone and running the game in lockstep. How well that works depends on the console and on a per-game 'game pack'. Nothing is faked: the label below is the honest status.")),
   h("p",{},h("span",{class:"badge "+g.netplay},NETPLAY[g.netplay]||g.netplay)," ",h("span",{class:"small muted"},g.netplay_note)),
-  g.netplay_launch?h("p",{class:"small"},g.netplay_launch.ready?h("span",{class:"good"},"Play Together: ready"+(g.netplay_launch.experimental?" (experimental)":"")):h("span",{class:"muted"},"Play Together: "+g.netplay_launch.reason),g.netplay_launch.note?h("div",{class:"muted"},g.netplay_launch.note):null):null,
+  g.netplay_launch?h("p",{class:"small"},g.netplay_launch.ready?h("span",{class:"good"},"Online play: ready"+(g.netplay_launch.experimental?" (experimental)":"")):h("span",{class:"muted"},"Play Together: "+g.netplay_launch.reason),g.netplay_launch.note?h("div",{class:"muted"},g.netplay_launch.note):null):null,
   h("div",{class:"row"},h("button",{class:"btn primary",onclick:async()=>{const r=await act(()=>api("mp_host",{id}));if(r){S.room=r.room;S.tab="together";close();go();poll()}}},"Host a room"),
     h("button",{class:"btn",onclick:()=>{close();S.tab="together";S.joinGame=id;go()}},"Join with a code")),
   h("h3",{},whyInline("Controller for this console",controllerWhy())),
@@ -160,10 +160,18 @@ function controllerWhy(){return"Every pad is read in a standard layout. Each con
 async function pingServer(){const r=await api("server_status").catch(()=>({online:false}));S.online=r.online;$("#srvdot").className="dot"+(r.online?" on":"");$("#srvtxt").textContent=r.online?"multiplayer server online":"multiplayer server offline";return r}
 async function viewTogether(m){
  const st=await pingServer();
- m.append(h("h2",{},"Play Together"),
+ m.append(h("h2",{},"Server Info"),
   h("div",{class:"why"},"A room is a private lobby on a server you or a friend runs. People join with a short invite code. Nobody else can see it."));
- m.append(h("div",{class:"panel"},st.online?h("b",{class:"good"},"Server: "+(S.settings&&S.settings.server_host!=="127.0.0.1"?S.settings.server_host:"your own")+" (online). "):h("b",{class:"bad"},"The server is not running. "),
-  h("button",{class:"btn",onclick:()=>{S.tab="servers";go()}},"Open Servers")," ",h("span",{class:"small muted"},"Start, share or connect to a server there.")));
+ const mine=await api("server_control",{action:"status",share:false}).catch(()=>({running:false}));
+ const roomNow=(await api("mp_state").catch(()=>({room:null}))).room;
+ const remote=S.settings&&S.settings.server_host!=="127.0.0.1";
+ const pill=(ok,text)=>h("span",{class:"badge "+(ok?"good":"")},(ok?"● ":"○ ")+text);
+ m.append(h("div",{class:"panel"},h("div",{class:"row"},
+   pill(!!roomNow,roomNow?"In a room: "+roomNow.game+" ("+roomNow.members.length+(roomNow.max_players?"/"+roomNow.max_players:"")+" players)":"Not in a room"),
+   pill(!!mine.running,mine.running?"Your server is running":"Your server is not running"),
+   pill(st.online,st.online?"Connected to "+(remote?S.settings.server_host:"your own server"):"No server answering")),
+  h("div",{class:"row",style:"margin-top:8px"},h("button",{class:"btn",onclick:()=>{S.tab="servers";go()}},"Open Servers")," ",h("span",{class:"small muted"},"Start, share or connect to a server there."))));
+ if(!roomNow){const net=h("div",{class:"card",style:"margin-top:12px"});m.append(net);drawNetCheck(net)}
  S.allGames=(await api("library",{})).games;
  const s=await api("mp_state");S.room=s.room;S.waits=s.waits||[];
  if(s.notice)toast(s.notice,s.level);(s.wait_events||[]).forEach(e=>toast(e.text,e.level));
@@ -185,6 +193,22 @@ async function viewTogether(m){
    h("h3",{},whyInline("Join a friend","Ask the host for their code. Codes expire in 15 minutes and can be revoked. They travel encrypted only if the server uses TLS, which is required for internet play.")),
    h("div",{class:"row"},code,h("button",{class:"btn good",onclick:async()=>{const r=await act(()=>api("mp_join",{id:sel.value,invite_code:code.value}));if(r){S.room=r.room;go();poll()}}},"Join"))));
  }
+}
+
+async function drawNetCheck(box,run){
+ const result=S.netcheck;
+ const draw=r=>{
+  box.replaceChildren(h("div",{class:"row"},h("h3",{class:"grow"},whyInline("Is my network ready?","Measures this computer and the server you chose, and tests a pretend room on this computer. It contacts nothing else and sends nothing about you. To test reaching you from outside, someone on another network has to try joining.")),
+    h("button",{class:"btn primary",onclick:async()=>{box.replaceChildren(h("p",{class:"muted"},"Testing… about 3 seconds."));const x=await act(()=>api("network_check"));if(x){S.netcheck=x;draw(x)}else draw(S.netcheck)}},r?"Test again":"Test my network")),
+   !r?h("p",{class:"small muted"},"Not connected to a room. Run a quick test to see if this computer should host, or join someone else."):h("div",{},
+    h("div",{class:"panel",style:"margin:8px 0"},h("b",{class:r.advice.verdict==="join"?"warn":"good"},r.advice.headline),h("ul",{class:"small"},...r.advice.reasons.map(t=>h("li",{},t)))),
+    h("table",{},h("tbody",{},
+     h("tr",{},h("td",{},"This computer's network address"),h("td",{},r.address+" · "+({private:"home/office network",public:"public",cgnat:"shared by your provider",loopback:"not on a network",unknown:"unknown"})[r.address_kind])),
+     h("tr",{},h("td",{},"Ping to "+r.server_name),h("td",{},r.server.ok?r.server.avg_ms+" ms average ("+r.server.min_ms+"–"+r.server.max_ms+"), jitter "+r.server.jitter_ms+" ms, "+r.server.loss_pct+"% lost":"no answer")),
+     h("tr",{},h("td",{},"Pretend room on this computer"),h("td",{},r.room_load.players+" players, "+r.room_load.requests_per_s+" requests per second")),
+     h("tr",{},h("td",{},"This computer's own speed"),h("td",{},r.mock.rtt_ms+" ms round trip, "+Math.round(r.mock.mbps)+" Mbps"))))))};
+ draw(result);
+ if(!result&&!run){try{const x=await api("network_check");S.netcheck=x;draw(x)}catch(e){}}
 }
 async function drawBrowse(box){
  const d=await api("mp_browse").catch(()=>null);if(!d)return;
@@ -322,7 +346,7 @@ function copyText(t){if(navigator.clipboard)navigator.clipboard.writeText(t);toa
 async function viewServers(m){
  const st=await pingServer();const cfg=await api("settings");S.settings=cfg.values;const V=cfg.values;
  m.append(h("h2",{},"Servers"),
-  h("div",{class:"why"},"A server keeps rooms and invite codes. Run your own here and give friends its short server code, or connect to a friend's server with theirs. Picking a game and playing happens in Play Together."));
+  h("div",{class:"why"},"A server keeps rooms and invite codes. Run your own here and give friends its short server code, or connect to a friend's server with theirs. Picking a game, the room and live connection numbers are in Server Info."));
  // 1. your server
  const share=h("input",{type:"checkbox",id:"srvshare"});
  share.checked=!!V.server_tls&&V.server_host==="127.0.0.1";
@@ -351,7 +375,7 @@ async function viewServers(m){
     h("details",{},h("summary",{class:"small"},"Longer details"),h("p",{class:"small"},"Full fingerprint: ",h("span",{class:"code"},c.fingerprint||"-"))))
    :h("p",{class:"warn small"},c.error+" Share these instead: address "+c.address+", port "+c.port+", fingerprint "+(c.fingerprint||"-")+"."))};
  m.append(h("div",{class:"card",style:"margin-top:14px"},h("h3",{},"Invite friends to your server"),
-  h("p",{class:"small muted"},"Start the server with Let friends connect on, then make your server code. Room invite codes (made in Play Together) are separate: the server code gets a friend to your server, the invite code lets them into one room."),
+  h("p",{class:"small muted"},"Start the server with Let friends connect on, then make your server code. Room invite codes (made in Server Info) are separate: the server code gets a friend to your server, the invite code lets them into one room."),
   h("div",{class:"row"},h("button",{class:"btn primary",onclick:showCode},"Make my server code")),codeBox));
  // 3. connect
  const code=h("input",{type:"text",placeholder:"LP-XXXX-XXXX-XXXX-XXXX-XX",style:"width:min(300px,100%)","aria-label":"Server code"});
@@ -513,6 +537,46 @@ async function viewSaves(m){
 }
 
 /* ---------- Engines (the owned shell) ---------- */
+
+/* One scan for every "Scan this computer" button: runs in the background, shows progress, then uses what it found. */
+async function runScan(){
+ if(!await ask("Scan this computer for emulator programs? It reads folder and file names only. It changes nothing, sends nothing and does not use the internet.","Scan"))return null;
+ const start=await act(()=>api("scan_pc",{action:"start",consent:true}));if(!start)return null;
+ const tid="scan"+Date.now();let v=start;
+ while(v.state==="running"){const t=h("div",{class:"toast",id:tid},"Scanning… "+v.visited+" folders checked");const old=$("#"+tid);if(old)old.remove();$("#toasts").append(t);
+  await new Promise(r=>setTimeout(r,1000));v=await api("scan_pc",{}).catch(()=>({state:"error",found:{}}))}
+ const old=$("#"+tid);if(old)old.remove();
+ const done=await act(()=>api("scan_apply",{}));
+ const names=Object.keys(v.emulators||{}).map(k=>v.emulators[k].name);
+ toast(names.length?"Found: "+names.join(", ")+(done&&Object.keys(done.applied).length?". Now using "+Object.keys(done.applied).length+" new one(s).":"."):"Scan finished. No emulator programs found in the usual places; add the folder you keep them in under Emulators.",names.length?"":"warn");
+ return v}
+
+async function showSource(e){
+ const ov=h("div",{class:"modal",role:"dialog","aria-modal":"true"});const box=h("div",{class:"modalbox",style:"max-width:640px;max-height:85vh;overflow:auto"});ov.append(box);document.body.append(ov);
+ const close=()=>ov.remove();ov.addEventListener("click",ev=>{if(ev.target===ov)close()});
+ const draw=async lookup=>{
+  let d;try{d=await api("engines_source",{engine:e.id,lookup:!!lookup})}catch(err){if(lookup){toast(err.message,"warn");return draw(false)}box.replaceChildren(h("p",{class:"bad"},err.message),h("button",{class:"btn",onclick:close},"Close"));return}
+  const link=(u)=>h("a",{href:u,target:"_blank",rel:"noopener noreferrer"},u);
+  const rel=d.release;
+  box.replaceChildren(h("h3",{},d.name+" — where it comes from"),h("p",{class:"small muted"},"License: "+d.license),
+   d.kind==="github"?h("div",{},
+    h("table",{},h("tbody",{},
+     h("tr",{},h("td",{},"GitHub project"),h("td",{},link(d.repo_url))),
+     h("tr",{},h("td",{},"All releases"),h("td",{},link(d.releases_url))),
+     h("tr",{},h("td",{},"Address asked for the latest release"),h("td",{},h("code",{},d.api_url))),
+     h("tr",{},h("td",{},"File it looks for"),h("td",{},h("code",{},d.asset_pattern))),
+     h("tr",{},h("td",{},"Sites contacted"),h("td",{},d.hosts.join(", "))))),
+    rel?h("div",{class:"panel",style:"margin-top:10px"},h("b",{},"Latest release"),h("table",{},h("tbody",{},
+      h("tr",{},h("td",{},"Version"),h("td",{},rel.tag+(rel.name&&rel.name!==rel.tag?" ("+rel.name+")":"")+(rel.prerelease?" · pre-release":""))),
+      h("tr",{},h("td",{},"Published"),h("td",{},rel.published_at?new Date(rel.published_at).toLocaleString():"unknown")),
+      h("tr",{},h("td",{},"Release page"),h("td",{},rel.page?link(rel.page):"-")),
+      rel.asset?h("tr",{},h("td",{},"Would download"),h("td",{},rel.asset.name+" · "+(rel.asset.size/1048576).toFixed(1)+" MB")):h("tr",{},h("td",{},"Would download"),h("td",{class:"warn"},"no matching Windows package in this release")),
+      rel.asset?h("tr",{},h("td",{},"Direct address"),h("td",{},h("code",{style:"word-break:break-all"},rel.asset.url))):null,
+      rel.asset&&rel.asset.sha256?h("tr",{},h("td",{},"SHA-256 (from GitHub)"),h("td",{},h("code",{style:"word-break:break-all"},rel.asset.sha256))):null))):
+     h("div",{class:"row",style:"margin-top:10px"},h("button",{class:"btn primary",onclick:()=>draw(true)},"Look up latest release"),h("span",{class:"small muted"},"Contacts api.github.com only. Needs Allow internet downloads. Downloads nothing."))):
+   h("p",{},d.note||"Not fetched automatically. ",d.url?link(d.url):null),
+   h("div",{class:"row",style:"margin-top:12px;justify-content:flex-end"},h("button",{class:"btn",onclick:close},"Close")))};
+ draw(false)}
 async function viewEngines(m){
  clearInterval(S.engTimer);
  const root=h("div",{});
@@ -523,11 +587,11 @@ async function viewEngines(m){
   const d=await api("engines");const job=d.job;const running=job.state==="running";
   root.replaceChildren(
    h("div",{class:"card"},h("div",{class:"row"},h("h3",{class:"grow"},"Find what is already here"),
-     h("button",{class:"btn primary",onclick:async()=>{toast("Scanning the usual program folders…");const r=await act(()=>api("engines_scan",{confirm:true}));if(r){const n=Object.keys(r.new||{}).length;toast(n?"Found "+n+" new engine(s)":"Scan finished; nothing new");draw()}}},"Scan this computer"),
+     h("button",{class:"btn primary",onclick:async()=>{if(await runScan())draw()}},"Scan this computer"),
      h("button",{class:"btn",disabled:running,onclick:async()=>{if(!d.allow_internet){toast("Turn on 'Allow internet downloads' in Settings first","warn");return}
        if(!await ask("Fetch every missing engine that has an official GitHub release, one after another, into "+d.install_folder+"?"))return;
        const r=await act(()=>api("engines_install_all",{confirm:true}));if(r){toast("Fetching: "+r.queued.join(", "));draw();poll()}}},"Get all missing engines")),
-    h("p",{class:"small muted"},"Looks in Program Files, your user folders, your games and emulator folders. Read-only, stays on this computer."+(d.last_scan?" Last scan: "+new Date(d.last_scan*1000).toLocaleString():""))),
+    h("p",{class:"small muted"},"Looks in Program Files, AppData, your user folders, Downloads, your games and emulator folders and the top levels of every drive. Reads names only; stays on this computer."+(d.last_scan?" Last scan: "+new Date(d.last_scan*1000).toLocaleString():""))),
    h("div",{class:"card",style:"margin-top:12px"},h("table",{},h("thead",{},h("tr",{},h("th",{},"Engine"),h("th",{},"Consoles"),h("th",{},"Status"),h("th",{},"Official source"))),h("tbody",{},...d.engines.map(e=>h("tr",{},
      h("td",{},h("b",{},e.name),h("div",{class:"small muted"},e.license)),
      h("td",{class:"small"},e.consoles.map(consoleName).join(", ")),
@@ -536,7 +600,8 @@ async function viewEngines(m){
         if(!d.allow_internet){toast("Turn on 'Allow internet downloads' in Settings first","warn");return}
         if(!await ask("Download the latest "+e.name+" from github.com/"+e.official.repo+" into "+d.install_folder+"? Only that site is contacted.")) return;
         if(await act(()=>api("engines_install",{engine:e.id,confirm:true}))){draw();poll()}}},e.path?"Update from GitHub":"Get from GitHub")
-      :h("a",{href:e.official.url,target:"_blank",rel:"noopener noreferrer",title:e.official.note||""},"Official page"))))))),
+      :h("a",{href:e.official.url,target:"_blank",rel:"noopener noreferrer",title:e.official.note||""},"Official page"),
+      h("div",{style:"margin-top:4px"},h("button",{class:"btn",onclick:()=>showSource(e)},"Source details")))))))),
    job.state!=="idle"?h("div",{class:"card",style:"margin-top:12px"},h("div",{class:"small"},(running?"Working: ":job.state==="done"?"Done. ":"Stopped. ")+job.step+(running?" ("+job.percent+"%)":"")),
      job.error?h("div",{class:"bad small"},job.error):null,h("div",{class:"feed",style:"margin-top:6px"},...job.log.slice().reverse().map(t=>h("div",{},t)))):null,
    h("h3",{},whyInline("BIOS and firmware","Some consoles need a copy of their own system software to run. Those files belong to the console makers, so Legacy Player never downloads them: it finds the copies you dumped from hardware you own and tells you which are missing.")),
@@ -607,7 +672,7 @@ async function viewWelcome(m){
    const have=eng.engines.filter(e=>e.path),missing=eng.engines.filter(e=>!e.path&&e.can_download);
    box.append(h("div",{class:"card"},h("h3",{},"Which engines will run your games?"),
     h("p",{class:"small muted"},"An engine is the emulator for one console family. You can use ones already on this computer, or let Legacy Player fetch its own copies from each project's official releases, kept in its own folder and credited on the Credits page."),
-    h("div",{class:"row"},h("button",{class:"btn",onclick:async()=>{const r=await act(()=>api("engines_scan",{confirm:true}));if(r){toast("Found "+Object.keys(r.new||{}).length+" new");S.wizStep=1;go()}}},"Scan this computer for my own emulators")),
+    h("div",{class:"row"},h("button",{class:"btn",onclick:async()=>{if(await runScan()){S.wizStep=1;go()}}},"Scan this computer for my own emulators")),
     h("p",{class:"small"},"Found so far: "+(have.length?have.map(e=>e.name).join(", "):"none yet")),
     missing.length?h("p",{class:"small"},"Could be fetched from official releases: "+missing.map(e=>e.name).join(", ")+" (needs internet downloads on, next step; you can do it later from Engines)"):null,
     h("p",{class:"small muted"},"Either way, you can point any console at any program later in Emulators."),
@@ -671,7 +736,19 @@ function warmupTrack(container){
 /* ---------- Emulators ---------- */
 async function viewEmulators(m){
  const d=await api("emulators");
- m.append(h("h2",{},"Emulators"),h("div",{class:"why"},"Legacy Player does not replace emulators: it opens the right one for each console. It looks for emulators inside your games folder and on your PATH. If one is missing, paste its program path."),
+ const scanBox=h("div",{});let scanTimer=null;
+ const drawScan=v=>{
+  const rows=Object.entries(v.emulators||{}).map(([id,e])=>h("div",{class:"row",style:"align-items:flex-start"},h("b",{style:"min-width:110px"},e.name),
+   h("div",{class:"grow"},...e.paths.map(pth=>h("div",{class:"row small"},h("code",{class:"grow"},pth),pth===e.in_use?h("span",{class:"badge good"},"in use"):h("button",{class:"btn",onclick:async()=>{if(await act(()=>api("emulators",{emulator:id,path:pth}),"Using "+e.name+" from there"))go()}},"Use this one"))))));
+  scanBox.replaceChildren(...[
+   v.state==="running"?h("div",{class:"small"},"Looking… "+v.visited+" folders checked. ",h("span",{class:"muted"},v.where.slice(-70)),h("button",{class:"btn",style:"margin-left:8px",onclick:()=>api("scan_pc",{action:"cancel"})},"Stop")):null,
+   v.state==="done"||v.state==="stopped"?h("p",{class:"small muted"},(v.state==="stopped"?"Stopped. ":"Finished. ")+(rows.length?"Found these. Nothing is used until you press Use this one.":"No emulator programs found in the usual places. Add the folder you keep them in above, or paste a program path below.")):null,
+   v.state==="error"?h("p",{class:"bad small"},"The scan stopped: "+v.where):null,...rows].filter(Boolean));
+  if(v.state!=="running"&&scanTimer){clearInterval(scanTimer);scanTimer=null}};
+ const pollScan=()=>{clearInterval(scanTimer);scanTimer=setInterval(async()=>{if(S.tab!=="emulators"){clearInterval(scanTimer);return}drawScan(await api("scan_pc",{}).catch(()=>({state:"error",where:"lost the app"})))},1000)};
+ const cardScan=h("div",{class:"card",style:"margin-top:12px"},h("h3",{},whyInline("Scan this computer","Looks through Program Files, your user folders, Downloads, Desktop, Documents and the top levels of every drive for emulator program names (like Dolphin.exe). It only reads folder and file names; it does not open, change, copy or send anything, and it never connects to the internet. It starts only when you press the button.")),
+  h("div",{class:"row"},h("button",{class:"btn primary",onclick:async()=>{if(!await ask("Scan this computer for emulator programs? It reads folder and file names only, changes nothing and sends nothing.","Scan"))return;const v=await act(()=>api("scan_pc",{action:"start",consent:true}));if(v){drawScan(v);pollScan()}}},"Scan this computer")),scanBox);
+ m.append(h("h2",{},"Emulators"),h("div",{class:"why"},"Legacy Player does not replace emulators: it opens the right one for each console. It looks inside your games and emulator folders and on your PATH automatically, and Scan this computer searches everywhere else when you ask it to."),cardScan,
   h("div",{class:"card"},h("h3",{},whyInline("Emulator folders","Folders where you keep emulator programs. Legacy Player looks inside them (a few levels deep) and never changes anything there. Installers such as PCSX2 or PPSSPP setup files must be run first; then add the folder they installed to.")),
    ...(d.folders||[]).map(f=>h("div",{class:"row"},h("code",{class:"grow"},f),h("button",{class:"btn",onclick:async()=>{const r=await act(()=>api("emulators",{folder:f,remove:true}));if(r)go()}},"Remove"))),
    (()=>{const inp=h("input",{type:"text",placeholder:"Paste a folder path, e.g. P:\\Downloads\\Emulator set ups",style:"min-width:min(480px,100%)"});return h("div",{class:"row"},inp,h("button",{class:"btn primary",onclick:async()=>{const r=await act(()=>api("emulators",{folder:inp.value.trim()}),"Folder added");if(r)go()}},"Add folder"))})()),

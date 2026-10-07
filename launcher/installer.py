@@ -64,9 +64,12 @@ def latest_release(repo: str, api_base: str = "https://api.github.com", hosts: s
         raise InstallError("bad repository name")
     with _open(f"{api_base}/repos/{repo}/releases/latest", hosts, allow_http) as response:
         data = json.loads(response.read(2_000_000))
-    assets = [{"name": a["name"], "url": a["browser_download_url"], "size": int(a.get("size") or 0)}
+    assets = [{"name": a["name"], "url": a["browser_download_url"], "size": int(a.get("size") or 0),
+               "sha256": str(a.get("digest") or "").removeprefix("sha256:")}
               for a in data.get("assets", []) if isinstance(a, dict)]
-    return {"tag": data.get("tag_name", ""), "assets": assets, "page": data.get("html_url", "")}
+    return {"tag": data.get("tag_name", ""), "assets": assets, "page": data.get("html_url", ""),
+            "name": data.get("name") or "", "published_at": data.get("published_at") or "",
+            "prerelease": bool(data.get("prerelease"))}
 
 
 def pick_asset(assets: list[dict], pattern: str) -> dict | None:

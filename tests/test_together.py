@@ -122,3 +122,108 @@ class WindowStatusTests(unittest.TestCase):
             app.room = None
             app.api_quit({})
             self.assertTrue(app.should_exit(time.time()))
+
+
+class PcScanTests(unittest.TestCase):
+    def test_scan_finds_by_name_respects_depth_and_skips_system_folders(self):
+        import tempfile
+        from pathlib import Path
+        from launcher.pcscan import scan, standard_roots
+        with tempfile.TemporaryDirectory() as tmp:
+            t = Path(tmp)
+            for rel in ["Dolphin/Dolphin-x64/Dolphin.exe", "a/b/c/d/deep/mGBA.exe", "Ps2/PCSX2/pcsx2-qt.exe", "Windows/x/Dolphin.exe"]:
+                (t / rel).parent.mkdir(parents=True, exist_ok=True)
+                (t / rel).write_bytes(b"x")
+            wanted = {"dolphin": ["Dolphin.exe"], "mgba": ["mGBA.exe"], "pcsx2": ["pcsx2-qt.exe"]}
+            got = scan([(t, 3)], wanted)
+            self.assertEqual({"dolphin", "pcsx2"}, set(got))
+            self.assertEqual(1, len(got["dolphin"]))          # the one under Windows/ was skipped
+            self.assertIn("mgba", scan([(t, 6)], wanted))
+        win = standard_roots({"ProgramFiles": "C:\\Program Files", "LOCALAPPDATA": "C:\\u\\AppData\\Local", "USERPROFILE": "C:\\u"}, "win32")
+        names = [str(p) for p, _ in win]
+        self.assertTrue(any("Program Files" in n for n in names))
+        self.assertTrue(any(n.endswith("Downloads") for n in names))
+
+    def test_scan_needs_consent(self):
+        import tempfile
+        from pathlib import Path
+        from launcher.app import LauncherApp, AppError
+        with tempfile.TemporaryDirectory() as tmp:
+            app = LauncherApp(Path(tmp))
+            with self.assertRaises(AppError):
+                app.api_scan_pc({"action": "start"})
+            self.assertEqual("idle", app.api_scan_pc({})["state"])
+
+
+class IdleSeatTests(unittest.TestCase):
+    def _room(self):
+        from server.lobby import LobbyService
+        from tests.test_community_lobby import FakeClock, PROFILE, auth
+        clock = FakeClock()
+        service = LobbyService(clock=clock, heartbeat_timeout=10_000)
+        created = service.dispatch({"operation": "create", "participant_id": "host", "profile": PROFILE, "adapter_id": "retroarch",
+                                    "game_pack_id": "generic", "require_approval": False, "max_players": 2})
+        sid = created["session"]["session_id"]
+        host = auth(sid, "host", created["credential"])
+        g = service.dispatch({"operation": "join", "invite_code": created["invite_code"], "participant_id": "idle", "profile": PROFILE})
+        return service, clock, sid, host, created["invite_code"], auth(sid, "idle", g["credential"]), PROFILE
+
+    def test_nobody_waiting_means_nobody_is_removed(self):
+        service, clock, sid, host, code, idle, profile = self._room()
+        service.dispatch({"operation": "validate", **host})
+        service.dispatch({"operation": "set_endpoint", "kind": "relay", **host})
+        clock.now += 1000
+        service.sweep_disconnected()
+        self.assertIn("idle", service.dispatch({"operation": "status", **host})["session"]["participants"])
+
+    def test_idle_seat_is_released_for_someone_waiting_but_connected_players_stay(self):
+        service, clock, sid, host, code, idle, profile = self._room()
+        service.dispatch({"operation": "validate", **host})
+        service.dispatch({"operation": "set_endpoint", "kind": "relay", **host})
+        waiting = service.dispatch({"operation": "join", "invite_code": code, "participant_id": "next", "profile": profile})
+        self.assertEqual("waiting", waiting["status"])
+        def poll():
+            try:
+                service.dispatch({"operation": "join_status", "session_id": sid, "participant_id": "next", "request_token": waiting["request_token"]})
+            except LobbyError:
+                pass   # already let in
+        def wait(seconds):
+            for _ in range(seconds // 40):
+                clock.now += 40
+                poll()
+                service.sweep_disconnected()
+        wait(120)
+        self.assertIn("idle", service.dispatch({"operation": "status", **host})["session"]["participants"])   # still inside the grace period
+        service.dispatch({"operation": "report_stats", "in_match": True, "ping_ms": 20, **idle})
+        wait(240)
+        self.assertIn("idle", service.dispatch({"operation": "status", **host})["session"]["participants"])   # connected: keeps the seat
+        service.dispatch({"operation": "report_stats", "in_match": False, **idle})
+        wait(240)
+        self.assertNotIn("idle", service.dispatch({"operation": "status", **host})["session"]["participants"])
+
+
+class EngineSourceTests(unittest.TestCase):
+    def test_source_details_static_and_lookup_gated_by_internet_setting(self):
+        import tempfile
+        from pathlib import Path
+        from unittest import mock
+        from launcher import app as appmod
+        from launcher.app import LauncherApp, AppError
+        with tempfile.TemporaryDirectory() as tmp:
+            app = LauncherApp(Path(tmp))
+            info = app.api_engines_source({"engine": "pcsx2"})
+            self.assertEqual("https://github.com/PCSX2/pcsx2", info["repo_url"])
+            self.assertIn("api.github.com", info["hosts"])
+            self.assertNotIn("release", info)
+            with self.assertRaises(AppError):
+                app.api_engines_source({"engine": "pcsx2", "lookup": True})        # internet off
+            app.catalog.set_setting("allow_internet", True)
+            fake = {"tag": "v2.0.0", "name": "2.0", "published_at": "2026-01-01T00:00:00Z", "prerelease": False, "page": "https://github.com/x/y/releases/tag/v2.0.0",
+                    "assets": [{"name": "pcsx2-v2.0.0-windows-x64-Qt.7z", "url": "https://github.com/x/y/a.7z", "size": 1048576, "sha256": "ab" * 32},
+                               {"name": "other.zip", "url": "u", "size": 1, "sha256": ""}]}
+            with mock.patch.object(appmod, "latest_release", return_value=fake):
+                got = app.api_engines_source({"engine": "pcsx2", "lookup": True})
+            self.assertEqual("v2.0.0", got["release"]["tag"])
+            self.assertEqual("pcsx2-v2.0.0-windows-x64-Qt.7z", got["release"]["asset"]["name"])
+            self.assertEqual(1, got["release"]["other_assets"])
+            self.assertEqual("page", app.api_engines_source({"engine": "dolphin"}).get("kind"))

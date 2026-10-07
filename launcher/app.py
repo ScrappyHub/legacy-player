@@ -22,7 +22,9 @@ from adapters.dolphin.netplay_guide import (
 from adapters.retroarch import tunnel as netplay_tunnel
 
 from . import controllers, emulators, engines, pads, savefolders, saves
-from .installer import EngineInstaller, InstallError
+from .installer import EngineInstaller, InstallError, latest_release, pick_asset
+from . import netcheck
+from .pcscan import PcScan
 from .setup import Setup, SetupError
 from .catalog import SETTINGS_SCHEMA, Catalog, CatalogError
 from .consoles import BY_ID, CONSOLES
@@ -61,6 +63,9 @@ NETPLAY_STEPS = {
         "Create an RPCN account once (Configuration > Network > Configure RPCN), then start a game that has online play and use its own online menu.",
     ],
 }
+
+
+GITHUB_HOSTS_SHOWN = {"api.github.com", "github.com", "objects.githubusercontent.com"}
 
 
 class AppError(ValueError):
@@ -121,6 +126,8 @@ class LauncherApp:
         self.setup = Setup(self.data_dir, self._retroarch_path,
                            lambda path: self.catalog.set_mapping("emulator_paths", "retroarch", path))
         self.installer = EngineInstaller(self.data_dir / "emulators")
+        self.pcscan = PcScan({k: v["exes"] for k, v in emulators.EMULATORS.items()},
+                             lambda: [Path(r) for r in self.catalog.data["roots"]] + [Path(f) for f in self.catalog.data.get("emulator_folders", [])])
         self._prepare_certificate()
         self._load_cache()
         if not self.games and self.catalog.data["roots"]:
@@ -398,6 +405,57 @@ class LauncherApp:
             ],
         }
 
+    def api_network_check(self, body: dict) -> dict:
+        """Measure whether this computer and connection are ready to host or join. Touches only this
+        computer and the server you already chose."""
+        s = self.catalog.settings()
+        address = detect_lan_address()
+        local = s["server_host"] in {"127.0.0.1", "localhost", "::1"}
+        mock = netcheck.loopback_test()
+        room = netcheck.room_load_test()
+        def probe() -> None:
+            try:
+                self._client().call({"operation": "status", "session_id": "probe", "participant_id": "probe", "credential": "probe"})
+            except LobbyClientError as exc:
+                if "unknown session" not in str(exc):
+                    raise
+        server = netcheck.ping_server(probe)
+        kind = netcheck.classify_address(address)
+        return {"address": address, "address_kind": kind["kind"], "address_text": kind["text"], "mock": mock, "room_load": room,
+                "server": server, "server_is_local": local, "server_name": "this computer" if local else s["server_host"],
+                "advice": netcheck.advise(kind["kind"], mock, room, server, local)}
+
+    def api_scan_pc(self, body: dict) -> dict:
+        """Look through this computer for emulator programs. Starts only on an explicit request."""
+        action = body.get("action", "status")
+        if action == "start":
+            if not body.get("consent"):
+                raise AppError("Say yes first: the scan lists folder and file names on this computer. It does not open, change or send anything.")
+            self.pcscan.start()
+        elif action == "cancel":
+            self.pcscan.cancel()
+        view = self.pcscan.view()
+        have = {eid: v["path"] for eid, v in emulators.find_emulators(self._search_roots(), self.catalog.data["emulator_paths"]).items()}
+        view["emulators"] = {eid: {"name": emulators.EMULATORS[eid]["name"], "paths": paths, "in_use": have.get(eid)}
+                             for eid, paths in view["found"].items()}
+        return view
+
+    def api_scan_apply(self, body: dict) -> dict:
+        """After a scan: use the first match for every emulator that has none yet, and look for BIOS files
+        next to what was found. Never overrides a program you chose yourself."""
+        view = self.pcscan.view()
+        chosen = {}
+        for eid, paths in view["found"].items():
+            if paths and not self.catalog.data["emulator_paths"].get(eid) \
+                    and not emulators.find_emulators(self._search_roots(), self.catalog.data["emulator_paths"])[eid]["path"]:
+                self.catalog.set_mapping("emulator_paths", eid, paths[0])
+                chosen[eid] = paths[0]
+        extra = [Path(p).parent for p in self.catalog.data["emulator_paths"].values() if p]
+        self.catalog.data["bios_found"] = {kind: engines.find_bios(kind, self._search_roots(), extra) for kind in engines.BIOS}
+        self.catalog.data["last_scan"] = time.time()
+        self.catalog.save()
+        return {"applied": chosen, "found": {eid: len(v) for eid, v in view["found"].items()}}
+
     def api_console_emulator(self, body: dict) -> dict:
         """Choose which emulator a console opens with (None = automatic)."""
         console, emulator = body.get("console"), body.get("emulator")
@@ -467,6 +525,35 @@ class LauncherApp:
         self.catalog.data["last_scan"] = time.time()
         self.catalog.save()
         return {**self._engines_payload(), "new": hits}
+
+    def api_engines_source(self, body: dict) -> dict:
+        """Where an engine would come from: always the fixed facts; with lookup=true (internet downloads on) also
+        the latest release's tag, date and the exact file that would be downloaded. Downloads nothing."""
+        spec = engines.ENGINES.get(body.get("engine"))
+        if spec is None:
+            raise AppError("Unknown engine.")
+        src = spec["source"]
+        out = {"name": spec["name"], "license": spec["license"], "kind": src["kind"], "homepage": engines.HOMEPAGES.get(body.get("engine"), src.get("url", ""))}
+        if src["kind"] != "github":
+            out["note"] = src.get("note", "This engine is not fetched automatically.")
+            out["url"] = src.get("url", "")
+            return out
+        repo = src["repo"]
+        out.update(repo=repo, repo_url=f"https://github.com/{repo}", releases_url=f"https://github.com/{repo}/releases",
+                   api_url=f"https://api.github.com/repos/{repo}/releases/latest", asset_pattern=src["asset"],
+                   hosts=sorted(GITHUB_HOSTS_SHOWN))
+        if body.get("lookup"):
+            if not self.catalog.settings()["allow_internet"]:
+                raise AppError("Internet access is off. Turn on 'Allow internet downloads' in Settings to look up the latest release.")
+            try:
+                release = latest_release(repo)
+            except InstallError as exc:
+                raise AppError(str(exc)) from exc
+            asset = pick_asset(release["assets"], src["asset"])
+            out["release"] = {"tag": release["tag"], "name": release["name"], "published_at": release["published_at"],
+                              "prerelease": release["prerelease"], "page": release["page"],
+                              "asset": asset, "other_assets": len(release["assets"]) - (1 if asset else 0)}
+        return out
 
     def api_engines_install(self, body: dict) -> dict:
         self._internet_ok(body)
@@ -897,7 +984,7 @@ class LauncherApp:
         """Tell the room our own numbers: ping to the server and the match tunnel's speeds. Numbers only."""
         rates = netplay_tunnel.METER.rates() if self.tunnel is not None else {}
         try:
-            self._call({"operation": "report_stats", "ping_ms": ping_ms, **rates, **self._auth()})
+            self._call({"operation": "report_stats", "ping_ms": ping_ms, "in_match": bool((self.room or {}).get("launched")), **rates, **self._auth()})
         except AppError:
             pass
 
@@ -1052,6 +1139,7 @@ class LauncherApp:
             self._close_tunnel()
             raise AppError(f"Could not start RetroArch: {exc}") from exc
         self.catalog.record_play(game["id"])
+        room["launched"] = True
         return {"launched": game["title"], "role": room["role"], "pid": pid, "encrypted": encrypted, "relay": relay}
 
     def shutdown(self) -> None:
@@ -1104,6 +1192,7 @@ class LauncherApp:
         except OSError as exc:
             raise AppError(f"Could not start Dolphin: {exc}") from exc
         self.catalog.record_play(game["id"])
+        room["launched"] = True
         return {"launched": game["title"], "role": room["role"], "pid": pid, "engine": "dolphin",
                 "steps": guide, "needs_code": room["role"] == "host" and mode == "traversal"}
 

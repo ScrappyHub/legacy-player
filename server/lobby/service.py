@@ -53,6 +53,9 @@ class LobbyService:
         self.pending: dict[str, dict[str, dict]] = {}
         self.removed: dict[tuple[str, str], str] = {}
         self.stats: dict[tuple[str, str], dict] = {}
+        self.joined_at: dict[tuple[str, str], float] = {}
+        self.established: set[tuple[str, str]] = set()   # players whose app reported a running match
+        self.establish_grace = 180.0   # a seat someone is waiting for is freed if its holder never connects in this time
         self.last_seen: dict[tuple[str, str], float] = {}
         self.disconnected: set[tuple[str, str]] = set()
         self.max_sessions = max_sessions
@@ -353,6 +356,7 @@ class LobbyService:
         self.credentials[(sid, participant_id)] = self._digest(credential)
         self.removed.pop((sid, participant_id), None)
         self.last_seen[(sid, participant_id)] = self.clock()
+        self.joined_at[(sid, participant_id)] = self.clock()
         self._touch(sid)
         self.recorders[sid].record(
             "participant_joined", {"participant_id": participant_id, "profile": profile}
@@ -476,6 +480,8 @@ class LobbyService:
         self.credentials.pop((sid, participant_id), None)
         self.last_seen.pop((sid, participant_id), None)
         self.stats.pop((sid, participant_id), None)
+        self.joined_at.pop((sid, participant_id), None)
+        self.established.discard((sid, participant_id))
         self.disconnected.discard((sid, participant_id))
         self.removed[(sid, participant_id)] = (
             f"kicked from session: {reason}" if kind == "participant_kicked" else "you left the session"
@@ -515,6 +521,7 @@ class LobbyService:
         else:
             raise LobbyError("kind must be 'direct', 'code' or 'relay'")
         self.options[session.session_id]["endpoint"] = endpoint
+        self.options[session.session_id]["endpoint_at"] = self.clock()
         if self.relay is not None:
             self.relay.drop_session(session.session_id)   # a fresh launch: old parked slots are stale
         psk = request.get("psk")
@@ -570,7 +577,29 @@ class LobbyService:
                   and now - seen > self.heartbeat_timeout * self.vacate_after_timeouts):
                 # Gone for good: free the seat so the waiting line can move.
                 self._remove(session, participant_id, reason="connection lost", kind="participant_left", by="server")
+        flagged += self._release_idle_seats(now)
         return flagged
+
+    def _release_idle_seats(self, now: float) -> list[dict]:
+        """A seat nobody is using must not block people in line. Once the host has launched, players who
+        still have not connected to the match after the grace period lose their seat, but only when
+        someone is actually waiting for one."""
+        released = []
+        for sid, session in list(self.sessions.items()):
+            if session.state in {SessionState.COMPLETED, SessionState.FAILED}:
+                continue
+            launched = self.options.get(sid, {}).get("endpoint_at")
+            if launched is None or not self._live_waiting(sid):
+                continue
+            for pid in list(session.participants):
+                if pid == session.host_id or (sid, pid) in self.established:
+                    continue
+                since = max(launched, self.joined_at.get((sid, pid), launched))
+                if now - since > self.establish_grace:
+                    self._remove(session, pid, reason="seat released: not connected to the match in time",
+                                 kind="participant_left", by="server")
+                    released.append({"session_id": sid, "participant_id": pid})
+        return released
 
     def announce_stopping(self) -> None:
         """Tell every live session the server is going down so clients can show it."""
@@ -803,6 +832,14 @@ class LobbyService:
             if isinstance(value, bool) or not isinstance(value, (int, float)) or value != value or not 0 <= value <= limit:
                 raise LobbyError(f"{key} must be a number from 0 to {int(limit)}")
             clean[key] = round(float(value), 1)
+        in_match = request.get("in_match")
+        if in_match is not None:
+            if not isinstance(in_match, bool):
+                raise LobbyError("in_match must be true or false")
+            if in_match:
+                self.established.add((session.session_id, participant_id))
+            else:
+                self.established.discard((session.session_id, participant_id))
         clean["at"] = self.clock()
         self.stats[(session.session_id, participant_id)] = clean
         return {"ok": True}
@@ -813,7 +850,7 @@ class LobbyService:
         for pid in session.participants:
             row = self.stats.get((session.session_id, pid))
             if row and now - row["at"] < 30:
-                people[pid] = {k: v for k, v in row.items() if k != "at"}
+                people[pid] = {**{k: v for k, v in row.items() if k != "at"}, "connected": (session.session_id, pid) in self.established}
         average = {}
         for key in self._STAT_LIMITS:
             values = [r[key] for r in people.values() if key in r]
