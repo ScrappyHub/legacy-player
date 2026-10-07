@@ -127,3 +127,65 @@ class Round3Tests(unittest.TestCase):
         from launcher import firewall
         self.assertIn("program=C:\\x\\LegacyPlayer.exe", firewall.rule_args(8765, "C:\\x\\LegacyPlayer.exe"))
         self.assertFalse(any(a.startswith("program=") for a in firewall.rule_args(8765)))
+
+
+class Round4Tests(unittest.TestCase):
+    def setUp(self):
+        p = mock.patch.dict("os.environ", {"LEGACY_PLAYER_NO_BACKGROUND": "1"})
+        p.start()
+        self.addCleanup(p.stop)
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.app = LauncherApp(Path(self.tmp.name) / "data", roots=[])
+
+    def test_firewall_approval_command_keeps_quotes_single_level(self):
+        seen = []
+        firewall._elevated(firewall.rule_args(8765, "C:\\Program Files\\LP\\LegacyPlayer.exe"), lambda a, timeout=0: seen.append(a))
+        text = seen[0][-1]
+        self.assertIn('"name=Legacy Player server"', text)
+        self.assertNotIn('""', text)
+        self.assertIn('"program=C:\\Program Files\\LP\\LegacyPlayer.exe"', text)
+
+    def test_hosting_starts_a_stopped_own_server_once(self):
+        from launcher.lobby_client import LobbyClientError
+        refused = LobbyClientError("refused")
+        refused.__cause__ = ConnectionRefusedError()
+        calls = []
+
+        class C:
+            def call(self_, request):
+                calls.append(request)
+                if len(calls) == 1:
+                    raise refused
+                return {"ok": True}
+        with mock.patch.object(self.app, "_client", return_value=C()), \
+                mock.patch.object(self.app, "api_server_control", return_value={}) as ctl:
+            self.assertEqual({"ok": True}, self.app._call({"operation": "browse"}))
+            ctl.assert_called_once()
+            self.assertEqual("start", ctl.call_args[0][0]["action"])
+
+    def test_a_friends_server_is_never_started_by_us(self):
+        from launcher.lobby_client import LobbyClientError
+        self.app.catalog.set_setting("server_host", "203.0.113.5")
+        refused = LobbyClientError("refused")
+        refused.__cause__ = ConnectionRefusedError()
+        self.assertFalse(self.app._own_server_refused(refused))
+
+    def test_activity_is_offline_when_nothing_answers(self):
+        self.assertEqual({"online": False}, self.app.api_server_activity({}))
+
+    def test_auto_agree_only_when_switched_on_and_game_present(self):
+        room = {"role": "guest", "me": "me", "game_id": "g1", "start": {"id": 3, "consented": ["host"]}, "session_id": "s", "credential": "c"}
+        events = []
+        self.app.room = room
+        room["r"] = None
+        room.update(session_id="s", me="me", credential="c")
+        with mock.patch.object(self.app, "_call") as call:
+            self.app._maybe_auto_agree(room, events)           # setting off
+            call.assert_not_called()
+            self.app.catalog.set_setting("mp_auto_agree", True)
+            self.app._maybe_auto_agree(room, events)           # game missing
+            call.assert_not_called()
+            self.app.games["g1"] = {"id": "g1"}
+            self.app._maybe_auto_agree(room, events)
+            self.assertEqual("consent_start", call.call_args[0][0]["operation"])

@@ -110,6 +110,16 @@ SETTINGS_SCHEMA: dict[str, dict] = {
         "label": "Address friends use to reach your server",
         "help": "Leave blank: the app finds your public address itself when it opens the router. Only fill this in if you forward the port yourself or use a VPN address.",
     },
+    "server_autostart": {
+        "type": "bool", "default": True, "group": "Your server",
+        "label": "Start my server by itself when I host or join",
+        "help": "If your own server is not running when you host a room or look for rooms, Legacy Player starts it for you.",
+    },
+    "mp_auto_agree": {
+        "type": "bool", "default": False, "group": "Multiplayer",
+        "label": "Join the games a host picks without asking each time",
+        "help": "When the host of a room you are in starts a game you already have, you agree automatically and it opens. Off by default: otherwise you are asked every time.",
+    },
     "server_auto_open": {
         "type": "bool", "default": True, "group": "Your server",
         "label": "Open my router for friends automatically",

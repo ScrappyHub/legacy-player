@@ -34,6 +34,14 @@ def rule_args(port: int, program: str | None = None) -> list[str]:
     return args
 
 
+def _elevated(args: list[str], run) -> None:
+    """Run netsh as administrator through the Windows approval box. The arguments become one command line in which
+    anything with a space is wrapped in double quotes (inside a single-quoted PowerShell string those stay as they are)."""
+    line = " ".join(f'"{a}"' if (" " in a or "\\" in a) else a for a in args).replace("'", "''")
+    run(["powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command",
+         f"Start-Process netsh -ArgumentList '{line}' -Verb RunAs -Wait -WindowStyle Hidden"], timeout=120)
+
+
 def status(port: int, run=_run) -> dict:
     if not supported():
         return {"supported": False, "allowed": True, "message": "Not needed on this system."}
@@ -42,7 +50,7 @@ def status(port: int, run=_run) -> dict:
     except (OSError, subprocess.SubprocessError):
         return {"supported": True, "allowed": False, "message": "Could not read the Windows Firewall."}
     text = out.stdout or ""
-    allowed = out.returncode == 0 and f"{int(port)}" in text and "Allow" in text
+    allowed = out.returncode == 0 and f"{int(port)}" in text          # (words like "Allow" are translated on other languages)
     return {"supported": True, "allowed": allowed,
             "message": "Windows Firewall already lets friends in." if allowed else "Windows Firewall has no rule for your server yet."}
 
@@ -54,9 +62,7 @@ def allow(port: int, run=_run) -> dict:
     try:
         direct = run(["netsh"] + rule_args(port))
         if direct.returncode != 0:
-            quoted = " ".join(f'"{a}"' if " " in a else a for a in rule_args(port)).replace('"', '""')
-            run(["powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command",
-                 f"Start-Process netsh -ArgumentList '{quoted}' -Verb RunAs -Wait -WindowStyle Hidden"], timeout=120)
+            _elevated(rule_args(port), run)
     except (OSError, subprocess.SubprocessError) as exc:
         return {"supported": True, "allowed": False, "message": f"Windows did not allow the change ({exc})."}
     now = status(port, run)
@@ -83,9 +89,7 @@ def remove(run=_run) -> dict:
     args = ["advfirewall", "firewall", "delete", "rule", f"name={RULE}"]
     try:
         if run(["netsh"] + args).returncode != 0 and exists(run):
-            quoted = " ".join(f'"{a}"' if " " in a else a for a in args).replace('"', '""')
-            run(["powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command",
-                 f"Start-Process netsh -ArgumentList '{quoted}' -Verb RunAs -Wait -WindowStyle Hidden"], timeout=120)
+            _elevated(args, run)
     except (OSError, subprocess.SubprocessError):
         pass
     return {"removed": not exists(run)}

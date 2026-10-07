@@ -1425,7 +1425,43 @@ class LauncherApp:
         try:
             return self._client().call(request)
         except LobbyClientError as exc:
+            if self._own_server_refused(exc) and self._start_own_server():
+                try:
+                    return self._client().call(request)
+                except LobbyClientError as again:
+                    raise AppError(str(again)) from again
             raise AppError(str(exc)) from exc
+
+    _auto_started_at = 0.0
+
+    def _own_server_refused(self, exc: Exception) -> bool:
+        s = self.catalog.settings()
+        return s["server_host"] in {"127.0.0.1", "localhost", "::1"} and isinstance(exc.__cause__, ConnectionRefusedError) \
+            and bool(s.get("server_autostart", True))
+
+    def _start_own_server(self) -> bool:
+        """Your own server is not running (the app was restarted, or it stopped): start it, so hosting just works.
+        At most once every 30 seconds, and only for the server on this computer."""
+        if time.monotonic() - self._auto_started_at < 30:
+            return False
+        self._auto_started_at = time.monotonic()
+        share = bool(self.catalog.settings().get("server_tls"))
+        try:
+            self.api_server_control({"action": "start", "share": share})
+            return True
+        except AppError:
+            return False
+
+    def api_server_activity(self, body: dict) -> dict:
+        """What is going on at your own server right now: how many people, rooms, how long it has been up."""
+        from server import cli
+        try:
+            info = cli._admin_call(self.data_dir / "server", "admin_status", timeout=2.0)
+        except (OSError, ConnectionError, ValueError):
+            return {"online": False}
+        return {"online": True, "uptime_seconds": info.get("uptime_seconds", 0), "players": info.get("players_in_live_sessions", 0),
+                "rooms": info.get("sessions_live", 0), "open_rooms": info.get("open_rooms", 0), "waiting": info.get("waiting_total", 0),
+                "shared": bool(self.catalog.settings().get("server_tls"))}
 
     def _profile(self, game: dict) -> dict:
         return {"game_id": game["compat_id"], "region": game["region"] or "unspecified"}
@@ -1785,6 +1821,7 @@ class LauncherApp:
                 status = self._call({"operation": "status", **self._auth()})
                 ping_ms = round((time.monotonic() - t0) * 1000, 1)
                 r["session"], r["stats"], r["start"] = status["session"], status.get("stats"), status.get("start")
+                self._maybe_auto_agree(r, new_events)
                 self._report_stats(ping_ms)
                 if r["role"] == "host":
                     listing = self._call({"operation": "list_waiting", **self._auth()})
@@ -1880,6 +1917,21 @@ class LauncherApp:
         stats = room.get("stats") or {"people": {}, "average": {}}
         return {"people": stats.get("people", {}), "average": stats.get("average", {}),
                 "playing": self.tunnel is not None}
+
+    def _maybe_auto_agree(self, room: dict, events: list) -> None:
+        """Guests who switched on "Join the games the host picks" agree to a start request by themselves, once the
+        game is in their library. Everyone else is still asked every time."""
+        start = room.get("start")
+        if not start or room["role"] != "guest" or room["me"] in start["consented"]:
+            return
+        if not self.catalog.settings().get("mp_auto_agree") or self.games.get(room["game_id"]) is None:
+            return
+        try:
+            self._call({"operation": "consent_start", "start_id": start.get("id"), **self._auth()})
+            start["consented"] = list(start["consented"]) + [room["me"]]
+            events.append({"seq": -1, "kind": "auto_agreed", "level": "info", "at": "", "text": "You agreed to start automatically (your setting)."})
+        except AppError:
+            pass
 
     def _start_for_ui(self, room: dict) -> dict | None:
         start = room.get("start")
@@ -2114,7 +2166,7 @@ class LauncherApp:
 
     # window lifetime (used by the packaged app so it quits when its window closes) ----------
     # calls that need no global lock: quick reads, or slow work that only touches its own cache
-    UNLOCKED = frozenset({"force_quit", "overlay", "overlay_open", "overlay_state", "overlay_capture_pad", "game_window", "router_test", "firewall_allow", "ping", "bye", "status", "specs", "server_status", "network_last", "server_control", "rescan", "scan_everything"})
+    UNLOCKED = frozenset({"force_quit", "server_activity", "overlay", "overlay_open", "overlay_state", "overlay_capture_pad", "game_window", "router_test", "firewall_allow", "ping", "bye", "status", "specs", "server_status", "network_last", "server_control", "rescan", "scan_everything"})
 
     def api_ping(self, body: dict) -> dict:
         self.last_ping, self.bye_at, self.tray_mode = time.time(), 0.0, False

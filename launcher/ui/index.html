@@ -1063,7 +1063,7 @@ function quickBar(g){const solo=g.players&&g.players.max<2&&g.players.source!=="
 async function quickOnline(g){
  const code=h("input",{type:"text",placeholder:"Invite code, XXXXX-XXXXX",maxlength:12,style:"width:100%","aria-label":"Invite code"});
  const close=()=>{ov.remove()};
- const status=h("p",{class:"small "+(S.online?"muted":"warn")},S.online?"Connected to a server.":"You are not connected to a server yet. Start yours or paste a friend's server code on the Servers page first.");
+ const status=h("p",{class:"small "+(S.online?"muted":"warn")},S.online?"Connected to a server.":(S.settings&&S.settings.server_host==="127.0.0.1"&&S.settings.server_autostart!==false?"Your server is not running. Hosting a room starts it for you; to join a friend, paste their server code on the Servers page first.":"You are not connected to a server yet. Start yours or paste a friend's server code on the Servers page first."));
  const ov=h("div",{class:"modal",role:"dialog","aria-modal":"true"},h("div",{class:"modalbox"},h("h3",{style:"margin-top:0"},"Play "+g.title+" online"),
   h("p",{class:"small muted"},g.players?g.players.label+". "+g.players.note:""),status,
   h("div",{class:"row",style:"margin:10px 0"},h("button",{class:"btn primary grow",onclick:async()=>{const r=await act(()=>api("mp_host",{id:g.id}));if(r){close();S.room=r.room;nav("together");poll()}}},"Host a room")),
@@ -1316,6 +1316,37 @@ async function viewServers(m){
  const st=await pingServer();const cfg=await api("settings");S.settings=cfg.values;const V=cfg.values;
  m.append(h("h2",{},"Servers"),
   h("div",{class:"why"},"A server keeps rooms and invite codes. Run your own here and give friends its short server code, or connect to a friend's server with theirs. Picking a game, the room and live connection numbers are in Server Info."));
+ // 0. right now: is it up, who is in it, and the server code
+ const live=h("div",{class:"card",id:"srvlive",style:"margin-top:14px"});m.append(live);
+ const codeLine=h("span",{class:"code",style:"font-size:1.2em"},"LP-••••-••••-••••-••••-••");let codeShown=null,codeBusy=false;
+ const dur=sec=>sec<90?Math.round(sec)+" s":sec<5400?Math.round(sec/60)+" min":(sec/3600).toFixed(1)+" h";
+ const tile=(big,label,tone)=>h("div",{class:"panel",style:"flex:1;min-width:120px;text-align:center;margin:0"},h("div",{class:tone||"",style:"font-size:1.6em;font-weight:700"},String(big)),h("div",{class:"small muted"},label));
+ const revealCode=async()=>{if(codeShown){codeShown=null;codeLine.textContent="LP-••••-••••-••••-••••-••";drawLive.btn.textContent="Reveal server code";return}
+  if(codeBusy)return;codeBusy=true;const c=await act(()=>api("server_code",{refresh:false}));codeBusy=false;if(!c)return;
+  if(!c.code){toast(c.error||"Start your server with Let friends connect first.","warn");return}
+  codeShown=c.code;codeLine.textContent=c.code;drawLive.btn.textContent="Hide server code"};
+ const flag=(key,label,help)=>{const cb=h("input",{type:"checkbox",id:"f_"+key});cb.checked=!!V[key];
+  cb.onchange=async()=>{const r=await act(()=>api("settings",{key,value:cb.checked}));if(r){S.settings=r.values;V[key]=cb.checked}else cb.checked=!cb.checked};
+  return h("label",{class:"small",title:help,style:"display:block;margin-top:6px"},cb," "+label)};
+ const picks=h("div",{});
+ async function drawLive(){
+  const a=await api("server_activity").catch(()=>({online:false}));
+  if(!$("#srvlive"))return false;
+  const rm=(S.room||null);
+  live.replaceChildren(
+   h("div",{class:"row"},h("h3",{class:"grow"},"Right now"),a.online?h("b",{class:"good"},"● Running"+(a.shared?", open to friends":", only on this computer")):h("b",{class:"bad"},"● Stopped")),
+   a.online?h("div",{class:"row",style:"gap:10px;flex-wrap:wrap"},tile(a.players,a.players===1?"player in rooms":"players in rooms",a.players?"good":""),tile(a.rooms,a.rooms===1?"live room":"live rooms"),tile(a.open_rooms,"open to join"),tile(a.waiting,"waiting in line"),tile(dur(a.uptime_seconds),"running for"))
+    :h("p",{class:"small"},"Nothing is running. Press Start below, or just host a room: Legacy Player starts your server for you."),
+   rm?h("p",{class:"small"},"You are in a room: ",h("b",{},rm.game),", "+rm.members.length+" player"+(rm.members.length===1?"":"s")+", "+rm.state+"."):h("p",{class:"small muted"},"You are not in a room."),
+   h("div",{class:"row",style:"margin-top:8px"},codeLine,drawLive.btn,codeShown?h("button",{class:"btn",onclick:()=>copyText(codeShown)},"Copy"):null,
+    h("button",{class:"btn",onclick:()=>nav("together")},"Pick or change the game")),
+   h("p",{class:"small muted"},"The server code gets a friend onto your server. The game and the room are chosen in Server Info; changing the game there keeps the room open, and each guest agrees before it starts."),
+   flag("server_autostart","Start my server by itself when I host or join","If your own server is not running, Legacy Player starts it for you."),
+   flag("mp_auto_agree","When a host starts a game I already have, join it without asking me each time","Off: you are asked every time. On: you agree automatically, the game opens and connects, so nothing has to stop between games."));
+  return true}
+ drawLive.btn=h("button",{class:"btn primary",onclick:revealCode},"Reveal server code");
+ await drawLive();
+ clearInterval(S.srvTimer);S.srvTimer=setInterval(async()=>{if(!(await drawLive()))clearInterval(S.srvTimer)},3000);
  // 1. your server
  const share=h("input",{type:"checkbox",id:"srvshare"});
  share.checked=V.server_host!=="127.0.0.1"?false:(V.server_tls||!st.online);

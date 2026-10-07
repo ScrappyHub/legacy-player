@@ -249,3 +249,11 @@ Still true: UPnP maps "forever" until closed; the firewall rule is for any profi
 - Installer: `install.ps1` checks the exe's Authenticode signature when one exists and refuses a broken one. Releases are still
   unsigned (needs a certificate; `build_exe.bat` signs when `LP_SIGN_PFX`/`LP_SIGN_PASS` are set). Until then the checksum only catches a damaged download.
 - Not verified on real Windows: renewal against a real router, `program=` rule, the signature check.
+
+## 0.7.6: server that starts itself, firewall approval fix, live server panel
+
+- Bug: the Windows approval box for the firewall rule never added the rule, because the command line was quoted twice inside PowerShell. Fixed (also for the uninstaller's removal).
+- Bug: hosting or joining when your own server was not running failed with "actively refused". The app now starts its own server (once per 30 s, only for the server on this computer; setting "Start my server by itself", on by default).
+- Servers page: a "Right now" panel at the top (running/stopped, players in rooms, live rooms, open rooms, waiting, uptime, your room), "Reveal server code" with Copy, a shortcut to pick or change the game, and two switches.
+- Automatic play: "Join the games a host picks without asking each time" (off by default). The host changes the game in the room and presses Start; guests with that switch on agree by themselves and the game opens and connects, so the room never stops.
+- Not verified on real Windows: the elevated firewall command, the server auto-start from a packaged exe, the new panel's look.

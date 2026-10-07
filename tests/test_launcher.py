@@ -622,6 +622,7 @@ class MultiplayerFlowTests(unittest.TestCase):
     def test_unreachable_server_gives_helpful_message(self):
         host = self.apps["Host"]
         host.catalog.set_setting("server_port", 1)
+        host.catalog.set_setting("server_autostart", False)          # otherwise the app would start the server itself
         with self.assertRaisesRegex(AppError, "Is it running"):
             host.api_mp_host({"id": self.gid(host)})
 
