@@ -609,3 +609,15 @@ class UninstallStopsServerTests(unittest.TestCase):
         out = app.api_self_uninstall({"confirm": True, "keep_saves": True, "remove_program": False})
         self.assertEqual(calls, ["stop"])
         self.assertTrue(out["server_stopped"])
+
+
+class ReadOnlyUninstallTests(unittest.TestCase):
+    def test_read_only_file_is_still_removed(self):
+        import os, stat, tempfile
+        from pathlib import Path
+        from launcher.app import LauncherApp
+        base = Path(tempfile.mkdtemp())
+        f = base / "locked.nes"; f.write_bytes(b"1")
+        os.chmod(f, stat.S_IREAD)
+        LauncherApp._delete_file(f)
+        self.assertFalse(f.exists())

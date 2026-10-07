@@ -104,7 +104,7 @@ class NativeTray:
         TPM_RETURNCMD, TPM_RIGHTBUTTON, TPM_NONOTIFY = 0x100, 0x2, 0x80
         taskbar_created = user32.RegisterWindowMessageW("TaskbarCreated")
 
-        # the same rose as the window and the program file: load it from the bundled .ico at the tray's size
+        # the same Martin icon as the window and the program file: load it from the bundled .ico at the tray's size
         icon = None
         ico = Path(__file__).parent / "ui" / "legacy-player.ico"
         user32.LoadImageW.restype = wintypes.HANDLE

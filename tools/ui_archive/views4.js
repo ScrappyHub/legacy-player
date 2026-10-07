@@ -157,7 +157,7 @@ AVATARS.doctor={name:"Doctor",rows:["...KKKKKK...","..KKKKKKKK..","..KSSSSSSK.."
 async function uninstallGame(g){
  const plan=await act(()=>api("game_uninstall",{id:g.id}));if(!plan)return;
  const delSaves=h("input",{type:"checkbox"}),perm=h("input",{type:"checkbox"});
- const close=()=>ov.remove();
+ const close=()=>ov.remove();const err=h("div",{class:"small bad",role:"alert",style:"margin-top:8px"});
  const hasSaves=plan.saves.length||plan.backups;
  const ov=h("div",{class:"modal",role:"dialog","aria-modal":"true",onclick:e=>{if(e.target===ov)close()}},h("div",{class:"modalbox wide"},
   h("h3",{style:"margin:0 0 6px"},"Uninstall "+plan.title+"?"),
@@ -167,10 +167,10 @@ async function uninstallGame(g){
     h("div",{class:"small warn"},"Leave this off to keep your progress in case you reinstall the game later.")))
    :h("p",{class:"small muted"},"No save files were found for this game."),
   h("label",{class:"unopt small"},perm,h("span",{},"Delete permanently instead of using the Recycle Bin (cannot be undone)")),
-  h("p",{class:"small muted"},"Only want it out of sight? Use “Hide from library” instead; that keeps the file."),
+  h("p",{class:"small muted"},"Only want it out of sight? Use “Hide from library” instead; that keeps the file."),err,
   h("div",{class:"row",style:"justify-content:flex-end;gap:8px;margin-top:12px"},h("button",{class:"btn",onclick:close},"Cancel"),
-   h("button",{class:"btn bad",onclick:async()=>{const r=await act(()=>api("game_uninstall",{id:g.id,confirm:true,delete_saves:delSaves.checked,permanent:perm.checked}));if(!r)return;close();
-     toast("Uninstalled "+r.removed+" ("+r.where+")"+(r.saves_kept?". Your "+r.saves_kept+" save file"+(r.saves_kept===1?"":"s")+" stayed.":"."));
+   h("button",{class:"btn bad",onclick:async()=>{err.textContent="";let r;try{r=await api("game_uninstall",{id:g.id,confirm:true,delete_saves:delSaves.checked,permanent:perm.checked})}catch(e){err.textContent=e.message;toast(e.message,"err");return}
+     close();toast("Uninstalled "+r.removed+" ("+r.where+")"+(r.saves_kept?". Your "+r.saves_kept+" save file"+(r.saves_kept===1?"":"s")+" stayed.":"."));
      document.querySelectorAll(".modal,.scrim,.drawer").forEach(x=>x.remove());refreshAfter()}},"Uninstall"))));
  document.body.append(ov)}
 

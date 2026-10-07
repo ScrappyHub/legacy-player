@@ -408,3 +408,5 @@ textarea{background:var(--panel2);color:var(--text);border:1px solid var(--line)
 .startip.inline{margin:6px 0 12px}.libfoot{display:flex;align-items:center;gap:12px;margin:22px 0 8px;padding-top:14px;border-top:1px solid var(--line)}.libfoot .startip{top:auto;bottom:calc(100% + 10px);right:auto;left:0}
 .inpill{max-width:230px}header{flex-wrap:nowrap}
 .inpill{max-width:190px}header{flex-wrap:wrap}.wordmark{white-space:nowrap}#nav{flex-wrap:nowrap;white-space:nowrap}@media(max-width:1400px){.inpill{padding:5px 9px;margin-right:4px}}
+.hero .px.doctor,.doc .px.doctor{cursor:pointer}.px.doctor.poked{animation:hop .35s ease-in-out 2!important}
+#toasts{z-index:140}

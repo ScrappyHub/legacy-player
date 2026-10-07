@@ -25,7 +25,7 @@ Windows". The research code for Dolphin frame control and RAM analysis was not r
 
 | # | Finding | Fix |
 |---|---------|-----|
-| 0 | The tray icon was the generic Windows application icon, not the app's rose. | The rose is now a real `launcher/ui/legacy-player.ico` (16 to 256 px), used by the tray, the window tab and, via `--icon`, the built `.exe`. |
+| 0 | The tray icon was the generic Windows application icon. | Martin is now the app icon: a real `launcher/ui/legacy-player.ico` (16 to 256 px) used by the tray, the window tab and, via `--icon`, the built `.exe`. The rose stays on the Home page Featured card only. |
 | 1 | No single-instance guard: starting the exe again while it sat in the tray started a second copy on another port with a second tray icon. | A running copy writes `instance.json` (port and a wake secret) in the data folder. A second launch sends it a wake request and exits; the first copy opens its window. A stale file is ignored. |
 | 2 | Uninstalling Legacy Player did not stop a running server, so its state folder was deleted underneath it. | The wizard stops the server first, then cleans up. The discharge report says it did. |
 | 3 | The UI sources existed only in a working session; the repo held only the generated `index.html`. | `index.html` is declared the source of truth. The pieces and build script are archived in `tools/ui_archive/` with a README. |

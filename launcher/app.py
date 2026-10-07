@@ -11,6 +11,7 @@ import random
 import re
 import shlex
 import shutil
+import stat
 import subprocess
 import sys
 import threading
@@ -831,6 +832,15 @@ class LauncherApp:
                 continue
         raise OSError("this computer has no Trash tool Legacy Player can use")
 
+    @staticmethod
+    def _delete_file(path: Path) -> None:
+        """Delete one file. A read-only file (common on game dumps copied from discs or archives) is made writable first."""
+        try:
+            path.unlink()
+        except PermissionError:
+            os.chmod(path, stat.S_IWRITE | stat.S_IREAD)
+            path.unlink()
+
     def api_game_uninstall(self, body: dict) -> dict:
         """Uninstall one game: its files (to the Recycle Bin), and everything Legacy Player keeps about it. Saves only if asked."""
         game = self._game(body)
@@ -851,12 +861,16 @@ class LauncherApp:
         try:
             if body.get("permanent"):
                 for p in victims:
-                    p.unlink()
+                    self._delete_file(p)
                 where = "removed for good"
             else:
                 where = "moved to " + self._trash(victims)
+        except PermissionError as exc:
+            raise AppError(f"Windows refused to delete {Path(exc.filename or '').name or 'a file'} (access denied). It may be open in an emulator or another program, "
+                           "or the folder is protected or read-only for your account. Close anything using it and try again, or check the folder's permissions.") from exc
         except OSError as exc:
-            raise AppError(f"The game was not removed: {exc}. Tick 'Delete permanently' if you want to skip the Recycle Bin.") from exc
+            hint = "" if body.get("permanent") else " Tick 'Delete permanently' if you want to skip the Recycle Bin."
+            raise AppError(f"The game was not removed: {exc}.{hint}") from exc
         if delete_saves and backup_folder.is_dir():
             shutil.rmtree(backup_folder, ignore_errors=True)
         gid = game["id"]

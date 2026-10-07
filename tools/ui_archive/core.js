@@ -65,7 +65,7 @@ function renderNav(){const n=$("#nav");n.replaceChildren(...PRIMARY.map(([id,l])
 function renderWho(){const w=$("#who");if(!w)return;const p=S.profile||{alias:"Player",avatar:"martin",player:"Player"};
  w.replaceChildren(avatarEl(p.avatar,26),h("span",{class:"nm"},p.player||p.alias))}
 async function go(){closeMenus();renderNav();const old=$("#main"),m=old.cloneNode(false);old.replaceWith(m);window.scrollTo(0,0);
- Promise.resolve(({home:viewHome,library:viewLibrary,together:viewTogether,servers:viewServers,console:viewConsole,setup:viewSetup,engines:viewEngines,controllers:viewControllers,saves:viewSaves,emulators:viewEmulators,settings:viewSettings,credits:viewCredits,welcome:viewWelcome,help:viewHelp,storage:viewStorage,profile:viewProfile,display:viewDisplay})[S.tab](m)).then(()=>{if(S.tab==="home")homeArtTip()}).catch(()=>{})}
+ Promise.resolve(({home:viewHome,library:viewLibrary,together:viewTogether,servers:viewServers,console:viewConsole,setup:viewSetup,engines:viewEngines,controllers:viewControllers,saves:viewSaves,emulators:viewEmulators,settings:viewSettings,credits:viewCredits,welcome:viewWelcome,help:viewHelp,storage:viewStorage,profile:viewProfile,display:viewDisplay})[S.tab](m)).then(()=>{if(S.tab==="home")homeArtTip()}).catch(e=>{console.error("page error",e);toast("Something went wrong drawing this page: "+(e&&e.message||e),"err")})}
 function nav(tab,anchor){S.tab=tab;S.anchor=anchor||null;go()}
 
 /* ---------- menu bar ---------- */
@@ -110,7 +110,7 @@ function placeBubble(){const b=$("#bubble");if(!b)return;if(!pet.el||!pet.el.isC
  const r=pet.el.getBoundingClientRect();const off=r.bottom<0||r.top>innerHeight||r.right<0||r.left>innerWidth;b.style.visibility=off?"hidden":"visible";
  const w=b.offsetWidth||90;let left=r.right+8;if(left+w>innerWidth-6)left=Math.max(6,r.left-w-8);
  b.style.left=left+"px";b.style.top=Math.max(6,r.top-26)+"px";pet.raf=requestAnimationFrame(placeBubble)}
-function say(text){let b=$("#bubble");if(!b){b=h("div",{id:"bubble",role:"status"});document.body.append(b)}
+function say(text,el){let b=$("#bubble");if(el)pet.el=el;if(!b){b=h("div",{id:"bubble",role:"status"});document.body.append(b)}
  if(!pet.el||!pet.el.isConnected)pet.el=document.querySelector("#logomartin .martin");if(!pet.el)return;
  b.textContent=text;b.style.animation="none";void b.offsetWidth;b.style.animation="";
  cancelAnimationFrame(pet.raf);placeBubble();clearTimeout(pet.timer);pet.timer=setTimeout(()=>{cancelAnimationFrame(pet.raf);const x=$("#bubble");if(x)x.remove()},3200)}
@@ -121,6 +121,17 @@ document.addEventListener("click",e=>{const m=e.target.closest&&e.target.closest
  const r=m.getBoundingClientRect();const hrt=pixels(AVATARS.heart.rows,18,"");hrt.classList.add("petheart");hrt.style.left=(r.left+r.width/2-9+(Math.random()*30-15))+"px";hrt.style.top=(r.top+4)+"px";document.body.append(hrt);setTimeout(()=>hrt.remove(),1000);
  say(pet.n%7===0?"you're the best!":nextMeow())});
 
-/* the little rose is also the tab icon */
-{const l=document.createElement("link");l.rel="icon";const rows=AVATARS.rose.rows;let r="";rows.forEach((row,y)=>[...row].forEach((c,x)=>{if(c!==".")r+=`<rect x="${x}" y="${y}" width="1" height="1" fill="${PAL[c]}"/>`}));
- l.href="data:image/svg+xml,"+encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" shape-rendering="crispEdges">${r}</svg>`);document.head.append(l)}
+/* Poking the doctor on the Home page: he answers in a bubble, and gets more tired the more you poke (resets after a while) */
+const POKES=["Ow! I'm a doctor, not a pin cushion.","Careful, these hands are insured.","Say ahh!","Your pixels look healthy.","Have you tried staying home and playing video games?","Appointments are in the Setup tab, you know.","Hmm. Your high score is in perfect health."];
+const POKES_TIRED=["Okay, okay, I'm awake!","Please stop poking the doctor.","I'm writing you a prescription for patience.","My clipboard is getting dizzy.","...Is this a bit?"];
+const poke={n:0,t:0,last:""};
+document.addEventListener("click",e=>{const d=e.target.closest&&e.target.closest(".px.doctor");if(!d||d.closest(".docspot,#boot,.modal"))return;
+ const now=Date.now();if(now-poke.t>10000)poke.n=0;poke.t=now;poke.n++;
+ d.classList.remove("poked");void d.getBoundingClientRect();d.classList.add("poked");
+ const pool=poke.n>=5?POKES_TIRED:POKES;let t;do{t=pool[Math.floor(Math.random()*pool.length)]}while(t===poke.last&&pool.length>1);poke.last=t;
+ const r=d.getBoundingClientRect();const cr=pixels(CROSS,16,"");cr.classList.add("petheart");cr.style.left=(r.left+r.width/2-8+(Math.random()*30-15))+"px";cr.style.top=(r.top+4)+"px";document.body.append(cr);setTimeout(()=>cr.remove(),1000);
+ say(t,d)});
+
+/* Martin is the app's icon too (tab, window, tray and program file); the rose belongs to the Featured card */
+{const l=document.createElement("link");l.rel="icon";const rows=MARTIN;let r="";rows.forEach((row,y)=>[...row].forEach((c,x)=>{if(c!==".")r+=`<rect x="${x}" y="${y}" width="1" height="1" fill="${PAL[c]}"/>`}));
+ l.href="data:image/svg+xml,"+encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -1.5 16 16" shape-rendering="crispEdges">${r}</svg>`);document.head.append(l)}
