@@ -110,8 +110,19 @@ EVENT_TEXT = {
 }
 
 
+def ipaddress_is_private(text: str) -> bool:
+    import ipaddress
+    try:
+        ip = ipaddress.ip_address(str(text).strip())
+    except ValueError:
+        return False
+    return ip.is_private or ip.is_loopback or ip.is_link_local
+
+
 def describe_event(event: dict) -> dict:
     template = EVENT_TEXT.get(event["kind"], event["kind"])
+    if event["kind"] == "endpoint_published" and event["data"].get("how") == "code":
+        template = "The host shared a Dolphin host code. Press Open Dolphin and follow the steps."
     try:
         text = template.format(**event["data"])
     except (KeyError, IndexError):
@@ -609,10 +620,10 @@ class LauncherApp:
             return None, prefs["monitor"], True
         return ("fullscreen" if self._video_for(console)["fullscreen"] else "windowed"), prefs["monitor"], False
 
-    def _note_running(self, pid: int, title: str, emulator: str, eid: str) -> None:
+    def _note_running(self, pid: int, title: str, emulator: str, eid: str, step_aside: bool = True) -> None:
         self.running = {"pid": pid, "title": title, "emulator": emulator, "emulator_id": eid, "started": procs.start_time(pid),
                         "since": time.time()}
-        if self.catalog.settings().get("minimize_on_launch", True) and not os.environ.get("LEGACY_PLAYER_NO_BACKGROUND"):
+        if step_aside and self.catalog.settings().get("minimize_on_launch", True) and not os.environ.get("LEGACY_PLAYER_NO_BACKGROUND"):
             threading.Thread(target=self._step_aside_for, args=(pid, self.running["started"]), daemon=True, name="step-aside").start()
 
     def _step_aside_for(self, pid: int, started) -> None:
@@ -1886,10 +1897,11 @@ class LauncherApp:
         if ok and room["role"] == "guest" and session.get("state") not in {"ready-barrier", "active"}:
             ok, reason = False, "Waiting for the host to check that everyone matches."
         engine = check.get("engine") or ("dolphin" if game["console"] in DOLPHIN_CONSOLES else "retroarch")
-        return {"ready": ok, "reason": reason, "steps": check.get("steps", []), "engine": engine, "suggested_address": detect_lan_address(),
+        return {"ready": ok, "reason": reason, "steps": check.get("steps", []), "engine": engine, "suggested_address": self._public_or_lan_address(), "address_is_home_only": ipaddress_is_private(self._public_or_lan_address()),
                 "relay_available": netplay_tunnel.available() and engine == "retroarch",
                 "direct_allowed": self.catalog.settings()["allow_direct_connections"],
                 "endpoint_kind": (room.get("session") or {}).get("endpoint_kind"),
+                "dolphin_steps": (room.get("dolphin") or {}).get("steps", []), "needs_code": bool((room.get("dolphin") or {}).get("needs_code")),
                 "default_port": DOLPHIN_PORT if engine == "dolphin" else 55435}
 
     @staticmethod
@@ -2121,6 +2133,12 @@ class LauncherApp:
             self.tunnel.stop()
             self.tunnel = None
 
+    def _public_or_lan_address(self) -> str:
+        """The address a friend in another town could use if there is one, otherwise this computer's address on the home network."""
+        s = self.catalog.settings()
+        mapped = self.port_map.get("external_ip") if self.port_map.get("state") == "mapped" else ""
+        return str(s.get("server_public_address") or mapped or detect_lan_address())
+
     def _launch_dolphin(self, room: dict, game: dict, check: dict, body: dict) -> dict:
         mode = body.get("mode", "traversal")
         if mode not in {"traversal", "direct"}:
@@ -2129,27 +2147,36 @@ class LauncherApp:
         # introduces them), so every player learns the others' addresses. No relay exists for it.
         if not self.catalog.settings()["allow_direct_connections"]:
             raise AppError("Dolphin NetPlay shares addresses between players and cannot use the relay. "
-                           "Allow direct connections in Settings > Privacy (best over a VPN such as Tailscale) to use it.")
+                           "Turn on 'Allow direct connections' (Settings > Privacy) here, and ask your friend to do the same.")
         if not body.get("expose_address"):
             raise AppError("Confirm that you accept sharing your address with the other players.")
         try:
+            port = body.get("port", DOLPHIN_PORT)
             if room["role"] == "host":
                 state = self._call({"operation": "status", **self._auth()})["session"]["state"]
                 if state not in {"ready-barrier", "active"}:
                     raise AppError("Press 'Check everyone matches' first.")
-                port = body.get("port", DOLPHIN_PORT)
-                address = str(body.get("address") or detect_lan_address()).strip()
-                guide = dolphin_steps("host", mode=mode, address=address, port=port)
+                if mode == "direct" and (not isinstance(port, int) or isinstance(port, bool) or not 1 <= port <= 65535):
+                    raise AppError("The port must be a number from 1 to 65535.")
+                address = str(body.get("address") or self._public_or_lan_address()).strip()
+                guide = dolphin_steps("host", mode=mode, address=address, port=port, game_folder=str(Path(game["path"]).parent))
             else:
                 endpoint = self._call({"operation": "get_endpoint", **self._auth()})["endpoint"]
                 if not endpoint:
                     raise AppError("The host has not shared a way to connect yet. Wait for the notification.")
                 mode = "traversal" if endpoint["kind"] == "code" else "direct"
-                guide = dolphin_steps("guest", mode=mode, address=endpoint["address"], port=endpoint.get("port"), code=endpoint["address"])
-            self._prepare_dolphin(check["exe"], game["console"])
-            pid = emulators.launch_command(dolphin_open_command(check["exe"], game["path"]))
-            self._bring_forward(pid, "dolphin")
-            self._note_running(pid, game["title"], "Dolphin", "dolphin")
+                guide = dolphin_steps("guest", mode=mode, address=endpoint["address"], port=endpoint.get("port"), code=endpoint["address"],
+                                      game_folder=str(Path(game["path"]).parent))
+            running = self._running_now()
+            if running and running.get("emulator_id") == "dolphin":
+                pid, reopened = running["pid"], False           # a second press must not start a second Dolphin (NetPlay refuses with a game open)
+            else:
+                self._prepare_dolphin(check["exe"], game["console"])
+                pid = emulators.launch_command(dolphin_open_command(check["exe"], game["path"]))
+                reopened = True
+                # Dolphin opens at its game list and the steps are in this window (the host pastes a code back here), so the app
+                # must stay in front: no stepping aside and no moving Dolphin's window.
+                self._note_running(pid, game["title"], "Dolphin", "dolphin", step_aside=False)
             if room["role"] == "host" and mode == "direct":
                 self._call({"operation": "set_endpoint", "kind": "direct", "address": address, "port": port, **self._auth()})
         except DolphinNetplayError as exc:
@@ -2158,14 +2185,18 @@ class LauncherApp:
             raise AppError(f"Could not start Dolphin: {exc}") from exc
         self.catalog.record_play(game["id"])
         room["launched"] = True
-        return {"launched": game["title"], "role": room["role"], "pid": pid, "engine": "dolphin",
+        room["dolphin"] = {"steps": guide, "needs_code": room["role"] == "host" and mode == "traversal"}      # the screen keeps showing them
+        return {"launched": game["title"], "role": room["role"], "pid": pid, "engine": "dolphin", "opened": reopened,
                 "steps": guide, "needs_code": room["role"] == "host" and mode == "traversal"}
 
     def api_mp_share_code(self, body: dict) -> dict:
         """Host pastes the code Dolphin's traversal server gave them."""
         if self.room is None or self.room["role"] != "host":
             raise AppError("Only the host can share a Dolphin host code.")
-        self._call({"operation": "set_endpoint", "kind": "code", "address": str(body.get("code", "")).strip(), **self._auth()})
+        code = "".join(str(body.get("code", "")).split())          # Dolphin's copy button and a paste can add spaces or a line break
+        if not re.fullmatch(r"[A-Za-z0-9]{4,16}", code):
+            raise AppError("That does not look like a Dolphin host code. It is 8 letters and numbers, shown in Dolphin's NetPlay window.")
+        self._call({"operation": "set_endpoint", "kind": "code", "address": code, **self._auth()})
         return {"shared": True}
 
     def api_mp_leave(self, body: dict) -> dict:

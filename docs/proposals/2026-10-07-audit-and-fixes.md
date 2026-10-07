@@ -283,3 +283,17 @@ Release and connection audit. Fixed: autostart no longer restarts a server the p
 - Signing: `package_release.ps1` signs and time-stamps the exe when the repository secrets `WINDOWS_SIGN_PFX_BASE64` / `WINDOWS_SIGN_PFX_PASSWORD` exist, and says plainly when not. Releases also get a GitHub build attestation. A certificate still has to be bought.
 
 Still open: a signing certificate; actually renting and starting the server (then putting its code in `PUBLIC_SERVER_CODE` and the receiver address in `REPORT_URL`); the Docker/Caddy/systemd files and the signing and attestation steps are untested on real hosts. Not verified on real Windows: tray behaviour, overlay, firewall elevation, UPnP, the installer and `lp` script, the GitHub release run.
+
+### Round 6: before the first real GameCube test between two towns
+
+An independent trace of the Dolphin online flow found, and these fixes cover:
+- The Dolphin steps and the host-code box vanished about two seconds after Open Dolphin (the screen redrew from state that did not hold them). They now come from the room state and survive refreshes; a half-typed code is kept too.
+- Dolphin was started with the game already running, but Dolphin refuses to start or join NetPlay while a game is running. It now opens at its game list, and the steps tell both players to make sure the game folder is in Dolphin's Paths.
+- The app minimised itself the moment Dolphin opened, hiding the steps and the code box. It now stays in front for Dolphin online play.
+- A different copy of the game (other file name or region tag) failed the room for good. It now names who differs and what they have, and the room stays open. Pressing Check, or Start after Check, twice is harmless.
+- The guest was told "Press Join match" and had a button that worked before any code existed. The button now waits for the host's Dolphin code and the notice says so.
+- The consent texts promised an automatic open and connect that Dolphin does not do; reworded.
+- "Allow direct connections" (needed by both players) is now an inline button with an explanation, not a hidden setting.
+- Direct mode defaulted to the home-network address; it now prefers the public address and warns when it is a home-only one. Traversal stays the default.
+- A second press of Open Dolphin started a second Dolphin; it no longer does. The port is only checked in direct mode.
+- Host code is cleaned and checked before it is shared.

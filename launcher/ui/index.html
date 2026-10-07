@@ -1252,16 +1252,16 @@ function startBox(rm,host,box){
    h("div",{class:"row"},sel,h("button",{class:"btn",title:"Everyone has to have the new game too",onclick:async()=>{const x=await act(()=>api("mp_game",{id:sel.value}),"Game changed. Guests are told.");if(x){S.room=x.room;drawRoom(box)}}},"Change game")),
    h("p",{class:"small muted"},"Pressing Start asks everyone in the room to open "+rm.game+" and connect. Nothing opens on a guest's computer until that guest says yes."),
    h("div",{class:"row"},h("button",{class:"btn good",disabled:rm.members.length<2||!L.ready&&!!L.reason&&rm.state==="waiting"&&false,onclick:async()=>{
-     if(!await ask("Start "+rm.game+" for everyone in this room? Each person will be asked to agree, and it opens on your computer now.","Start"))return;
+     if(!await ask("Start "+rm.game+" for everyone in this room? Each person will be asked to agree."+(L.engine==="dolphin"?" Then you open Dolphin below to host.":" It opens on your computer now."),"Start"))return;
      const x=await act(()=>api("mp_start",{consent:true}));if(!x)return;S.room=x.room;drawRoom(box);
      if(L.engine!=="dolphin"){const r=await act(()=>api("mp_launch",{relay:true,port:L.default_port}));if(r){toast("Opened "+r.launched+". Waiting for the others.")}}else toast("Open Dolphin below to host.")}},"Start for everyone")),
    st?h("div",{class:"small",style:"margin-top:8px"},"Agreed so far: "+st.consented.join(", ")+(st.waiting_on.length?". Still deciding: "+st.waiting_on.join(", ")+".":". Everyone agreed.")):null);
  }else if(st&&st.ask_me){
   body.append(h("h3",{},"The host wants to start "+st.title),
-   st.have_game?h("p",{},"Say yes and Legacy Player opens "+st.title+" on this computer and connects you to the room. Say no and nothing happens."):h("p",{class:"bad"},"You do not have this game in your library, so you cannot start it. Add it to your games folder (same game and region as the host), then press Rescan in Library."),
-   h("div",{class:"row"},st.have_game?h("button",{class:"btn good",onclick:async()=>{const x=await act(()=>api("mp_consent",{consent:true,start_id:st.id}),"You agreed. Opening when the host is ready.");if(x){S.room=x.room;drawRoom(box)}}},"Yes, open it and connect"):null,
+   st.have_game?h("p",{},(L.engine==="dolphin"?"Say yes, then press Open Dolphin below once the host has shared a code. Dolphin does the connecting, with steps filled in for you. Say no and nothing happens.":"Say yes and Legacy Player opens "+st.title+" on this computer and connects you to the room. Say no and nothing happens.")):h("p",{class:"bad"},"You do not have this game in your library, so you cannot start it. Add it to your games folder (same game and region as the host), then press Rescan in Library."),
+   h("div",{class:"row"},st.have_game?h("button",{class:"btn good",onclick:async()=>{const x=await act(()=>api("mp_consent",{consent:true,start_id:st.id}),(L.engine==="dolphin"?"You agreed. Press Open Dolphin when the host shares a code.":"You agreed. Opening when the host is ready."));if(x){S.room=x.room;drawRoom(box)}}},L.engine==="dolphin"?"Yes, I'm in":"Yes, open it and connect"):null,
     h("button",{class:"btn",onclick:()=>{S.dismissedStart=st.id;drawRoom(box)}},"Not now")));
- }else if(st&&st.mine){body.append(h("p",{class:"good"},"You agreed to start "+st.title+". It opens and connects as soon as the host is ready."))}
+ }else if(st&&st.mine){body.append(h("p",{class:"good"},"You agreed to start "+st.title+". "+(L.engine==="dolphin"?"Press Open Dolphin below when the host shares a code.":"It opens and connects as soon as the host is ready.")))}
  else body.append(h("p",{class:"small muted"},"When the host presses Start for everyone you will be asked to agree. Nothing opens on this computer before that."));
  return body;
 }
@@ -1309,24 +1309,31 @@ function launchBox(rm,host){
  const relayRow=h("div",{class:"row",hidden:dolphin||!host},h("label",{class:"small"},relay," ",whyInline("Relay through the server (hides your address)","Instead of guests connecting to your computer, you and they both connect out to the lobby server, which passes the encrypted bytes along. Nobody learns anyone's address and no router port needs opening. Costs one extra hop of delay. The server never sees the game traffic: it stays inside the match encryption.")));
  relay.onchange=()=>{addrRow.hidden=relay.checked};if(!dolphin&&host&&relay.checked)addrRow.hidden=true;
  const guestDirectRow=(!host&&!dolphin&&L.endpoint_kind==="direct"&&!L.direct_allowed)?h("p",{class:"warn small"},"The host chose a direct connection. Joining shares addresses both ways. Allow direct connections in Settings > Privacy, or ask the host to relaunch with the relay."):null;
- const steps=h("ol",{class:"small",hidden:true});const codeRow=h("div",{class:"row",hidden:true});
- const code=h("input",{type:"text",placeholder:"Dolphin host code",maxlength:16,style:"width:170px","aria-label":"Dolphin host code"});
- codeRow.append(code,h("button",{class:"btn primary",onclick:async()=>{const r=await act(()=>api("mp_share_code",{code:code.value}),"Code shared with the room");if(r)codeRow.hidden=true}},"Share Dolphin host code"));
+ const dsteps=L.dolphin_steps||[];
+ const steps=h("ol",{class:"small",hidden:!dsteps.length},...dsteps.map(t=>h("li",{},t)));
+ const codeRow=h("div",{class:"row",hidden:!(dolphin&&host&&L.needs_code)});
+ const code=h("input",{type:"text",placeholder:"Dolphin host code",maxlength:20,value:S.codeDraft||"",style:"width:170px","aria-label":"Dolphin host code",oninput:()=>{S.codeDraft=code.value}});
+ codeRow.append(code,h("button",{class:"btn primary",onclick:async()=>{const r=await act(()=>api("mp_share_code",{code:code.value}),"Code shared with the room");if(r){S.codeDraft="";const st=await api("mp_state").catch(()=>null);if(st){S.room=st.room;drawRoom($("#room"))}}}},L.endpoint_kind==="code"?"Share a new code":"Share Dolphin host code"),
+  L.endpoint_kind==="code"?h("span",{class:"small good"},"Code shared. Your friend can press Open Dolphin."):null);
+ const allowRow=(dolphin&&!L.direct_allowed)?h("div",{class:"warn small",style:"margin:6px 0"},h("p",{},"Dolphin's online play connects you and your friend to each other, so you each learn the other's address. It is off until you allow it, and your friend has to allow it on their computer too."),
+  h("button",{class:"btn",onclick:async()=>{if(!await ask("Allow direct connections? The other players in a Dolphin game will be able to see your address.","Allow"))return;const x=await act(()=>api("settings",{key:"allow_direct_connections",value:true}),"Allowed");if(x){const st=await api("mp_state").catch(()=>null);if(st){S.room=st.room;drawRoom($("#room"))}}}},"Allow direct connections")):null;
+ const waitingForCode=dolphin&&!host&&!L.endpoint_kind;
  const label=dolphin?(host?"Open Dolphin (host)":"Open Dolphin"):(host?"Launch match (host)":"Join match");
- const go=h("button",{class:"btn good",disabled:!L.ready,title:L.reason||"",onclick:async()=>{
-   if(dolphin){if(!L.direct_allowed){toast("Dolphin NetPlay shares addresses between players. Allow direct connections in Settings > Privacy first (best over a VPN).","warn");return}
+ const go=h("button",{class:"btn good",disabled:!L.ready||waitingForCode,title:waitingForCode?"Wait for the host to share a Dolphin host code":(L.reason||""),onclick:async()=>{
+   if(dolphin){if(!L.direct_allowed){toast("Press 'Allow direct connections' above first.","warn");return}
      if(!await ask("Dolphin NetPlay connects players to each other, so the others will learn this computer's address. Continue?"))return}
-   const body=host?(dolphin?{mode:mode.value,address:addr.value.trim(),port:+port.value,expose_address:true}:{address:addr.value.trim(),port:+port.value,relay:relay.checked,expose_address:!relay.checked&&await ask("Direct connection: every guest will learn this computer's address ("+addr.value.trim()+"). Continue?")}):{expose_address:dolphin||(L.endpoint_kind==="direct"&&await ask("The host chose a direct connection: you and the host will learn each other's address. Continue?"))};
+   const body=host?(dolphin?{mode:mode.value,address:addr.value.trim(),port:(+port.value||L.default_port),expose_address:true}:{address:addr.value.trim(),port:+port.value,relay:relay.checked,expose_address:!relay.checked&&await ask("Direct connection: every guest will learn this computer's address ("+addr.value.trim()+"). Continue?")}):{expose_address:dolphin||(L.endpoint_kind==="direct"&&await ask("The host chose a direct connection: you and the host will learn each other's address. Continue?"))};
    if(!host&&!dolphin&&L.endpoint_kind==="direct"&&!body.expose_address)return;
    if(host&&!dolphin&&!relay.checked&&!body.expose_address)return;
    const r=await act(()=>api("mp_launch",body));if(!r)return;
-   toast((dolphin?"Opening Dolphin for ":"Starting ")+r.launched+(r.relay?" through the server relay":r.encrypted?" (encrypted)":"")+"…");
-   if(r.steps){steps.replaceChildren(...r.steps.map(t=>h("li",{},t)));steps.hidden=false}
-   if(r.needs_code)codeRow.hidden=false}},label);
+   toast((dolphin?(r.opened===false?"Dolphin is already open for ":"Opening Dolphin for "):"Starting ")+r.launched+(r.relay?" through the server relay":r.encrypted?" (encrypted)":"")+"…");
+   const st=await api("mp_state").catch(()=>null);if(st){S.room=st.room;drawRoom($("#room"))}}},label);
  return h("div",{class:"card",style:"margin:8px 0"},
   dolphin&&host?h("div",{class:"row"},h("label",{class:"small"},"Connection ",mode)):null,
   host?relayRow:null,relayNote,host?addrRow:null,guestDirectRow,(rm.relay_errors||[]).length?h("p",{class:"bad small"},"Relay problem: "+rm.relay_errors[rm.relay_errors.length-1]):null,
-  h("div",{class:"row",style:"margin-top:6px"},go,L.ready?null:h("span",{class:"small muted"},L.reason||"")),
+  allowRow,
+  (dolphin&&host&&L.address_is_home_only)?h("p",{class:"small muted"},"The address above is your home-network one. A friend in another town can't use 'Direct connection' with it; leave Connection on the traversal server (the default)."):null,
+  h("div",{class:"row",style:"margin-top:6px"},go,L.ready?null:h("span",{class:"small muted"},L.reason||""),waitingForCode&&L.ready?h("span",{class:"small muted"},"Waiting for the host to share a Dolphin host code…"):null,(dolphin&&!host&&L.endpoint_kind)?h("span",{class:"small good"},"The host shared a way to connect. Press Open Dolphin."):null),
   steps,codeRow,
   host?h("p",{class:"small muted"},dolphin?"Dolphin's NetPlay is started inside Dolphin; these steps are filled in for you. Everyone needs the same Dolphin version and the same game file. The traversal server is Dolphin's own, so game traffic is not run through Legacy Player.":"Same home network: use the address above. Over the internet, use a VPN such as Tailscale or ZeroTier, or forward the port. The match traffic itself is not encrypted, so a VPN is the safer choice."):null)}
 function autoJoin(){const r=S.room;if(!r||r.role!=="guest"||!r.start||!r.start.mine||S.autoJoined===r.start.id)return;

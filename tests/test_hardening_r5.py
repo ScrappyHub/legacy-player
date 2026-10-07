@@ -116,6 +116,72 @@ class ScrubberTests(unittest.TestCase):
             self.assertEqual(text, sc.text(text))
 
 
+class DolphinNetplayGuideTests(unittest.TestCase):
+    def test_dolphin_opens_without_starting_the_game(self):
+        from adapters.dolphin.netplay_guide import build_open_command, steps
+        self.assertEqual(["D.exe"], build_open_command("D.exe", "g.iso"))
+        host = steps("host", mode="traversal", game_folder="C:/Games")
+        self.assertIn("C:/Games", host[0])
+        self.assertTrue(any("UDP" in s for s in steps("host", mode="direct", port=2626)))
+        self.assertTrue(any("host code" in s for s in host))
+        self.assertTrue(any("ABCD1234" in s for s in steps("guest", mode="traversal", code="ABCD1234")))
+
+    def test_the_app_stays_in_front_for_dolphin_netplay(self):
+        import inspect
+        from launcher.app import LauncherApp
+        src = inspect.getsource(LauncherApp._launch_dolphin)
+        self.assertIn("step_aside=False", src)
+        self.assertNotIn("_bring_forward", src)
+
+    def test_host_code_is_cleaned_and_checked(self):
+        from launcher.app import LauncherApp, AppError
+        with tempfile.TemporaryDirectory() as tmp:
+            app = LauncherApp(Path(tmp))
+            app.room = {"role": "host", "session_id": "s", "me": "m", "credential": "c"}
+            for bad in ("", "abc", "has space but too long to be a code!", "ab-cd-ef-gh"):
+                with self.assertRaises(AppError):
+                    app.api_mp_share_code({"code": bad})
+            seen = []
+            app._call = lambda request: seen.append(request) or {}
+            app._auth = lambda: {}
+            app.api_mp_share_code({"code": " ZX81 QR55\n"})
+            self.assertEqual("ZX81QR55", seen[0]["address"])
+
+    def test_direct_mode_prefers_a_public_address(self):
+        from launcher.app import LauncherApp
+        with tempfile.TemporaryDirectory() as tmp:
+            app = LauncherApp(Path(tmp))
+            app.port_map = {"state": "mapped", "external_ip": "203.0.113.7"}
+            self.assertEqual("203.0.113.7", app._public_or_lan_address())
+            app.catalog.set_setting("server_public_address", "me.example.org")
+            self.assertEqual("me.example.org", app._public_or_lan_address())
+
+
+class ValidateTests(unittest.TestCase):
+    def _room(self, guest_game, guest_region):
+        svc = LobbyService()
+        made = svc.dispatch({"operation": "create", "participant_id": "host", "profile": {"game_id": "gamecube:mario-kart-double-dash:usa", "region": "usa"},
+                              "adapter_id": "dolphin", "game_pack_id": "generic", "require_approval": False})
+        sid = made["session"]["session_id"]
+        host = {"session_id": sid, "participant_id": "host", "credential": made["credential"]}
+        svc.dispatch({"operation": "join", "session_id": sid, "participant_id": "friend", "invite_code": made["invite_code"],
+                      "profile": {"game_id": guest_game, "region": guest_region}})
+        return svc, host
+
+    def test_a_different_copy_names_who_and_leaves_the_room_alive(self):
+        svc, host = self._room("gamecube:mario-kart-double-dash:unspecified", "unspecified")
+        with self.assertRaises(LobbyError) as ctx:
+            svc.dispatch({"operation": "validate", **host})
+        self.assertIn("friend has", str(ctx.exception))
+        self.assertIn("mario kart double dash", str(ctx.exception))
+        self.assertEqual("joining", svc.dispatch({"operation": "status", **host})["session"]["state"])
+
+    def test_checking_twice_is_fine(self):
+        svc, host = self._room("gamecube:mario-kart-double-dash:usa", "usa")
+        first = svc.dispatch({"operation": "validate", **host})["session"]["state"]
+        self.assertEqual(first, svc.dispatch({"operation": "validate", **host})["session"]["state"])
+
+
 class DeployKitTests(unittest.TestCase):
     def test_files_exist_and_compose_parses(self):
         for rel in ("deploy/Dockerfile", "deploy/docker-compose.yml", "deploy/Caddyfile", "deploy/.env.example",

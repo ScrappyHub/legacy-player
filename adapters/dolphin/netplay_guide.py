@@ -16,14 +16,20 @@ class DolphinNetplayError(RuntimeError):
     pass
 
 
-def build_open_command(exe: str, rom: str) -> list[str]:
-    """Open Dolphin with the game loaded in the normal window (`-e` = execute)."""
-    return [exe, "-e", rom]
+def build_open_command(exe: str, rom: str = "") -> list[str]:
+    """Open Dolphin's normal window WITHOUT starting the game. Dolphin refuses to start or join NetPlay ("can't start a NetPlay
+    session while a game is running"); NetPlay itself starts the game once everyone is in. `rom` is kept for callers, unused."""
+    return [exe]
 
 
-def steps(role: str, *, mode: str, address: str | None = None, port: int | None = None, code: str | None = None) -> list[str]:
+def steps(role: str, *, mode: str, address: str | None = None, port: int | None = None, code: str | None = None,
+          game_folder: str | None = None) -> list[str]:
+    # NetPlay lists games from Dolphin's own game folders, so a game outside them is "not found" for everyone.
+    ready = [f"Check the game shows in Dolphin's list. If not: Config > Paths > Add… and choose {game_folder}." if game_folder
+             else "Check the game shows in Dolphin's list. If not: Config > Paths > Add… and choose its folder.",
+             "Do not start the game yourself: NetPlay starts it for everyone."]
     if role == "host":
-        common = [
+        common = ready + [
             "In Dolphin, choose Tools > Start NetPlay… and open the Host tab.",
             "Pick this game in the list.",
         ]
@@ -36,7 +42,8 @@ def steps(role: str, *, mode: str, address: str | None = None, port: int | None 
             ]
         return common + [
             f"Set Connection to 'Direct Connection' and the port to {port or DEFAULT_PORT}.",
-            "Make sure that port is reachable (same network, a VPN, or a forwarded port).",
+            f"Make sure that port is reachable: same network, a VPN, or UDP port {port or DEFAULT_PORT} forwarded on your router "
+            "(Legacy Player does not open this one for you). The 'Traversal Server' choice needs none of that.",
             "Click Host. Your friends were notified with your address.",
             "When everyone appears in Dolphin's NetPlay window, start the game from there.",
         ]
@@ -44,7 +51,7 @@ def steps(role: str, *, mode: str, address: str | None = None, port: int | None 
         if mode == "traversal":
             if not code:
                 raise DolphinNetplayError("the host has not shared a Dolphin host code yet")
-            return [
+            return ready + [
                 "In Dolphin, choose Tools > Start NetPlay… and open the Connect tab.",
                 "Set Connection to 'Traversal Server'.",
                 f"Enter the host code: {code}",
@@ -52,7 +59,7 @@ def steps(role: str, *, mode: str, address: str | None = None, port: int | None 
             ]
         if not address:
             raise DolphinNetplayError("the host has not published an address yet")
-        return [
+        return ready + [
             "In Dolphin, choose Tools > Start NetPlay… and open the Connect tab.",
             "Set Connection to 'Direct Connection'.",
             f"Enter the host address {address} and port {port or DEFAULT_PORT}.",

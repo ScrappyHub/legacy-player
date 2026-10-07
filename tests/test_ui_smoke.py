@@ -127,6 +127,23 @@ class UiSmokeTests(unittest.TestCase):
             page.wait_for_selector(".modal select[data-mon]")
             self.assertIn("Full screen", page.inner_text(".modal"))
             page.get_by_role("button", name="Cancel").click()
+            # Dolphin online play: the steps and the host-code box come from the room state, so the screen's 2-second refresh keeps them
+            shown = page.evaluate("""() => {
+                const L = {engine:'dolphin', ready:true, direct_allowed:true, dolphin_steps:['Step A','Step B'], needs_code:true, endpoint_kind:null, default_port:2626, suggested_address:'192.168.1.5', address_is_home_only:true};
+                const host = launchBox({role:'host', launch:L, relay_errors:[]}, true);
+                const guest = launchBox({role:'guest', launch:{...L, needs_code:false}, relay_errors:[]}, false);
+                const guest2 = launchBox({role:'guest', launch:{...L, needs_code:false, endpoint_kind:'code'}, relay_errors:[]}, false);
+                const off = launchBox({role:'guest', launch:{...L, direct_allowed:false}, relay_errors:[]}, false);
+                const btn = el => [...el.querySelectorAll('button')].find(b => /Open Dolphin/.test(b.textContent));
+                return {hostText: host.textContent, codeHidden: host.querySelector('input[aria-label="Dolphin host code"]').parentElement.hidden,
+                        guestWaits: btn(guest).disabled, guestReady: btn(guest2).disabled, offText: off.textContent};
+            }""")
+            self.assertIn("Step A", shown["hostText"])
+            self.assertFalse(shown["codeHidden"])
+            self.assertIn("home-network", shown["hostText"])
+            self.assertTrue(shown["guestWaits"])
+            self.assertFalse(shown["guestReady"])
+            self.assertIn("Allow direct connections", shown["offText"])
             page.evaluate('nav("display")')
             page.wait_for_selector("text=Where games open")
             page.evaluate('nav("home")')

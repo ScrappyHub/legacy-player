@@ -535,7 +535,7 @@ class LobbyService:
             if not isinstance(psk, str) or not re.fullmatch(r"[0-9a-f]{32,64}", psk):
                 raise LobbyError("psk must be 32-64 lowercase hex characters")
             self._psk[session.session_id] = psk
-        self.events[session.session_id].emit("endpoint_published", host_id=host)
+        self.events[session.session_id].emit("endpoint_published", host_id=host, how=kind)
         self.recorders[session.session_id].record("endpoint_published", {"kind": kind})
         self._touch(session.session_id)
         return {"published": True}
@@ -691,6 +691,23 @@ class LobbyService:
         session, participant_id = self._authorized(request)
         if participant_id != session.host_id:
             raise LobbyError("only the host can validate the session")
+        if session.state in {SessionState.READY_BARRIER, SessionState.ACTIVE}:
+            return {"session": session.as_dict()}                  # already checked: pressing it again, or Start after Check, is fine
+        # A different copy of the game must not kill the room (a failed session cannot be repaired): say who differs and leave
+        # the room open so they can pick the right file and rejoin.
+        if len(session.participants) >= 2:
+            def pretty(game_id: str, region: str) -> str:
+                parts = str(game_id).split(":")
+                title = (parts[1] if len(parts) > 1 else parts[0]).replace("-", " ")
+                return f"{title} ({region})"
+            mine = pretty(session.game_id, session.region)
+            odd = [f"{p.participant_id} has {pretty(p.profile.get('game_id', '?'), p.profile.get('region', '?'))}"
+                   for p in session.participants.values()
+                   if p.profile.get("game_id") != session.game_id or p.profile.get("region") != session.region]
+            if odd:
+                raise LobbyError(f"Not the same game: the host has {mine}; " + "; ".join(odd) +
+                                 ". Everyone needs the same game and region (the same disc dump is best). "
+                                 "Rename or pick the matching file, then try again.")
         try:
             session.begin_validation()
         except SessionError as exc:

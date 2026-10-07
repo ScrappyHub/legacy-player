@@ -413,8 +413,10 @@ class MultiplayerFlowTests(unittest.TestCase):
         other = next(g for g in guest.api_library({})["games"] if g["title"] == "Other Game")
         room = host.api_mp_host({"id": self.gid(host), "require_approval": False})["room"]
         guest.api_mp_join({"id": other["id"], "invite_code": room["invite_code"]})
-        with self.assertRaisesRegex(AppError, "incompatible"):
+        with self.assertRaisesRegex(AppError, "Not the same game"):
             host.api_mp_lock({})
+        self.assertNotEqual("failed", host.api_mp_state({})["room"]["state"])      # the room survives, so the guest can fix it
+        guest.api_mp_leave({})
 
     def fake_retroarch(self, name):
         base = Path(self.tmp.name) / name / "ra"
@@ -592,8 +594,15 @@ class MultiplayerFlowTests(unittest.TestCase):
         self.assertTrue(result["needs_code"])
         self.assertTrue(any("host code" in step for step in result["steps"]))
         args = self.wait_args(h_out)
-        self.assertEqual("-e", args[0])
-        self.assertNotIn("-b", args)
+        launch = host.api_mp_state({})["room"]["launch"]
+        self.assertTrue(launch["needs_code"])                                  # the screen keeps the steps and the code box across its refreshes
+        self.assertEqual(result["steps"], launch["dolphin_steps"])
+        with mock.patch.object(host, "_running_now", return_value={"pid": result["pid"], "emulator_id": "dolphin"}):
+            again = host.api_mp_launch({"mode": "traversal", "expose_address": True})
+        self.assertFalse(again["opened"])                                      # a second press does not start a second Dolphin
+        self.assertEqual(result["pid"], again["pid"])
+        self.assertEqual([], args)          # Dolphin opens WITHOUT the game: it refuses NetPlay while a game is running
+        self.assertTrue(any("Config > Paths" in step for step in result["steps"]))
         with self.assertRaisesRegex(AppError, "not shared"):
             guest.api_mp_launch({"expose_address": True})
         host.api_mp_share_code({"code": "ZX81QR55"})
