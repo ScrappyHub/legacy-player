@@ -16,6 +16,7 @@ UI_FILE = Path(__file__).parent / "ui" / "index.html"
 MAX_BODY = 1024 * 1024    # room for a shrunk cover picture (the page sends it as base64)
 
 
+QUIT_FAREWELL_SECONDS = 6.0               # how long the window keeps answering so it can say goodbye
 WINDOW_TITLE_MARK = "Legacy Player \u2014"      # every app window's title starts like this (the overlay's does not)
 
 
@@ -205,6 +206,13 @@ def serve(app: LauncherApp, port: int = 8780, open_browser: bool = True, opener=
     instance_file = Path(app.data_dir) / "instance.json"
     tray = None
 
+    def close_app_windows() -> None:
+        try:
+            from . import winplace
+            winplace.close_titled(WINDOW_TITLE_MARK)
+        except Exception:
+            pass
+
     def show_existing() -> bool:
         """The app window is already on screen (maybe minimised or behind others): bring it forward instead of opening another."""
         try:
@@ -237,6 +245,10 @@ def serve(app: LauncherApp, port: int = 8780, open_browser: bool = True, opener=
                 time.sleep(1.0)
                 now = time.time()
                 if app.quit_requested:
+                    # let the open window see "quitting" and wave goodbye, then close it ourselves and stop
+                    if now - getattr(app, "quit_at", 0.0) < QUIT_FAREWELL_SECONDS:
+                        continue
+                    close_app_windows()
                     httpd.shutdown()
                     return
                 if app.tray_mode or not app.window_closed(now, started=started):

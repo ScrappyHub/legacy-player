@@ -233,7 +233,17 @@ class UiSmokeTests(unittest.TestCase):
             # the overlay window's own view (last, because it takes over the page)
             page.evaluate('void overlayInit()')
             page.wait_for_selector(".ovl")
+            page.wait_for_selector("text=No game was started")          # the overlay draws after it asks the app for its state
             self.assertIn("No game was started", page.inner_text(".ovl"))
+            # closing: Martin waves goodbye like a lucky cat, whoever asked to quit (menu or tray)
+            page.evaluate('farewell()')
+            page.wait_for_selector(".bye .lpaw")
+            self.assertIn("Bye bye", page.inner_text(".bye"))
+            self.assertEqual(1, page.locator(".bye .lcoin").count())
+            import os
+            if os.environ.get("LP_SHOT"):
+                page.wait_for_timeout(250)
+                page.screenshot(path=os.environ["LP_SHOT"])
             browser.close()
         self.assertEqual([], problems)
 

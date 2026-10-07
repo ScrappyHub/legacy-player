@@ -150,6 +150,7 @@ class LauncherApp:
         self.last_ping = 0.0
         self.bye_at = 0.0
         self.quit_requested = False
+        self.quit_at = 0.0
         self._specs_lock = threading.Lock()
         self.api_lock = threading.RLock()        # one ordinary API call at a time (the web layer takes it)
         self.memprobe = memprobe.MemProbe(self.data_dir)
@@ -2170,7 +2171,7 @@ class LauncherApp:
 
     def api_ping(self, body: dict) -> dict:
         self.last_ping, self.bye_at, self.tray_mode = time.time(), 0.0, False
-        return {"ok": True, "report_prompt": self.reports.prompt()}
+        return {"ok": True, "report_prompt": self.reports.prompt(), "quitting": bool(self.quit_requested)}
 
     def api_status(self, body: dict) -> dict:
         """A tiny summary for the window title (shown when hovering the taskbar button). No network calls."""
@@ -2297,6 +2298,7 @@ class LauncherApp:
     def api_quit(self, body: dict) -> dict:
         """Full close: leave rooms politely, then stop the app."""
         self.quit_requested = True
+        self.quit_at = time.time()
         self.shutdown()
         return {"ok": True}
 

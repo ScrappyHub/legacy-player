@@ -149,6 +149,15 @@ body.busy .brand .martin,.hop{animation:hop .55s ease-in-out infinite}
 .sumrow{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--line)}
 @media(prefers-reduced-motion:reduce){*{animation-duration:.001s!important;animation-iteration-count:1!important;transition:none!important}}
 .martin{cursor:pointer}
+.bye h2,.bye p{margin:2px 0}
+.bye{position:fixed;inset:0;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;background:rgba(8,10,20,.94);color:var(--text);text-align:center}
+.lcat{position:relative;width:150px;margin-bottom:10px}
+.lcat .martin{display:block;animation:bob 1.6s ease-in-out infinite}
+.lpaw{position:absolute;right:-16px;top:-18px;transform-origin:50% 100%;animation:beckon .75s ease-in-out infinite}
+.lcoin{position:absolute;left:-30px;bottom:-4px;animation:bob 1.2s ease-in-out infinite}
+.lcollar{position:absolute;left:12%;right:12%;top:80%;height:7px;border-radius:4px;background:#d93a3a;box-shadow:0 1px 0 #0004}
+.lbell{position:absolute;left:50%;top:5px;width:12px;height:12px;margin-left:-6px;border-radius:50%;background:#f5c542;border:2px solid #c98f10}
+@keyframes beckon{0%,100%{transform:rotate(-20deg)}50%{transform:rotate(24deg)}}
 #bubble{position:fixed;z-index:80;max-width:200px;padding:7px 12px;font:700 13px/1.2 ui-monospace,Consolas,monospace;letter-spacing:.5px;color:#14172a;background:#fff;pointer-events:none;
  box-shadow:-3px 0 #14172a,3px 0 #14172a,0 -3px #14172a,0 3px #14172a;animation:bub .25s steps(4) both}
 #bubble::after{content:"";position:absolute;left:14px;bottom:-9px;width:6px;height:6px;background:#fff;box-shadow:-3px 0 #14172a,3px 0 #14172a,0 3px #14172a,-3px -3px #fff,3px -3px #fff}
@@ -677,7 +686,14 @@ async function quitApp(){const busy=S.room||(S.waits&&S.waits.length)||S.running
  let srv=false;try{srv=!!(await api("server_control",{action:"status"})).running}catch(e){}
  if(await ask(busy?"Quit Legacy Player? You will leave your room"+(S.running?" and your game keeps running in its own window":"")+".":"Quit Legacy Player? To keep it running in the tray instead, just close the window with X.","Quit")){
   if(srv&&await ask("Your server is running for friends. Stop it too? (Press Cancel to leave it running on its own.)","Stop my server"))try{await api("server_control",{action:"stop"})}catch(e){}
-  try{await api("quit")}catch(e){}document.title="Legacy Player closed";try{window.close()}catch(e){}document.body.replaceChildren(h("div",{style:"padding:60px;text-align:center"},martin(96),h("p",{},"Legacy Player has closed. You can close this window.")))}}
+  try{await api("quit")}catch(e){}farewell()}}
+/* Martin says goodbye like a lucky cat (maneki-neko): one paw beckoning, a gold coin, a red collar with a bell */
+function farewell(){if(S.saidBye)return;S.saidBye=true;document.title="Legacy Player closed";
+ const paw=pixelsC([".DD.","DWWD","DWWD","DWWD","DWWD",".DD."],44,"lpaw",{D:"#8a8fa3",W:"#ffffff"});
+ const coin=pixelsC([".YYYY.","YOOOOY","YOYYOY","YOYYOY","YOOOOY",".YYYY."],34,"lcoin",{Y:"#f5c542",O:"#c98f10"});
+ const box=h("div",{class:"lcat"},martin(150),h("div",{class:"lcollar"},h("span",{class:"lbell"})),paw,coin);
+ document.body.append(h("div",{class:"bye",role:"status","aria-live":"polite"},box,h("h2",{},"Bye bye!"),h("p",{class:"muted"},"Martin says see you soon. Legacy Player is closing.")));
+ setTimeout(()=>{try{window.close()}catch(e){}},3200)}
 
 /* ---------- network test runs by itself so Server Info already knows where you stand ---------- */
 async function pollNet(){S.netBusy=true;redrawNet();
@@ -1826,7 +1842,7 @@ async function showReport(p){
 function reportClientError(message,where,stack){try{api("report_client_error",{message:String(message||"").slice(0,400),page:S.tab,where:where||"",stack:String(stack||"").slice(0,1500)}).catch(()=>{})}catch(e){}}
 window.addEventListener("error",e=>reportClientError(e.message,"window",e.error&&e.error.stack));
 window.addEventListener("unhandledrejection",e=>{const r=e.reason;reportClientError(r&&r.message||r,"promise",r&&r.stack)});
-if(!OVERLAY)setInterval(()=>{api("ping").then(r=>{if(r&&r.report_prompt)showReport(r.report_prompt)}).catch(()=>{})},5000);
+if(!OVERLAY)setInterval(()=>{api("ping").then(r=>{if(r&&r.quitting)farewell();else if(r&&r.report_prompt)showReport(r.report_prompt)}).catch(()=>{})},3000);
 /* The window title is what Windows shows when you hover the taskbar button, so keep it informative. */
 async function refreshTitle(){try{const d=await api("status");const bits=["Legacy Player"];
  if(d.game)bits.push("Playing "+d.game);

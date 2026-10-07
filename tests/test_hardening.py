@@ -213,3 +213,14 @@ class Round4Tests(unittest.TestCase):
         from launcher import winplace
         with mock.patch.object(winplace, "_titled", return_value=[]):
             self.assertFalse(winplace.focus_titled("Legacy Player —"))
+
+
+class QuitFarewellTests(unittest.TestCase):
+    def test_ping_tells_an_open_window_that_the_app_is_quitting(self):
+        import os
+        with mock.patch.dict(os.environ, {"LEGACY_PLAYER_NO_BACKGROUND": "1"}), tempfile.TemporaryDirectory() as tmp:
+            app = LauncherApp(Path(tmp) / "data", roots=[])
+            self.assertFalse(app.api_ping({})["quitting"])
+            app.api_quit({})
+            self.assertTrue(app.api_ping({})["quitting"])
+            self.assertGreater(app.quit_at, 0)
