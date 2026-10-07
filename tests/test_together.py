@@ -538,7 +538,7 @@ class TrayTests(unittest.TestCase):
         labels = [i[1] for i in tray.menu() if i]
         self.assertIn("Server stopped", labels); self.assertIn("Start server (let friends connect)", labels)
         self.assertNotIn("Stop server", labels)
-        tray._state = {"running": True, "players": 3, "live": 2, "open_rooms": 1, "cert": True, "known": True}
+        tray._state = {"running": True, "players": 3, "live": 2, "open_rooms": 1, "cert": True, "known": True, "shared": True}
         app.room = {"game": "Mario", "invite_code": "ABCDE-FGHIJ", "role": "host"}
         items = tray.menu()
         labels = [i[1] for i in items if i]
@@ -548,6 +548,32 @@ class TrayTests(unittest.TestCase):
         self.assertTrue(items[0][3], "Open Legacy Player is the bold default item")
         self.assertTrue(all(i[2] for i in items if i and i[0] == "open"), "information rows are readable and clickable, not greyed out")
         self.assertTrue(app.catalog.settings()["close_to_tray"])
+
+    def test_menu_offers_sharing_and_code_only_when_it_makes_sense(self):
+        app, tray = self._tray()
+        tray._state = {"running": True, "players": 0, "live": 0, "open_rooms": 0, "cert": True, "known": True, "shared": False}
+        items = {i[0] + i[1]: i for i in tray.menu() if i}
+        self.assertIn("server_shareLet friends connect (restarts the server)", items)
+        self.assertFalse(items["server_codeCopy server code"][2], "no code while the server is only on this computer")
+        self.assertIn("Server running  ·  0 players  ·  0 rooms  ·  this computer only", [i[1] for i in tray.menu() if i])
+        tray._state["shared"] = True
+        items = {i[0] + i[1]: i for i in tray.menu() if i}
+        self.assertTrue(items["server_codeCopy server code"][2])
+        self.assertNotIn("server_shareLet friends connect (restarts the server)", items)
+
+    def test_sharing_from_the_tray_asks_windows_for_the_firewall_rule(self):
+        from unittest import mock
+        app, tray = self._tray()
+        tray.native.notify = lambda *a: None
+        with mock.patch("launcher.firewall.supported", return_value=True), \
+                mock.patch("launcher.firewall.status", return_value={"allowed": False}), \
+                mock.patch("launcher.firewall.allow") as allow, \
+                mock.patch.object(app, "api_server_control", return_value={}), mock.patch.object(tray, "refresh"):
+            tray.command("server_share")
+            allow.assert_called_once()
+            allow.reset_mock()
+            tray.command("server_start")
+            allow.assert_not_called()
 
     def test_opening_the_menu_never_waits_on_the_server(self):
         import time

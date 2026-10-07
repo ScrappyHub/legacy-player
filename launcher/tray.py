@@ -199,6 +199,13 @@ class NativeTray:
             return
         self._notify = lambda title, text: self._balloon(shell32, ctypes, data, NIM_MODIFY, NIF_INFO, NOTIFYICONDATA, title, text)
         self._close = lambda: user32.PostMessageW(self.hwnd, WM_CLOSE, 0, 0)
+
+        def set_tip(text: str) -> None:
+            nid = data()
+            nid.uFlags = NIF_TIP
+            nid.szTip = text[:127]
+            shell32.Shell_NotifyIconW(NIM_MODIFY, ctypes.byref(nid))
+        self._set_tip = set_tip
         self.ok = True
         self.ready.set()
         msg = wintypes.MSG()
@@ -224,6 +231,18 @@ class NativeTray:
             except Exception:
                 pass
 
+    def set_tooltip(self, text: str) -> None:
+        """The hover text of the icon (what the server is doing), without opening the menu."""
+        if text == self.tooltip:
+            return
+        self.tooltip = text
+        fn = getattr(self, "_set_tip", None)
+        if fn:
+            try:
+                fn(text)
+            except Exception:
+                pass
+
     def stop(self) -> None:
         fn = getattr(self, "_close", None)
         if fn:
@@ -242,7 +261,7 @@ class TrayController:
     def __init__(self, app, open_window) -> None:
         self.app, self.open_window = app, open_window
         self.native = NativeTray("Legacy Player", self.menu, self.command)
-        self._state = {"running": False, "players": 0, "live": 0, "open_rooms": 0, "cert": False, "known": False}
+        self._state = {"running": False, "players": 0, "live": 0, "open_rooms": 0, "cert": False, "known": False, "shared": False}
         self._wake = threading.Event()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
@@ -263,16 +282,20 @@ class TrayController:
     # --- the picture of the server ------------------------------------------------------------------------
     def refresh(self) -> dict:
         """Ask the server once (slow if it is busy, so never call this from the menu) and remember the answer."""
-        state = {"running": False, "players": 0, "live": 0, "open_rooms": 0, "known": True,
+        state = {"running": False, "players": 0, "live": 0, "open_rooms": 0, "known": True, "shared": False,
                  "cert": (self.app.data_dir / "server" / "tls" / "cert.pem").exists()}
         try:
             from server import cli
             info = cli._admin_call(self.app.data_dir / "server", "admin_status", timeout=2.0)
             state.update(running=True, players=int(info.get("players_in_live_sessions", 0)),
-                         live=int(info.get("sessions_live", 0)), open_rooms=int(info.get("open_rooms", 0)))
+                         live=int(info.get("sessions_live", 0)), open_rooms=int(info.get("open_rooms", 0)),
+                         shared=bool(self.app.catalog.settings().get("server_tls")))
         except Exception:
             pass
         self._state = state
+        self.native.set_tooltip("Legacy Player - " + (
+            f"server running, {self._plural(state['players'], 'player')}" + (", open to friends" if state["shared"] else ", this computer only")
+            if state["running"] else "server stopped"))
         return state
 
     def _watch(self) -> None:
@@ -304,6 +327,8 @@ class TrayController:
         self.poke()                                    # so the next right-click is fresher still
         if st["running"]:
             line = "Server running  ·  " + self._plural(st["players"], "player") + "  ·  " + self._plural(st["live"], "room")
+            if not st.get("shared"):
+                line += "  ·  this computer only"
         else:
             line = "Server stopped" if st["known"] else "Checking the server..."
         items = [("open", "Open Legacy Player", True, True), ("overlay", "Open the in-game overlay", True), None, ("open", line, True)]
@@ -311,9 +336,12 @@ class TrayController:
             who = room.get("game", "a game")
             items.append(("open", f"In a room: {who}" + (" (you are hosting)" if room.get("role") == "host" else ""), True))
         if st["running"]:
-            items += [("server_stop", "Stop server", True), ("server_restart", "Restart server", True),
-                      ("server_code", "Copy server code", st["cert"]),
-                      ("server_fresh_code", "Make a fresh server code and copy it", st["cert"])]
+            shared = bool(st.get("shared")) and st["cert"]
+            items += [("server_stop", "Stop server", True), ("server_restart", "Restart server", True)]
+            if not st.get("shared"):
+                items.append(("server_share", "Let friends connect (restarts the server)", True))
+            items += [("server_code", "Copy server code", shared),
+                      ("server_fresh_code", "Make a fresh server code and copy it", shared)]
         else:
             items += [("server_start", "Start server (this computer only)", True),
                       ("server_share", "Start server (let friends connect)", True)]
@@ -332,7 +360,9 @@ class TrayController:
             elif command in ("server_start", "server_share", "server_stop", "server_restart"):
                 action = {"server_start": "start", "server_share": "start", "server_stop": "stop", "server_restart": "restart"}[command]
                 share = command == "server_share" or (command == "server_restart" and app.catalog.settings().get("server_tls"))
-                out = app.api_server_control({"action": action, "share": bool(share)})
+                app.api_server_control({"action": action, "share": bool(share)})
+                if share and action != "stop":
+                    self._firewall_for_friends()
                 self.native.notify("Your server", {"start": "Server started.", "stop": "Server stopped.", "restart": "Server restarted."}[action]
                                    + (" Friends can connect." if share and action != "stop" else ""))
             elif command in ("server_code", "server_fresh_code"):
@@ -354,6 +384,14 @@ class TrayController:
         finally:
             if command.startswith("server_"):
                 self.refresh()                # show the new state in the menu straight away
+
+    def _firewall_for_friends(self) -> None:
+        """Friends cannot connect without a Windows Firewall rule: Windows asks for approval once (the click was the request)."""
+        from . import firewall
+        port = self.app.catalog.settings()["server_port"]
+        if firewall.supported() and not firewall.status(port)["allowed"]:
+            self.native.notify("Windows Firewall", "Windows will ask once to let friends reach your server. Press Yes.")
+            firewall.allow(port)
 
     def _copy(self, text: str) -> None:
         subprocess.run(["clip"], input=text.encode("ascii", "ignore"), check=False,
