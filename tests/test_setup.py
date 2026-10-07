@@ -9,6 +9,8 @@ import zipfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+SEVENZ = shutil.which("7z") or shutil.which("7za")      # found once, at import: another test may change PATH later
+
 from launcher.app import LauncherApp
 from launcher.setup import (
     Setup, SetupError, core_filename, core_url, download, extract_7z, latest_stable, platform_key,
@@ -120,13 +122,13 @@ class SetupTests(unittest.TestCase):
         with self.assertRaisesRegex(SetupError, "already running"):
             self.setup.start("cores")
 
-    @unittest.skipUnless(shutil.which("7z") or shutil.which("7za"), "needs a 7-Zip tool")
+    @unittest.skipUnless(SEVENZ, "needs a 7-Zip tool")
     def test_extract_7z_round_trip(self):
         import subprocess
         src = self.root / "src"; src.mkdir()
         (src / "retroarch.exe").write_text("x")
         archive = self.root / "a.7z"
-        subprocess.run([shutil.which("7z") or shutil.which("7za"), "a", str(archive), str(src / "retroarch.exe")], check=True, capture_output=True)
+        subprocess.run([SEVENZ, "a", str(archive), str(src / "retroarch.exe")], check=True, capture_output=True)
         out = self.root / "out"
         extract_7z(archive, out)
         self.assertTrue(any(out.rglob("retroarch.exe")))
