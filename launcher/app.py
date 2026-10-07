@@ -144,6 +144,7 @@ class LauncherApp:
         self.last_ping = 0.0
         self.bye_at = 0.0
         self.quit_requested = False
+        self._specs_lock = threading.Lock()
         self.tray_mode = False   # the window is closed but the app keeps running in the tray
         self._net_running = False
         self.covers = CoverFetcher(self.data_dir / "covers")
@@ -819,7 +820,8 @@ class LauncherApp:
             return "the Recycle Bin"
         if sys.platform == "darwin":
             for p in paths:
-                subprocess.run(["osascript", "-e", f'tell application "Finder" to delete POSIX file "{p}"'], check=True, capture_output=True)
+                safe = str(p).replace("\\", "\\\\").replace('"', '\\"')
+                subprocess.run(["osascript", "-e", f'tell application "Finder" to delete POSIX file "{safe}"'], check=True, capture_output=True)
             return "the Trash"
         for tool in (["gio", "trash"], ["trash-put"]):
             try:
@@ -1312,9 +1314,10 @@ class LauncherApp:
 
     def api_specs(self, body: dict) -> dict:
         """The computer's CPU, memory, graphics card and system, read locally. Cached; pass refresh to read again."""
-        if body.get("refresh") or getattr(self, "_specs", None) is None:
-            self._specs = sysinfo.collect()
-        return self._specs
+        with self._specs_lock:          # slow (PowerShell): runs outside the big API lock, one read at a time
+            if body.get("refresh") or getattr(self, "_specs", None) is None:
+                self._specs = sysinfo.collect()
+            return self._specs
 
     def api_doctor_dismiss(self, body: dict) -> dict:
         key = str(body.get("key", ""))[:40]
@@ -1849,6 +1852,9 @@ class LauncherApp:
         return {"room": None}
 
     # window lifetime (used by the packaged app so it quits when its window closes) ----------
+    # calls that need no global lock: quick reads, or slow work that only touches its own cache
+    UNLOCKED = frozenset({"ping", "bye", "status", "specs", "server_status", "network_last"})
+
     def api_ping(self, body: dict) -> dict:
         self.last_ping, self.bye_at, self.tray_mode = time.time(), 0.0, False
         return {"ok": True}
@@ -1872,8 +1878,17 @@ class LauncherApp:
             return selfuninstall.plan(self.data_dir, self.catalog.data.get("save_root") or "",
                                       self.catalog.data.get("backup_root") or "")
         self.shutdown()
+        server_stopped = False
+        try:      # the server is its own background program; it must not be running while its folder is removed
+            from server import cli
+            if cli._is_running(self.data_dir / "server"):
+                self.api_server_control({"action": "stop"})
+                server_stopped = not cli._is_running(self.data_dir / "server")
+        except (AppError, OSError):
+            pass
         report = selfuninstall.execute(self.data_dir, keep_saves=bool(body.get("keep_saves", True)),
                                        remove_program=bool(body.get("remove_program", True)))
+        report["server_stopped"] = server_stopped
         self.catalog.save = lambda: None      # never write the settings file back after it was removed
         return report
 

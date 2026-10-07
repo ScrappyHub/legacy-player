@@ -104,13 +104,20 @@ class NativeTray:
         TPM_RETURNCMD, TPM_RIGHTBUTTON, TPM_NONOTIFY = 0x100, 0x2, 0x80
         taskbar_created = user32.RegisterWindowMessageW("TaskbarCreated")
 
+        # the same rose as the window and the program file: load it from the bundled .ico at the tray's size
         icon = None
-        if getattr(sys, "frozen", False):
+        ico = Path(__file__).parent / "ui" / "legacy-player.ico"
+        user32.LoadImageW.restype = wintypes.HANDLE
+        user32.LoadImageW.argtypes = [wintypes.HINSTANCE, wintypes.LPCWSTR, wintypes.UINT, ctypes.c_int, ctypes.c_int, wintypes.UINT]
+        if ico.is_file():
+            size = user32.GetSystemMetrics(49) or 16          # SM_CXSMICON
+            icon = user32.LoadImageW(None, str(ico), 1, size, size, 0x10)     # IMAGE_ICON, LR_LOADFROMFILE
+        if not icon and getattr(sys, "frozen", False):
             icon = shell32.ExtractIconW(None, sys.executable, 0)
             if icon in (None, 0, 1):
                 icon = None
         if not icon:
-            icon = user32.LoadIconW(None, ctypes.cast(ctypes.c_void_p(32512), wintypes.LPCWSTR))   # IDI_APPLICATION
+            icon = user32.LoadIconW(None, ctypes.cast(ctypes.c_void_p(32512), wintypes.LPCWSTR))   # last resort: IDI_APPLICATION
 
         def data() -> NOTIFYICONDATA:
             nid = NOTIFYICONDATA()

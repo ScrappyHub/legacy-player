@@ -154,14 +154,16 @@ def _spawn_cleanup(exe: Path | None, others: list, purge: Path | None) -> None:
     paths = ([exe] if exe else []) + list(others) + ([purge] if purge else [])
     try:
         if os.name == "nt":
+            def q(value) -> str:      # percent signs would be expanded by the batch interpreter
+                return str(value).replace("%", "%%")
             lines = ["@echo off", "set n=0", ":again", "ping -n 3 127.0.0.1 >nul", "set /a n+=1"]
             for p in paths:
                 if p == exe:
-                    lines.append(f'del /f /q "{p}" >nul 2>&1')
+                    lines.append(f'del /f /q "{q(p)}" >nul 2>&1')
                 else:
-                    lines.append(f'rmdir /s /q "{p}" >nul 2>&1')
+                    lines.append(f'rmdir /s /q "{q(p)}" >nul 2>&1')
             if exe:
-                lines.append(f'if exist "{exe}" if %n% lss 300 goto again')
+                lines.append(f'if exist "{q(exe)}" if %n% lss 300 goto again')
             lines += ['(goto) 2>nul & del "%~f0"']
             fd, bat = tempfile.mkstemp(suffix=".bat", prefix="lp-clean-")
             with os.fdopen(fd, "w") as f:

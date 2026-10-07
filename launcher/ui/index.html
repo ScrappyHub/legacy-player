@@ -6,7 +6,7 @@
 <title>Legacy Player</title>
 <style>
 :root{--bg:#050816;--panel:rgba(22,30,64,.58);--panel2:rgba(255,255,255,.07);--line:rgba(255,255,255,.13);--text:#eef1ff;--mute:#a3b2e0;--accent:#4f8cff;--accent2:#3be0a8;--warn:#ffb454;--bad:#ff6b7a;--r:16px;--grad:linear-gradient(135deg,#4f8cff,#7a5cff 55%,#3be0a8);--glow:0 0 22px rgba(79,140,255,.45);--chrome:rgba(8,12,30,.72)}
-[data-theme=light]{--bg:#eef2fb;--panel:rgba(255,255,255,.78);--panel2:rgba(30,50,120,.07);--line:rgba(30,50,120,.16);--text:#141a36;--mute:#4d5a8f;--accent:#2f62e0;--accent2:#0b8f6c;--warn:#a85a00;--bad:#c92a3b;--glow:0 0 18px rgba(47,98,224,.28);--chrome:rgba(255,255,255,.82)}
+[data-theme=light]{--bg:#eef2fb;--panel:rgba(255,255,255,.78);--panel2:rgba(30,50,120,.07);--line:rgba(30,50,120,.16);--text:#141a36;--mute:#4d5a8f;--accent:#2f62e0;--accent2:#066f53;--warn:#a85a00;--bad:#c92a3b;--glow:0 0 18px rgba(47,98,224,.28);--chrome:rgba(255,255,255,.82)}
 *{box-sizing:border-box}
 html{scrollbar-color:#3a4a8a transparent}
 body{margin:0;color:var(--text);font:15px/1.5 "Segoe UI Variable","Segoe UI",system-ui,Roboto,sans-serif;background:var(--bg);min-height:100vh}
@@ -394,7 +394,7 @@ textarea{background:var(--panel2);color:var(--text);border:1px solid var(--line)
 .retirehead{display:flex;gap:14px;align-items:center;margin-bottom:12px}.retirehead .docspot{margin:0;flex:none}
 .retiresay{flex:1;background:#fff;color:#111;border-radius:12px;padding:10px 14px;font-size:14px;position:relative;min-height:44px;display:flex;align-items:center}
 .retiresay::before{content:"";position:absolute;left:-8px;top:50%;margin-top:-8px;border:8px solid transparent;border-left:0;border-right-color:#fff}
-.rrow{align-items:center;gap:10px}.rmark{width:20px;text-align:center;font-weight:800;color:var(--muted)}
+.rrow{align-items:center;gap:10px}.rmark{width:20px;text-align:center;font-weight:800;color:var(--mute)}
 .rrow.rdone .rmark{color:#2bd17e}.rrow.rkept .rmark{color:#ff6fa5}.rrow.rprob .rmark{color:#ffd23f}
 .rrow.rdone,.rrow.rkept{animation:rpop .35s ease-out}@keyframes rpop{from{transform:scale(.97);opacity:.6}to{transform:none;opacity:1}}
 .retire .docspot.working .px.doctor{animation:shake .5s ease-in-out infinite}
@@ -2048,6 +2048,7 @@ async function retireClinic(){
   say.textContent="Gloves on. This won't take long!";
   const r=await act(()=>api("self_uninstall",{confirm:true,keep_saves:keepSaves,remove_program:rmProg}));
   if(!r){close();return}
+  if(r.server_stopped){await wait(500);say.textContent="Switching off your server first so nothing is left running..."}
   for(const s of r.steps){await wait(650);say.textContent=s.status==="kept"?"Your saves go in a safe box. They stay.":(RETIRE_LINES[s.key]||"Tidying...");
    mark(s.key,s.status==="kept"?"♥":s.status==="problem"?"!":"✓",s.status==="kept"?"rkept":s.status==="problem"?"rprob":"rdone");
    if(s.status==="after_close"){const row=body.querySelector(`[data-k="${s.key}"] .rsize`);if(row)row.textContent="when closing"}}
@@ -2059,6 +2060,7 @@ async function retireClinic(){
   body.replaceChildren(h("div",{class:"discharge"},h("div",{class:"retro"},
     h("div",{class:"hd"},"Discharge report"),
     ...r.steps.map(s=>line(s.label.replace(/^The /,""),s.status==="kept"?"kept safe":s.status==="removed"?"removed":s.status==="after_close"?"leaves when you close":s.status==="skipped"?"not applicable":"needs a hand",s.status==="problem")),
+    r.server_stopped?line("Your server","stopped first"):"",
     line("Space freed",r.freed_mb+" MB"),
     r.kept_saves?line("Saves","kept in "+plan.data_dir):line("Saves","deleted"),
     line("Your games","untouched")),

@@ -460,8 +460,8 @@ class SelfUninstallTests(unittest.TestCase):
         self.assertTrue((data / "emulators").exists())      # a plan removes nothing
 
     def test_keep_saves(self):
-        from launcher import selfuninstall
-        selfuninstall._spawn_cleanup = lambda *a: None
+        from unittest import mock
+        p = mock.patch("launcher.selfuninstall._spawn_cleanup", lambda *a: None); p.start(); self.addCleanup(p.stop)
         app, data, games = self._app()
         out = app.api_self_uninstall({"confirm": True, "keep_saves": True, "remove_program": False})
         self.assertFalse((data / "emulators").exists())
@@ -473,8 +473,9 @@ class SelfUninstallTests(unittest.TestCase):
 
     def test_everything(self):
         from launcher import selfuninstall
+        from unittest import mock
         calls = []
-        selfuninstall._spawn_cleanup = lambda *a: calls.append(a)
+        p = mock.patch("launcher.selfuninstall._spawn_cleanup", lambda *a: calls.append(a)); p.start(); self.addCleanup(p.stop)
         app, data, games = self._app()
         out = app.api_self_uninstall({"confirm": True, "keep_saves": False, "remove_program": False})
         self.assertFalse((data / "saves").exists())
@@ -540,3 +541,71 @@ class TrayTests(unittest.TestCase):
         self.assertIn("Stop server", labels); self.assertIn("Copy this room's invite code", labels)
         self.assertIn("In a room: Mario", labels); self.assertEqual(labels[-1], "Exit Legacy Player")
         self.assertTrue(app.catalog.settings()["close_to_tray"])
+
+
+class LaunchSecretTests(unittest.TestCase):
+    def setUp(self):
+        import tempfile, threading, http.client, json
+        from pathlib import Path
+        from http.server import ThreadingHTTPServer
+        from launcher.app import LauncherApp
+        from launcher.web import Launch, make_handler
+        self.tmp = tempfile.TemporaryDirectory()
+        self.app = LauncherApp(Path(self.tmp.name))
+        self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), None)
+        self.port = self.httpd.server_address[1]
+        self.launch = Launch()
+        self.httpd.RequestHandlerClass = make_handler(self.app, "tok", lambda: self.port, self.launch)
+        threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
+        self.http, self.json = http.client, json
+
+    def tearDown(self):
+        self.httpd.shutdown(); self.httpd.server_close(); self.tmp.cleanup()
+
+    def req(self, method, path, headers=None, body=None):
+        c = self.http.client.HTTPConnection("127.0.0.1", self.port) if False else self.http.HTTPConnection("127.0.0.1", self.port)
+        c.request(method, path, body=body, headers=headers or {})
+        r = c.getresponse(); data = r.read(); out = (r.status, dict(r.getheaders()), data); c.close(); return out
+
+    def test_page_needs_the_one_time_secret(self):
+        self.assertEqual(403, self.req("GET", "/")[0])                     # a program that only knows the port
+        secret = self.launch.new_secret()
+        status, headers, _ = self.req("GET", "/?k=" + secret)
+        self.assertEqual(302, status)
+        cookie = headers["Set-Cookie"].split(";")[0]
+        self.assertEqual(200, self.req("GET", "/", {"Cookie": cookie})[0])      # the window keeps working on reload
+        self.assertEqual(403, self.req("GET", "/?k=" + secret)[0])              # the secret is single-use
+        self.assertEqual(403, self.req("GET", "/", {"Cookie": "lp_%d=forged" % self.port})[0])
+
+    def test_second_launch_wakes_the_first(self):
+        import threading
+        from pathlib import Path
+        from launcher.web import wake_existing
+        woke = threading.Event()
+        self.launch.on_wake = woke.set
+        data_dir = Path(self.tmp.name)
+        self.assertFalse(wake_existing(data_dir))                                  # nothing recorded yet
+        (data_dir / "instance.json").write_text(self.json.dumps({"port": self.port, "wake": "wrong"}))
+        self.assertFalse(wake_existing(data_dir))
+        (data_dir / "instance.json").write_text(self.json.dumps({"port": self.port, "wake": self.launch.wake_secret}))
+        self.assertTrue(wake_existing(data_dir))
+        self.assertTrue(woke.wait(2))
+
+
+class UninstallStopsServerTests(unittest.TestCase):
+    def test_server_is_stopped_first(self):
+        import tempfile
+        from pathlib import Path
+        from launcher import selfuninstall
+        from launcher.app import LauncherApp
+        from server import cli
+        from unittest import mock
+        for target, repl in (("launcher.selfuninstall._spawn_cleanup", lambda *a: None), ("server.cli._is_running", lambda d: state["up"])):
+            p = mock.patch(target, repl); p.start(); self.addCleanup(p.stop)
+        app = LauncherApp(Path(tempfile.mkdtemp()))
+        state = {"up": True}
+        calls = []
+        app.api_server_control = lambda body: (calls.append(body["action"]), state.update(up=False))[0]
+        out = app.api_self_uninstall({"confirm": True, "keep_saves": True, "remove_program": False})
+        self.assertEqual(calls, ["stop"])
+        self.assertTrue(out["server_stopped"])

@@ -16,7 +16,38 @@ UI_FILE = Path(__file__).parent / "ui" / "index.html"
 MAX_BODY = 1024 * 1024    # room for a shrunk cover picture (the page sends it as base64)
 
 
-def make_handler(app: LauncherApp, token: str, port_getter):
+class Launch:
+    """Who may open the page. Each window gets a one-time secret in its address; the page then lives on a cookie
+    only that window holds. A program that merely finds the port can no longer fetch the page (and its API token)."""
+
+    def __init__(self) -> None:
+        self.secrets: set[str] = set()
+        self.sessions: set[str] = set()
+        self.wake_secret = secrets.token_urlsafe(24)
+        self.on_wake = None
+        self._lock = threading.Lock()
+
+    def new_secret(self) -> str:
+        value = secrets.token_urlsafe(18)
+        with self._lock:
+            self.secrets = set(list(self.secrets)[-7:]) | {value}     # a few open windows at most
+        return value
+
+    def redeem(self, value: str) -> str | None:
+        with self._lock:
+            if value in self.secrets:
+                self.secrets.discard(value)
+                session = secrets.token_urlsafe(18)
+                self.sessions.add(session)
+                return session
+        return None
+
+    def valid_session(self, value: str) -> bool:
+        with self._lock:
+            return value in self.sessions
+
+
+def make_handler(app: LauncherApp, token: str, port_getter, launch: Launch | None = None):
     api_lock = threading.RLock()   # one API call at a time: the app state is not thread-safe by itself
 
     class Handler(BaseHTTPRequestHandler):
@@ -46,12 +77,34 @@ def make_handler(app: LauncherApp, token: str, port_getter):
         def do_GET(self):
             if not self._host_ok():
                 return self._json(403, {"error": "bad host"})
-            if self.path in {"/", "/index.html"}:
+            from urllib.parse import parse_qs, urlparse
+            parsed = urlparse(self.path)
+            if parsed.path in {"/", "/index.html"}:
+                extra = {}
+                if launch is not None:
+                    cookie_name = f"lp_{port_getter()}"
+                    jar = {}
+                    for part in (self.headers.get("Cookie") or "").split(";"):
+                        if "=" in part:
+                            k, v = part.strip().split("=", 1)
+                            jar[k] = v
+                    given = parse_qs(parsed.query).get("k", [""])[0]
+                    if given:
+                        session = launch.redeem(given)
+                        if session is None:
+                            return self._json(403, {"error": "That link was already used. Open Legacy Player from its window or tray icon."})
+                        self.send_response(302)      # set the cookie, then drop the secret from the address
+                        self.send_header("Set-Cookie", f"{cookie_name}={session}; Path=/; HttpOnly; SameSite=Strict")
+                        self.send_header("Location", "/")
+                        self.send_header("Content-Length", "0")
+                        self.end_headers()
+                        return
+                    if not launch.valid_session(jar.get(cookie_name, "")):
+                        return self._json(403, {"error": "Open Legacy Player from its own window or its tray icon."})
                 page = UI_FILE.read_text(encoding="utf-8").replace("__LP_TOKEN__", token)
                 return self._send(200, page.encode(), "text/html; charset=utf-8")
             if self.path.startswith("/cover/"):
-                from urllib.parse import parse_qs, urlparse
-                u = urlparse(self.path)
+                u = parsed
                 if not secrets.compare_digest(parse_qs(u.query).get("t", [""])[0], token):
                     return self._json(403, {"error": "missing or wrong token"})
                 found = app.cover_file(u.path[len("/cover/"):].removesuffix(".png"))
@@ -71,6 +124,11 @@ def make_handler(app: LauncherApp, token: str, port_getter):
         def do_POST(self):
             if not self._host_ok():
                 return self._json(403, {"error": "bad host"})
+            if self.path == "/__wake" and launch is not None:
+                if not secrets.compare_digest(self.headers.get("X-LP-Wake", ""), launch.wake_secret) or launch.on_wake is None:
+                    return self._json(403, {"error": "no"})
+                threading.Thread(target=launch.on_wake, daemon=True).start()
+                return self._json(200, {"ok": True})
             if not self.path.startswith("/api/"):
                 return self._json(404, {"error": "not found"})
             if not secrets.compare_digest(self.headers.get("X-LP-Token", ""), token):
@@ -94,6 +152,8 @@ def make_handler(app: LauncherApp, token: str, port_getter):
             if method is None:
                 return self._json(404, {"error": "unknown action"})
             try:
+                if name in app.UNLOCKED:       # quick read-only calls and slow ones that touch no shared state
+                    return self._json(200, method(body))
                 with api_lock:
                     return self._json(200, method(body))
             except AppError as exc:
@@ -119,15 +179,19 @@ def serve(app: LauncherApp, port: int = 8780, open_browser: bool = True, opener=
             raise
         httpd = _Server(("127.0.0.1", 0), None)
     httpd.RequestHandlerClass = make_handler(app, token, lambda: httpd.server_address[1])
-    url = f"http://127.0.0.1:{httpd.server_address[1]}/"
-    print(f"Legacy Player is open at {url}  (press Ctrl+C to quit)", flush=True)
+    launch = Launch()
+    httpd.RequestHandlerClass = make_handler(app, token, lambda: httpd.server_address[1], launch)
+    base = f"http://127.0.0.1:{httpd.server_address[1]}/"
+    url_for_window = lambda: base + "?k=" + launch.new_secret()      # every window gets its own one-time address
+    print(f"Legacy Player is open at {url_for_window()}  (press Ctrl+C to quit)", flush=True)
+    instance_file = Path(app.data_dir) / "instance.json"
     tray = None
     if exit_when_closed and opener is not None and sys.platform == "win32":
         from .tray import TrayController
 
         def reopen() -> None:
             app.last_ping, app.bye_at, app.tray_mode = time.time(), 0.0, False   # fresh grace while the window loads
-            opener(url)
+            opener(url_for_window())
         tray = TrayController(app, reopen)
         if not tray.start():
             tray = None
@@ -153,16 +217,43 @@ def serve(app: LauncherApp, port: int = 8780, open_browser: bool = True, opener=
                     httpd.shutdown()
                     return
         threading.Thread(target=watch, daemon=True).start()
+    def show_window() -> None:
+        app.last_ping, app.bye_at, app.tray_mode = time.time(), 0.0, False
+        (opener or webbrowser.open)(url_for_window())
+    launch.on_wake = show_window
+    if exit_when_closed:      # a second launch finds this one through this file and asks it to show its window
+        try:
+            instance_file.write_text(json.dumps({"port": httpd.server_address[1], "wake": launch.wake_secret}), encoding="utf-8")
+        except OSError:
+            pass
     if opener is not None:
-        opener(url)
+        opener(url_for_window())
     elif open_browser:
-        webbrowser.open(url)
+        webbrowser.open(url_for_window())
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
         pass
     finally:
+        try:
+            instance_file.unlink()
+        except OSError:
+            pass
         if tray is not None:
             tray.stop()
         httpd.server_close()
         app.shutdown()
+
+
+def wake_existing(data_dir: Path) -> bool:
+    """If Legacy Player is already running for this data folder, ask it to show its window and return True."""
+    import http.client
+    try:
+        info = json.loads((Path(data_dir) / "instance.json").read_text(encoding="utf-8"))
+        conn = http.client.HTTPConnection("127.0.0.1", int(info["port"]), timeout=3)
+        conn.request("POST", "/__wake", body=b"{}", headers={"X-LP-Wake": str(info["wake"]), "Content-Type": "application/json"})
+        ok = conn.getresponse().status == 200
+        conn.close()
+        return ok
+    except (OSError, ValueError, KeyError, TypeError):
+        return False

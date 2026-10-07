@@ -7,7 +7,7 @@ from pathlib import Path
 from .app import LauncherApp
 from .catalog import CatalogError
 from .shell import make_opener
-from .web import serve
+from .web import serve, wake_existing
 
 
 def main() -> int:
@@ -20,6 +20,9 @@ def main() -> int:
     parser.add_argument("--window", action="store_true", default=getattr(sys, "frozen", False),
                         help="open in an app-style window and quit when it is closed (default in the downloadable app)")
     args = parser.parse_args()
+    if args.window and wake_existing(args.data_dir):
+        print("Legacy Player is already running; showing its window.")
+        return 0
     app = LauncherApp(args.data_dir)
     if args.games:
         missing = [g for g in args.games if not Path(g).is_dir()]
