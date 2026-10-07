@@ -57,7 +57,11 @@ class InAppServerTests(unittest.TestCase):
         with socket.create_connection(("127.0.0.1", self.port), timeout=5) as raw:
             raw.sendall(b'{"operation":"browse"}\n')
             self.assertNotIn(b'"ok": true', raw.recv(200) or b"")
-        good = LobbyClient("127.0.0.1", self.port, tls=True, fingerprint=out["fingerprint"])
+        keyless = LobbyClient("127.0.0.1", self.port, tls=True, fingerprint=out["fingerprint"])
+        with self.assertRaisesRegex(LobbyClientError, "out of date or not right"):
+            keyless.call({"operation": "browse"})          # a new person needs the server code's key
+        old_key = self.app._own_server_key()
+        good = LobbyClient("127.0.0.1", self.port, tls=True, fingerprint=out["fingerprint"], access_key=old_key)
         listing = good.call({"operation": "browse"})
         self.assertEqual(3, listing["limits"]["max_players_per_room"])
         self.assertEqual(0, listing["limits"]["max_waiting_per_room"])
@@ -65,6 +69,12 @@ class InAppServerTests(unittest.TestCase):
         with self.assertRaisesRegex(LobbyClientError, "does not match"):
             bad.call({"operation": "browse"})
         self.assertTrue(self.app.api_server_status({})["online"])  # the app itself can still talk to it
+        fresh = self.app.api_server_code({"refresh": True})        # a fresh code: the old key stops working for new people
+        self.assertTrue(fresh["rotated"])
+        self.assertNotEqual(old_key, self.app._own_server_key())
+        with self.assertRaisesRegex(LobbyClientError, "out of date or not right"):
+            good.call({"operation": "browse"})
+        self.app._client().call({"operation": "browse"})            # the app's own client follows the new key
         status = self.app.api_server_control({"action": "status"})
         self.assertTrue(status["running"])
 

@@ -621,3 +621,36 @@ class ReadOnlyUninstallTests(unittest.TestCase):
         os.chmod(f, stat.S_IREAD)
         LauncherApp._delete_file(f)
         self.assertFalse(f.exists())
+
+
+class ServerKeyTests(unittest.TestCase):
+    def test_codes_carry_the_key(self):
+        from launcher import servercode
+        code = servercode.encode("192.168.1.20", 8765, "abcdef0123456789", "0a1b2c3d4e")
+        got = servercode.decode(code)
+        self.assertEqual(("192.168.1.20", 8765, "abcdef0123", "0a1b2c3d4e"), (got["host"], got["port"], got["fingerprint"], got["key"]))
+        old = servercode.decode(servercode.encode("192.168.1.20", 8765, "abcdef0123"))     # codes made before keys still decode
+        self.assertNotIn("key", old)
+
+    def test_fresh_key_keeps_current_players_but_stops_new_ones(self):
+        from server.lobby import LobbyService
+        from tests.test_community_lobby import PROFILE, auth
+        service = LobbyService()
+        service.access_key = "aaaaaaaaaa"
+        make = {"operation": "create", "participant_id": "host", "profile": PROFILE, "adapter_id": "retroarch",
+                "game_pack_id": "generic", "max_players": 3}
+        with self.assertRaises(PermissionError):
+            service.dispatch(dict(make))                                   # no key
+        created = service.dispatch({**make, "access_key": "aaaaaaaaaa"})
+        sid, code = created["session"]["session_id"], created["invite_code"]
+        host = auth(sid, "host", created["credential"])
+        friend = service.dispatch({"operation": "join", "invite_code": code, "participant_id": "friend", "profile": PROFILE, "access_key": "aaaaaaaaaa"})
+        service.access_key = "bbbbbbbbbb"                                  # the host made a fresh code
+        with self.assertRaises(PermissionError):
+            service.dispatch({"operation": "join", "invite_code": code, "participant_id": "late", "profile": PROFILE, "access_key": "aaaaaaaaaa"})
+        with self.assertRaises(PermissionError):
+            service.dispatch({"operation": "browse", "access_key": "aaaaaaaaaa"})
+        # players already inside carry on with their own credentials, no key needed
+        self.assertTrue(service.dispatch({"operation": "heartbeat", **host}))
+        self.assertTrue(service.dispatch({"operation": "heartbeat", **auth(sid, "friend", friend["credential"])}))
+        self.assertTrue(service.dispatch({"operation": "browse", "access_key": "bbbbbbbbbb"}))

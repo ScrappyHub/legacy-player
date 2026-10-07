@@ -47,6 +47,16 @@ class StateStore:
     def pepper(self) -> bytes:
         return self._secret("invite_pepper.bin", 32)
 
+    def access_key(self) -> str:
+        """The key a server code carries. New people need the current one to create or join rooms and browse;
+        players already inside a room use their own credentials and are not affected when it changes."""
+        return self._secret("access_key.bin", 5).hex()
+
+    def rotate_access_key(self) -> str:
+        value = secrets.token_bytes(5)
+        self._write_atomic("access_key.bin", value)
+        return value.hex()
+
     def admin_token(self) -> str:
         return self._secret("admin_token.bin", 32).hex()
 

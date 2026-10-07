@@ -60,3 +60,13 @@ This note does not choose a vendor.
 Moving files to the Recycle Bin (`SHFileOperationW`), the PowerShell computer-specs read, the tray icon and its
 menu, the cleanup script that removes the running exe, copying a code to the clipboard, and the new `--icon`
 build. Test the uninstall on a copy of the exe first.
+
+## Follow-up: fresh server codes (same day)
+
+A server code now carries a short access key (the code grows from 18 to 26 characters; older codes still decode and
+older servers without a key keep working). A server with a key asks for it from brand-new people only: creating a
+room, joining one with an invite code, and browsing open rooms. Everything a player does once inside a room uses
+that room's own credential, so **making a fresh code never disconnects anyone already connected**; it only stops the
+old code from letting new people in. The Servers page and the tray both have "Make a fresh code". The key lives in
+the server's state folder (`access_key.bin`, owner-only); the app reads its own server's current key from there.
+Friends who saved the old code reconnect with the new one.

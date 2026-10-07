@@ -1183,8 +1183,18 @@ class LauncherApp:
     def _client(self) -> LobbyClient:
         s = self.catalog.settings()
         fingerprint = "" if s["server_fingerprint"].strip() in {"", "-"} else s["server_fingerprint"]
+        key = s["server_access_key"]
+        if s["server_host"] in {"127.0.0.1", "localhost", "::1"}:      # our own server: always read its current key
+            key = self._own_server_key() or key
         return LobbyClient(s["server_host"], s["server_port"], tls=s["server_tls"], verify=s["server_tls_verify"],
-                           fingerprint=fingerprint)
+                           fingerprint=fingerprint, access_key=key)
+
+    def _own_server_key(self) -> str:
+        path = self.data_dir / "server" / "access_key.bin"
+        try:
+            return path.read_bytes().hex() if path.is_file() else ""
+        except OSError:
+            return ""
 
     def _call(self, request: dict) -> dict:
         try:
@@ -1986,27 +1996,38 @@ class LauncherApp:
                 "limits": {"players": args.max_players, "rooms": args.max_rooms, "waiting": args.max_waiting}}
 
     def api_server_code(self, body: dict) -> dict:
-        """The short code a friend types to reach the server this app shares."""
+        """The short code a friend types to reach the server this app shares. `refresh` makes a fresh one: the old
+        code stops working for new people, while everyone already connected stays connected."""
         from . import servercode
+        from server import cli
         from server.selfsigned import fingerprint_of
         cert = self.data_dir / "server" / "tls" / "cert.pem"
         if not cert.exists():
             raise AppError("Start the server with 'Let friends connect' on first; that makes its certificate.")
+        state = self.data_dir / "server"
+        rotated = False
+        if body.get("refresh"):
+            try:
+                cli._admin_call(state, "admin_rotate_key")
+                rotated = True
+            except (OSError, ConnectionError, ValueError) as exc:
+                raise AppError("The server has to be running to make a fresh code. Start it first.") from exc
+        key = self._own_server_key()
         s = self.catalog.settings()
         address = str(body.get("address") or s["server_public_address"] or detect_lan_address()).strip()
         try:
-            code = servercode.encode(address, s["server_port"], fingerprint_of(cert))
+            code = servercode.encode(address, s["server_port"], fingerprint_of(cert), key)
         except servercode.CodeError as exc:
             return {"code": None, "address": address, "port": s["server_port"], "error": str(exc),
                     "fingerprint": self.server_fingerprint()}
-        return {"code": code, "address": address, "port": s["server_port"], "fingerprint": self.server_fingerprint(),
+        return {"code": code, "address": address, "port": s["server_port"], "fingerprint": self.server_fingerprint(), "rotated": rotated,
                 "reach": "Friends on your home network or VPN can use it as it is. For friends on the internet, put your public address in Settings > Your server and forward port %d on your router." % s["server_port"]}
 
     def api_server_connect(self, body: dict) -> dict:
         """Point this app at a friend's server using their short code (or leave it at this computer)."""
         from . import servercode
         if body.get("local"):
-            for key, value in (("server_host", "127.0.0.1"), ("server_tls", False), ("server_fingerprint", "-")):
+            for key, value in (("server_host", "127.0.0.1"), ("server_tls", False), ("server_fingerprint", "-"), ("server_access_key", "")):
                 self.catalog.set_setting(key, value)
             return {"connected": self.api_server_status({}).get("online", False), "host": "this computer"}
         try:
@@ -2014,9 +2035,14 @@ class LauncherApp:
         except servercode.CodeError as exc:
             raise AppError(str(exc)) from exc
         for key, value in (("server_host", found["host"]), ("server_port", found["port"]),
-                           ("server_tls", True), ("server_fingerprint", found["fingerprint"])):
+                           ("server_tls", True), ("server_fingerprint", found["fingerprint"]), ("server_access_key", found.get("key", ""))):
             self.catalog.set_setting(key, value)
         status = self.api_server_status({})
+        if status.get("online"):      # the key is only checked on browse/create/join, so ask for something it guards
+            try:
+                self._client().call({"operation": "browse"})
+            except LobbyClientError as exc:
+                return {"connected": False, "host": found["host"], "message": str(exc)}
         if not status.get("online"):
             return {"connected": False, "host": found["host"], "message": status.get("message") or "That server did not answer. Check the code, and that the host has started it with 'Let friends connect'."}
         return {"connected": True, "host": found["host"]}

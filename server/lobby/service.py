@@ -939,8 +939,16 @@ class LobbyService:
         return {"id": start["id"], "title": start["title"], "consented": present,
                 "waiting_on": [p for p in session.participants if p not in present]}
 
+    # What a brand-new person needs the server code's key for. Everything else needs a room credential they already hold.
+    KEYED_OPERATIONS = frozenset({"create", "join", "browse"})
+    access_key: str | None = None      # set by the running server; None (tests, embedded use) means no key is required
+
     def dispatch(self, request: dict) -> dict:
         operation = request.get("operation")
+        if self.access_key and operation in self.KEYED_OPERATIONS:
+            given = request.get("access_key")
+            if not isinstance(given, str) or not secrets.compare_digest(given, self.access_key):
+                raise PermissionError("This server code is out of date or not right. Ask the host for a fresh one.")
         handlers = {
             "create": self.create_session,
             "join": self.join_session,

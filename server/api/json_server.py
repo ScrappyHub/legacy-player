@@ -127,7 +127,8 @@ async def serve(
         service.import_state(snapshot)
         print(f"Resumed {len(service.sessions)} session(s) from the saved lobby state")
     shutdown = asyncio.Event()
-    control = ServerControl(store.admin_token(), shutdown, service)
+    service.access_key = store.access_key()
+    control = ServerControl(store.admin_token(), shutdown, service, store)
     relay = Relay(service)
     service.relay = relay
     ssl_context = None

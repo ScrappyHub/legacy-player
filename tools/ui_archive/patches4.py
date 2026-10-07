@@ -21,3 +21,11 @@ js=rep(js,'  h("div",{class:"row"},h("button",{class:"btn primary",onclick:()=>s
 js=rep(js,"""h("div",{class:"row"},h("label",{class:"small"},"Players per room ",players),h("label",{class:"small"},"Rooms ",rooms),h("label",{class:"small"},"Waiting line ",line)),""","""h("div",{class:"fieldrow"},fld("Players per room",players),fld("Rooms",rooms),fld("Waiting line",line)),""")
 js=rep(js,"""h("div",{class:"row",style:"margin-top:8px"},h("label",{class:"small"},"Address friends use ",pub)),""","""h("div",{class:"fieldrow",style:"margin-top:10px"},fld("Address friends use",pub)),""")
 js=rep(js,"""placeholder:"blank = this computer's home-network address",style:"width:min(280px,100%)\"""","""placeholder:"blank = this computer's home-network address",style:"width:min(380px,100%)\"""")
+
+js=rep(js,"""const showCode=async()=>{const c=await act(()=>api("server_code",{}));if(!c)return;""","""const showCode=async refresh=>{if(refresh===true&&!await ask("Make a fresh server code? The old code stops working for new people. Everyone already connected stays connected.","Make a fresh code"))return;
+  const c=await act(()=>api("server_code",{refresh:refresh===true}));if(!c)return;if(c.rotated)toast("Fresh code made. Players already connected stay connected.");""")
+js=rep(js,"""h("button",{class:"btn",onclick:()=>copyText(c.code)},"Copy")),""","""h("button",{class:"btn",onclick:()=>copyText(c.code)},"Copy"),h("button",{class:"btn",title:"Stops the old code working for new people. Anyone already connected stays connected.",onclick:()=>showCode(true)},"Make a fresh code")),""")
+js=rep(js,"""h("div",{class:"row"},h("button",{class:"btn primary",onclick:showCode},"Make my server code")),codeBox));""","""h("div",{class:"row"},h("button",{class:"btn primary",onclick:()=>showCode(false)},"Make my server code")),codeBox));""")
+js=rep(js,"""const codeBox=h("div",{});""","""const codeBox=h("div",{style:"margin-top:16px"});""")
+
+js=rep(js,"""h("p",{class:"small muted"},c.reach)""","""h("p",{class:"small muted"},c.reach),h("p",{class:"small muted"},"Made a code by mistake, or shared it too widely? Make a fresh one: the old code stops working for new people, while players already connected stay connected until they leave or something fails.")""")

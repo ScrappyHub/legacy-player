@@ -26,7 +26,8 @@ def _read_line(sock: socket.socket, limit: int = 4096) -> bytes:
 
 class LobbyClient:
     def __init__(self, host: str, port: int, *, tls: bool = False, verify: bool = True, timeout: float = 5.0,
-                 fingerprint: str = "") -> None:
+                 fingerprint: str = "", access_key: str = "") -> None:
+        self.access_key = re.sub(r"[^0-9a-f]", "", access_key.lower())
         self.host, self.port, self.tls, self.verify, self.timeout = host, port, tls, verify, timeout
         # A pinned SHA-256 of the server certificate (what the in-app server shows its owner).
         self.fingerprint = re.sub(r"[^0-9a-f]", "", fingerprint.lower())
@@ -74,6 +75,8 @@ class LobbyClient:
             raise LobbyClientError(f"Could not open a relay through {self.host}:{self.port} ({exc}).") from exc
 
     def call(self, request: dict) -> dict:
+        if self.access_key and "access_key" not in request:
+            request = {**request, "access_key": self.access_key}
         try:
             sock = socket.create_connection((self.host, self.port), timeout=self.timeout)
             if self.tls:

@@ -248,7 +248,8 @@ class TrayController:
             items.append((None, f"In a room: {room.get('game', 'a game')}", False))
         if running:
             items += [("server_stop", "Stop server", True), ("server_restart", "Restart server", True),
-                      ("server_code", "Copy a fresh server code", (app.data_dir / "server" / "tls" / "cert.pem").exists())]
+                      ("server_code", "Copy server code", (app.data_dir / "server" / "tls" / "cert.pem").exists()),
+                      ("server_fresh_code", "Make a fresh server code and copy it", (app.data_dir / "server" / "tls" / "cert.pem").exists())]
         else:
             items += [("server_start", "Start server (this computer only)", True),
                       ("server_share", "Start server (let friends connect)", True)]
@@ -268,11 +269,11 @@ class TrayController:
                 out = app.api_server_control({"action": action, "share": bool(share)})
                 self.native.notify("Your server", {"start": "Server started.", "stop": "Server stopped.", "restart": "Server restarted."}[action]
                                    + (" Friends can connect." if share and action != "stop" else ""))
-            elif command == "server_code":
-                got = app.api_server_code({})
+            elif command in ("server_code", "server_fresh_code"):
+                got = app.api_server_code({"refresh": command == "server_fresh_code"})
                 if got.get("code"):
                     self._copy(got["code"])
-                    self.native.notify("Server code copied", "Paste it to a friend. They enter it under Servers.")
+                    self.native.notify("Server code copied", ("Fresh code made: the old one no longer lets new people in. Players already connected stay connected. " if got.get("rotated") else "") + "Paste it to a friend. They enter it under Servers.")
                 else:
                     self.native.notify("No server code", got.get("error") or "Start the server with 'let friends connect' first.")
             elif command == "room_code":

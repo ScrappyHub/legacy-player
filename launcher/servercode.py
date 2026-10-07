@@ -18,7 +18,7 @@ class CodeError(ValueError):
     pass
 
 
-def encode(host: str, port: int, fingerprint_hex: str) -> str:
+def encode(host: str, port: int, fingerprint_hex: str, key_hex: str = "") -> str:
     try:
         ip = ipaddress.IPv4Address(host)
     except ValueError as exc:
@@ -30,30 +30,39 @@ def encode(host: str, port: int, fingerprint_hex: str) -> str:
     except ValueError as exc:
         raise CodeError("Bad fingerprint.") from exc
     fp = fp.ljust(5, b"\0")
-    value = int.from_bytes(ip.packed + port.to_bytes(2, "big") + fp, "big")
+    key = bytes.fromhex(key_hex) if key_hex else b""
+    if key and len(key) != 5:
+        raise CodeError("Bad server key.")
+    raw = ip.packed + port.to_bytes(2, "big") + fp + key
+    value = int.from_bytes(raw, "big")
+    length = 26 if key else 18          # 11 bytes -> 18 base32 chars; 16 bytes (with the key) -> 26
     chars = []
-    for _ in range(18):          # 11 bytes = 88 bits -> 18 base32 chars (90 bits)
+    for _ in range(length):
         chars.append(ALPHABET[value & 31])
         value >>= 5
     text = "".join(reversed(chars))
-    return "LP-" + "-".join(text[i:i + 4] for i in range(0, 16, 4)) + "-" + text[16:]
+    return "LP-" + "-".join(text[i:i + 4] for i in range(0, length - 2, 4)) + "-" + text[length - 2:]
 
 
 def decode(code: str) -> dict:
     text = "".join(c for c in code.upper() if c not in "- _")
-    if text.startswith("LP") and len(text) == 20:
+    if text.startswith("LP") and len(text) in (20, 28):
         text = text[2:]
     text = "".join(_FIX.get(c, c) for c in text)
-    if len(text) != 18 or any(c not in ALPHABET for c in text):
-        raise CodeError("That server code does not look right. It should be LP- followed by 18 letters and numbers.")
+    if len(text) not in (18, 26) or any(c not in ALPHABET for c in text):
+        raise CodeError("That server code does not look right. It should be LP- followed by letters and numbers.")
+    size = 11 if len(text) == 18 else 16
     value = 0
     for c in text:
         value = value << 5 | ALPHABET.index(c)
-    raw = value.to_bytes(12, "big")[1:] if value >> 88 == 0 else b""
-    if len(raw) != 11:
+    if value >> (size * 8):
         raise CodeError("That server code does not look right.")
+    raw = value.to_bytes(size, "big")
     host = str(ipaddress.IPv4Address(raw[:4]))
     port = int.from_bytes(raw[4:6], "big")
     if not port:
         raise CodeError("That server code does not look right.")
-    return {"host": host, "port": port, "fingerprint": raw[6:].hex()}
+    out = {"host": host, "port": port, "fingerprint": raw[6:11].hex()}
+    if size == 16:
+        out["key"] = raw[11:16].hex()
+    return out

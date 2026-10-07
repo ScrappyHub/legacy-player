@@ -112,6 +112,10 @@ SETTINGS_SCHEMA: dict[str, dict] = {
         "label": "Server certificate fingerprint",
         "help": "For a friend's Legacy Player server: paste the fingerprint their app shows (Play Together > server card). It proves you are talking to their server and not an impostor. Leave as - for a server with a real certificate.",
     },
+    "server_access_key": {
+        "type": "text", "default": "", "optional": True, "max": 20, "group": "Multiplayer", "hidden": True,
+        "label": "Server access key", "help": "Comes from the server code you connect with. Set for you; not something to type.",
+    },
     "server_tls_verify": {
         "type": "bool", "default": True, "group": "Multiplayer",
         "label": "Verify server certificate",

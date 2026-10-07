@@ -8,8 +8,9 @@ import time
 class ServerControl:
     """Local-only admin channel so stop/status work the same on Windows, Linux and a Pi."""
 
-    def __init__(self, token: str, shutdown: asyncio.Event, service) -> None:
+    def __init__(self, token: str, shutdown: asyncio.Event, service, store=None) -> None:
         self._token = token
+        self.store = store
         self.shutdown = shutdown
         self.service = service
         self.started_at = time.time()
@@ -40,4 +41,10 @@ class ServerControl:
         if operation == "admin_shutdown":
             self.shutdown.set()
             return {"stopping": True}
+        if operation == "admin_rotate_key":
+            if self.store is None:
+                raise PermissionError("this server cannot change its key")
+            key = self.store.rotate_access_key()
+            self.service.access_key = key
+            return {"key": key}
         raise PermissionError(f"unsupported admin operation: {operation}")
