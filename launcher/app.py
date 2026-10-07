@@ -144,6 +144,7 @@ class LauncherApp:
         self.last_ping = 0.0
         self.bye_at = 0.0
         self.quit_requested = False
+        self.tray_mode = False   # the window is closed but the app keeps running in the tray
         self._net_running = False
         self.covers = CoverFetcher(self.data_dir / "covers")
         self.setup = Setup(self.data_dir, self._retroarch_path,
@@ -1849,7 +1850,7 @@ class LauncherApp:
 
     # window lifetime (used by the packaged app so it quits when its window closes) ----------
     def api_ping(self, body: dict) -> dict:
-        self.last_ping, self.bye_at = time.time(), 0.0
+        self.last_ping, self.bye_at, self.tray_mode = time.time(), 0.0, False
         return {"ok": True}
 
     def api_status(self, body: dict) -> dict:
@@ -1886,14 +1887,19 @@ class LauncherApp:
         self.bye_at = time.time() + 5  # a reload pings again within seconds and cancels this
         return {"ok": True}
 
-    def should_exit(self, now: float, grace: float = 180.0, started: float = 0.0) -> bool:
-        if self.quit_requested:
-            return True
+    def window_closed(self, now: float, grace: float = 180.0, started: float = 0.0) -> bool:
         if self.bye_at and now > self.bye_at:
             return True
         if self.last_ping:
             return now - self.last_ping > 120.0
         return bool(started) and now - started > grace
+
+    def should_exit(self, now: float, grace: float = 180.0, started: float = 0.0) -> bool:
+        if self.quit_requested:
+            return True
+        if self.tray_mode:
+            return False
+        return self.window_closed(now, grace, started)
 
     # the multiplayer server this computer can run for friends ----------------------------------
     def _server_args(self, share: bool) -> argparse.Namespace:

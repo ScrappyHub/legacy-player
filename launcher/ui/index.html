@@ -446,7 +446,7 @@ const $=(s,r=document)=>r.querySelector(s);
 function h(tag,attrs,...kids){const e=document.createElement(tag);for(const[k,v]of Object.entries(attrs||{})){if(k==="class")e.className=v;else if(k.startsWith("on"))e.addEventListener(k.slice(2),v);else if(v===true)e.setAttribute(k,"");else if(v!==false&&v!=null)e.setAttribute(k,v)}
  for(const c of kids.flat()){if(c==null||c===false)continue;e.append(c.nodeType?c:document.createTextNode(String(c)))}return e}
 /* A thin shimmer bar at the top and a hopping Martin show the app is working. Quiet background polls do not trigger it. */
-let pending=0,busyT=null;const QUIET=new Set(["ping","mp_state","status","scan_pc","server_status","pads","bye","network_last","setup_status","specs","keyboard","home"]);
+let pending=0,busyT=null;const QUIET=new Set(["ping","mp_state","status","scan_pc","server_status","pads","bye","network_last","setup_status","specs","keyboard","home","server_control"]);
 async function api(name,body={}){const loud=!QUIET.has(name);if(loud){pending++;if(pending===1)busyT=setTimeout(()=>document.body.classList.add("busy"),200)}
  try{const r=await fetch("/api/"+name,{method:"POST",headers:{"Content-Type":"application/json","X-LP-Token":TOKEN},body:JSON.stringify(body)});
   const j=await r.json();if(!r.ok)throw new Error(j.error||"Request failed");return j}
@@ -525,7 +525,9 @@ async function checkUpdates(){const r=await act(()=>api("check_update"));if(!r)r
  if(r.newer){if(await ask("Version "+r.latest+" is available (you have "+r.current+"). Open its download page?","Open page"))window.open(r.page,"_blank","noopener")}
  else toast(r.ok?r.message+" You have "+r.current+".":r.message,r.ok?"":"warn")}
 async function quitApp(){const busy=S.room||(S.waits&&S.waits.length)||S.running;
- if(await ask(busy?"Quit Legacy Player? You will leave your room"+(S.running?" and your game keeps running in its own window":"")+". Your server, if you started one, keeps running.":"Quit Legacy Player? A server you started keeps running. To keep the app open, minimize the window instead.","Quit")){
+ let srv=false;try{srv=!!(await api("server_control",{action:"status"})).running}catch(e){}
+ if(await ask(busy?"Quit Legacy Player? You will leave your room"+(S.running?" and your game keeps running in its own window":"")+".":"Quit Legacy Player? To keep it running in the tray instead, just close the window with X.","Quit")){
+  if(srv&&await ask("Your server is running for friends. Stop it too? (Press Cancel to leave it running on its own.)","Stop my server"))try{await api("server_control",{action:"stop"})}catch(e){}
   try{await api("quit")}catch(e){}document.title="Legacy Player closed";try{window.close()}catch(e){}document.body.replaceChildren(h("div",{style:"padding:60px;text-align:center"},martin(96),h("p",{},"Legacy Player has closed. You can close this window.")))}}
 
 /* ---------- network test runs by itself so Server Info already knows where you stand ---------- */
@@ -1101,6 +1103,7 @@ async function viewServers(m){
  m.append(h("div",{class:"card",style:"margin-top:14px"},
   h("div",{class:"row"},h("h3",{class:"grow"},"Your server"),st.online?h("b",{class:"good"},"running"):h("b",{class:"bad"},"stopped")),
   h("p",{class:"small muted"},whyInline("What is it?","A small program that keeps rooms and invite codes. It keeps your rooms when you stop it and brings them back when you start it again. It runs on this computer while Legacy Player is open."),st.message?" "+st.message:""),
+  st.online?h("div",{class:"inbanner ok"},"Your server is running. Closing this window with X keeps Legacy Player in the tray (notification area) so it stays managed; right-click the tray icon to stop it, copy a fresh server code or exit."):"",
   h("div",{class:"row"},h("button",{class:"btn primary",onclick:()=>srvAct("start")},"Start"),h("button",{class:"btn",onclick:()=>srvAct("restart")},"Restart"),h("button",{class:"btn",onclick:()=>srvAct("stop")},"Stop"),
    h("label",{class:"small"},share," Let friends connect (encrypted with this app's own certificate)")),
   h("h3",{style:"margin-top:16px"},whyInline("Limits","Players per room is the most any room may hold. Rooms is how many your server will keep. Waiting line is how many people can queue for a full room (0 turns lines off). They apply the next time the server starts.")),

@@ -19,6 +19,11 @@ SETTINGS_SCHEMA: dict[str, dict] = {
         "type": "text", "default": "martin", "group": "You", "hidden": True,
         "label": "Avatar", "help": "Your little 8-bit picture. Pick it from the Account menu.",
     },
+    "close_to_tray": {
+        "type": "bool", "default": True, "group": "Window",
+        "label": "Keep running in the tray when I close the window",
+        "help": "Closing the window with X hides Legacy Player in the notification area (Windows) instead of quitting, so a server you started stays managed. Right-click its icon to open the app, start or stop your server, copy a fresh server code, or exit. Turn off to quit on X; if a server is running Legacy Player still stays in the tray so it is never stopped by surprise.",
+    },
     "auto_network_test": {
         "type": "bool", "default": True, "group": "Multiplayer",
         "label": "Test my network when Legacy Player opens",

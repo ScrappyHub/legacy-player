@@ -502,3 +502,41 @@ class KeyboardTests(unittest.TestCase):
             app.api_keyboard({"layout": "custom", "keys": {"a": "z"}})     # z is already B
         ok = app.api_keyboard({"layout": "custom", "keys": {"a": "f", "b": "d"}})
         self.assertEqual((ok["keys"]["a"], ok["keys"]["b"], ok["name"]), ("f", "d", "Custom"))
+
+
+class TrayTests(unittest.TestCase):
+    def test_window_close_and_tray_mode(self):
+        import tempfile, time
+        from pathlib import Path
+        from launcher.app import LauncherApp
+        app = LauncherApp(Path(tempfile.mkdtemp()))
+        app.api_ping({})
+        self.assertFalse(app.should_exit(time.time()))
+        app.api_bye({})
+        later = time.time() + 6
+        self.assertTrue(app.window_closed(later))
+        self.assertTrue(app.should_exit(later))
+        app.tray_mode = True                      # the window is hidden but the app stays
+        self.assertFalse(app.should_exit(later + 1000))
+        app.api_ping({})                          # window reopened
+        self.assertFalse(app.tray_mode)
+        app.api_quit({})
+        self.assertTrue(app.should_exit(time.time()))
+
+    def test_menu_follows_the_server_state(self):
+        import tempfile
+        from pathlib import Path
+        from launcher.app import LauncherApp
+        from launcher.tray import TrayController
+        app = LauncherApp(Path(tempfile.mkdtemp()))
+        tray = TrayController(app, lambda: None)
+        tray.server_running = lambda: False
+        labels = [i[1] for i in tray.menu() if i]
+        self.assertIn("Server: stopped", labels); self.assertIn("Start server (let friends connect)", labels)
+        self.assertNotIn("Stop server", labels)
+        tray.server_running = lambda: True
+        app.room = {"game": "Mario", "invite_code": "ABCDE-FGHIJ"}
+        labels = [i[1] for i in tray.menu() if i]
+        self.assertIn("Stop server", labels); self.assertIn("Copy this room's invite code", labels)
+        self.assertIn("In a room: Mario", labels); self.assertEqual(labels[-1], "Exit Legacy Player")
+        self.assertTrue(app.catalog.settings()["close_to_tray"])

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import secrets
+import sys
 import threading
 import time
 import webbrowser
@@ -120,13 +121,35 @@ def serve(app: LauncherApp, port: int = 8780, open_browser: bool = True, opener=
     httpd.RequestHandlerClass = make_handler(app, token, lambda: httpd.server_address[1])
     url = f"http://127.0.0.1:{httpd.server_address[1]}/"
     print(f"Legacy Player is open at {url}  (press Ctrl+C to quit)", flush=True)
+    tray = None
+    if exit_when_closed and opener is not None and sys.platform == "win32":
+        from .tray import TrayController
+
+        def reopen() -> None:
+            app.last_ping, app.bye_at, app.tray_mode = time.time(), 0.0, False   # fresh grace while the window loads
+            opener(url)
+        tray = TrayController(app, reopen)
+        if not tray.start():
+            tray = None
     if exit_when_closed:
         started = time.time()
 
         def watch() -> None:
             while True:
                 time.sleep(1.0)
-                if app.should_exit(time.time(), started=started):
+                now = time.time()
+                if app.quit_requested:
+                    httpd.shutdown()
+                    return
+                if app.tray_mode or not app.window_closed(now, started=started):
+                    continue
+                running = tray is not None and tray.server_running()
+                if tray is not None and (app.catalog.settings().get("close_to_tray", True) or running):
+                    app.tray_mode = True
+                    tray.native.notify("Legacy Player is still running",
+                                       "Your server is still running. Right-click this icon to stop it, open the app or exit." if running
+                                       else "It lives in the tray now. Right-click the icon to open it, run your server or exit.")
+                else:
                     httpd.shutdown()
                     return
         threading.Thread(target=watch, daemon=True).start()
@@ -139,5 +162,7 @@ def serve(app: LauncherApp, port: int = 8780, open_browser: bool = True, opener=
     except KeyboardInterrupt:
         pass
     finally:
+        if tray is not None:
+            tray.stop()
         httpd.server_close()
         app.shutdown()
