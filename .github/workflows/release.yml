@@ -1,0 +1,45 @@
+name: release
+
+# Push a tag like v0.7.0 (git tag v0.7.0 && git push origin v0.7.0) to build the Windows app and publish it as a release.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Build the zip
+        shell: pwsh
+        run: ./tools/package_release.ps1
+      - name: Check the built app starts
+        shell: pwsh
+        run: |
+          $zip = Get-ChildItem dist/release/*.zip | Select-Object -First 1
+          Expand-Archive $zip.FullName -DestinationPath smoke
+          $p = Start-Process smoke/LegacyPlayer.exe -ArgumentList '--no-browser','--port','18780','--data-dir',"$PWD/smoke-data" -PassThru
+          Start-Sleep 12
+          if ($p.HasExited) { Write-Error "LegacyPlayer.exe exited early (code $($p.ExitCode))"; exit 1 }
+          $log = Join-Path $env:LOCALAPPDATA 'LegacyPlayer/app.log'
+          if ((Test-Path $log) -and (Select-String -Path $log -Pattern 'Traceback' -Quiet)) { Get-Content $log; exit 1 }
+          $p.Kill()
+      - name: Publish the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${{ github.ref_name }}" dist/release/* --title "Legacy Player ${{ github.ref_name }}" --generate-notes
+      - name: Keep the build for manual runs
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: LegacyPlayer-win64
+          path: dist/release/*
