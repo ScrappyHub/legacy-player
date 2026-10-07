@@ -523,7 +523,7 @@ function renderNav(){const n=$("#nav");n.replaceChildren(...PRIMARY.map(([id,l])
 function renderWho(){const w=$("#who");if(!w)return;const p=S.profile||{alias:"Player",avatar:"martin",player:"Player"};
  w.replaceChildren(avatarEl(p.avatar,26),h("span",{class:"nm"},p.player||p.alias))}
 async function go(){closeMenus();renderNav();const old=$("#main"),m=old.cloneNode(false);old.replaceWith(m);window.scrollTo(0,0);
- Promise.resolve(({home:viewHome,library:viewLibrary,together:viewTogether,servers:viewServers,console:viewConsole,setup:viewSetup,engines:viewEngines,controllers:viewControllers,saves:viewSaves,emulators:viewEmulators,settings:viewSettings,credits:viewCredits,welcome:viewWelcome,help:viewHelp,storage:viewStorage,probe:viewProbe,profile:viewProfile,display:viewDisplay})[S.tab](m)).then(()=>{if(S.tab==="home")homeArtTip()}).catch(e=>{console.error("page error",e);toast("Something went wrong drawing this page: "+(e&&e.message||e),"err")})}
+ Promise.resolve(({home:viewHome,library:viewLibrary,together:viewTogether,servers:viewServers,console:viewConsole,setup:viewSetup,engines:viewEngines,controllers:viewControllers,saves:viewSaves,emulators:viewEmulators,settings:viewSettings,credits:viewCredits,welcome:viewWelcome,help:viewHelp,storage:viewStorage,probe:viewProbe,profile:viewProfile,display:viewDisplay})[S.tab](m)).then(()=>{if(S.tab==="home")homeArtTip()}).catch(e=>{console.error("page error",e);reportClientError(e&&e.message||e,"draw:"+S.tab,e&&e.stack);toast("Something went wrong drawing this page: "+(e&&e.message||e),"err")})}
 function nav(tab,anchor){S.tab=tab;S.anchor=anchor||null;go()}
 
 /* ---------- menu bar ---------- */
@@ -1561,19 +1561,52 @@ async function viewSettings(m){
  m.append(h("div",{class:"card"},h("h3",{},whyInline("Library folders","These folders are read-only. Saves, emulators and BIOS folders inside them are skipped when listing games.")),
   ...roots.roots.map(r=>h("div",{class:"row"},h("code",{class:"grow"},r),h("button",{class:"btn bad",onclick:async()=>{await act(()=>api("roots",{roots:roots.roots.filter(x=>x!==r)}));go()}},"Remove"))),
   h("div",{class:"row",style:"margin-top:8px"},rootIn,h("button",{class:"btn primary",onclick:async()=>{if(!rootIn.value.trim())return;const r=await act(()=>api("roots",{roots:[...roots.roots,rootIn.value.trim()]}));if(r){await act(()=>api("rescan"),"Library scanned");go()}}},"Add and scan"))));
+ const rep=await api("report_status",{});
+ const repMsg=h("div",{class:"small muted"},rep.mode==="off"?"Problem reports are off. Nothing is saved or sent.":rep.pending?rep.pending+" waiting on this computer.":"Nothing waiting.");
+ m.append(h("div",{class:"card",style:"margin-top:14px"},h("h3",{},whyInline("Problem reports","When something fails, Legacy Player can send the maintainers a cleaned-up report so it gets fixed without you filing a ticket. It is off until you choose. Names, IP addresses, server and invite codes and folder paths are removed first.")),
+  repMsg,
+  !rep.connected?h("div",{class:"small muted"},"No report address is set yet, so reports stay on this computer. Set one under Privacy > Report address."):null,
+  h("div",{class:"row",style:"flex-wrap:wrap;gap:8px;margin-top:8px"},
+   h("button",{class:"btn",disabled:rep.mode==="off"||!rep.pending,onclick:async()=>{const r=await act(()=>api("report_send_all"));if(r){toast(r.sent?r.sent+" sent":"Nothing sent. Check the report address, or try again later.");go()}}},"Send what's waiting"),
+   h("button",{class:"btn",disabled:!rep.pending,onclick:async()=>{const l=await api("report_list");if(!l.reports.length)return;const r=await api("report_preview",{id:l.reports[0].id});copyText(r.text);toast("Copied the newest report")}},"Copy the newest report"),
+   h("button",{class:"btn bad",disabled:!rep.pending,onclick:async()=>{if(await ask("Delete the reports waiting on this computer?","Delete")){await act(()=>api("report_clear"));go()}}},"Delete waiting reports"))));
  for(const[g,items]of Object.entries(groups).sort((a,b)=>(a[0]==="You"?-1:0)-(b[0]==="You"?-1:0))){
   m.append(h("div",{class:"card",style:"margin-top:14px"},h("h3",{},g),...items.map(([k,sp])=>{
    let ctl;const v=s.values[k];
    const save=async val=>{const r=await act(()=>api("settings",{key:k,value:val}));if(r){S.settings=r.values;if(k==="theme")document.documentElement.dataset.theme=val;if(k==="view"||k==="show_region")toast("Saved");if(k==="display_name"){S.profile=await api("profile");renderWho()}if(k==="auto_network_test"&&val)autoNetTest(300)}};
    if(sp.type==="bool")ctl=h("input",{type:"checkbox",checked:v,onchange:e=>save(e.target.checked)});
-   else if(sp.type==="choice")ctl=h("select",{onchange:e=>save(e.target.value)},...sp.choices.map(c=>h("option",{value:c,selected:c===v},c)));
+   else if(sp.type==="choice")ctl=h("select",{onchange:e=>save(e.target.value)},...sp.choices.map(c=>h("option",{value:c,selected:c===v},(sp.labels&&sp.labels[c])||c)));
    else if(sp.type==="int")ctl=h("input",{type:"number",value:v,min:sp.min,max:sp.max,onchange:e=>save(+e.target.value)});
    else ctl=h("input",{type:"text",value:v,onchange:e=>save(e.target.value)});
    return h("div",{style:"margin:10px 0"},h("div",{class:"row"},h("label",{class:"grow"},sp.label),ctl),h("div",{class:"small muted"},sp.help))})));
  }
 }
 
-setInterval(()=>{api("ping").catch(()=>{})},5000);
+/* ---------- problem reports: ask first, always show exactly what would be sent ---------- */
+let reportOpen=false;
+function reportResult(r){if(!r)return;if(r.sent===true)toast("Report sent. Thank you.");else if(r.why)toast(r.why);else toast("Saved")}
+async function showReport(p){
+ if(reportOpen||!p)return;reportOpen=true;
+ const close=()=>{ov.remove();reportOpen=false};
+ const decide=async choice=>{const r=await act(()=>api("report_decide",{id:p.id,choice}));close();if(r&&choice!=="later"&&choice!=="skip")reportResult(r);if(S.tab==="settings")go()};
+ const pre=h("pre",{class:"small",style:"display:none;max-height:240px;overflow:auto;white-space:pre-wrap;user-select:text"});
+ const peek=h("button",{class:"btn",onclick:async()=>{if(pre.style.display==="none"){const r=await act(()=>api("report_preview",{id:p.id}));if(!r)return;pre.textContent=r.text;pre.style.display="block";peek.textContent="Hide"}else{pre.style.display="none";peek.textContent="See exactly what would be sent"}}},"See exactly what would be sent");
+ const ov=h("div",{class:"modal",role:"dialog","aria-modal":"true"},h("div",{class:"modalbox",style:"max-width:560px"},
+  h("h3",{},"Something went wrong"),
+  h("p",{},p.message||"Legacy Player ran into a problem."),
+  h("p",{class:"small muted"},"Would you like to send a problem report so it can be fixed? It has the error, your Legacy Player and Windows version, and what you were doing. It does not have your name, computer name, IP address, server codes, invite codes, or folder paths."),
+  peek,pre,
+  h("div",{class:"row",style:"flex-wrap:wrap;gap:8px;margin-top:12px;justify-content:flex-end"},
+   h("button",{class:"btn",onclick:()=>decide(p.mode==="off"?"never":"skip")},p.mode==="off"?"Never ask":"Don't send this one"),
+   h("button",{class:"btn",onclick:()=>decide("later")},"Not now"),
+   p.mode==="off"?h("button",{class:"btn",onclick:()=>decide("always_ask")},"Send, and ask me each time"):null,
+   p.mode==="off"?h("button",{class:"btn",onclick:()=>decide("auto")},"Send, and always send automatically"):null,
+   h("button",{class:"btn primary",onclick:()=>decide("send")},"Send this report"))));
+ document.body.append(ov);ov.querySelector(".primary").focus()}
+function reportClientError(message,where,stack){try{api("report_client_error",{message:String(message||"").slice(0,400),page:S.tab,where:where||"",stack:String(stack||"").slice(0,1500)}).catch(()=>{})}catch(e){}}
+window.addEventListener("error",e=>reportClientError(e.message,"window",e.error&&e.error.stack));
+window.addEventListener("unhandledrejection",e=>{const r=e.reason;reportClientError(r&&r.message||r,"promise",r&&r.stack)});
+setInterval(()=>{api("ping").then(r=>{if(r&&r.report_prompt)showReport(r.report_prompt)}).catch(()=>{})},5000);
 /* The window title is what Windows shows when you hover the taskbar button, so keep it informative. */
 async function refreshTitle(){try{const d=await api("status");const bits=["Legacy Player"];
  if(d.game)bits.push("Playing "+d.game);

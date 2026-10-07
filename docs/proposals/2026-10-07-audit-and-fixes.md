@@ -115,3 +115,25 @@ picture of the server that a background thread refreshes every few seconds (firs
 after any server command), shows the server's player and room counts at the top, makes the information rows readable
 and clickable instead of greyed out, makes "Open Legacy Player" the bold default, and borrows foreground focus
 properly so Windows gives the menu hover highlighting. Needs checking by eye on Windows.
+
+## Follow-up: opt-in problem reports
+
+When something fails, Legacy Player can send the maintainers a cleaned-up report so it gets fixed without the player filing
+a ticket. It is **off by default**. The first failure (launch failed, server command failed, an internal error, or the page
+throwing while drawing) is held in memory only and the window asks once: send this report, not now, send and ask me each
+time, send and always send automatically, or never ask. "See exactly what would be sent" shows the full text first. Modes
+are in Settings > Privacy (`error_reports`: off, ask, auto); Settings also has a "Problem reports" card to send, copy or
+delete what is waiting.
+
+What is in a report: version, Windows version, the failing action, the error and where in our code it happened, recent
+actions (names only), and the kind of network (home, hotspot-style, local server). What is removed first
+(`launcher/reports.py`, `Scrubber`): user and PC names, IP addresses, email addresses, server codes, invite codes,
+long secret-looking strings, URL query strings, and folder paths (only locations inside our own code are kept). Game
+file names are kept, because they help reproduce a problem. The same failure is counted, not re-sent, for ten minutes;
+at most 10 reports an hour; reports go only to an https address.
+
+The receiving end is `server/report_receiver.py` (standard library only; no IP or request logging; files each report under
+`<dir>/<date>/<fingerprint>/`). Read what arrived with `python tools/read_reports.py <dir>` (grouped by problem, most
+frequent first). **Not live yet:** `REPORT_URL` in `launcher/version.py` is empty, so reports stay on the player's
+computer until the maintainers host the receiver behind https and set that address (or a player sets "Report address" in
+Settings). See `docs/MULTIPLAYER_TEST_PLAN.md` for the first real use.

@@ -6,12 +6,13 @@
 |---|---|
 | Service ID | `legacy-player` |
 | Canonical name | legacy-player |
-| Ecosystem layer | `unclassified` |
+| Ecosystem family | `chronicle` |
+| Ecosystem layer | `platform.legacy-runtime` |
 | Standalone-first | `true` |
 
 ## Role
 
-Repository discovered under C:\dev. Canonical ecosystem role requires classification.
+Local-first compatibility, instrumentation, state-understanding, replay-verification, and multiplayer-orchestration runtime for legacy games; integrates emulators through adapters and games through versioned game packs.
 
 ## This service owns
 
@@ -57,6 +58,6 @@ Changes to this service's ecosystem role, ownership boundaries, upstream depende
 
 1. A proposal under `docs\proposals`.
 2. A documented compatibility impact.
-3. Updated service-map and registry entries.
+3. Updated registry entries in Constellation (`registry/services.json`) and a re-published service map.
 4. Updated positive and negative integration tests.
-5. A new service-map receipt.
+5. A new Constellation doctor receipt.

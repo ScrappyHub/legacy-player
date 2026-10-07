@@ -29,6 +29,20 @@ SETTINGS_SCHEMA: dict[str, dict] = {
         "label": "Set up Dolphin's GameCube controller for me",
         "help": "When you give a player a controller (or pick a keyboard layout for player 1), Legacy Player writes it into Dolphin's GameCube pad file before Dolphin starts. The file you had is saved once as GCPadNew.ini.legacy-player-backup, and turning this off puts it back the next time Dolphin starts. Players you have not set up are left to Dolphin. Wii remotes are never touched.",
     },
+    "error_reports": {
+        "type": "choice", "choices": ["off", "ask", "auto"], "default": "off", "group": "Privacy",
+        "labels": {"off": "Off (nothing is saved or sent)", "ask": "Ask me each time", "auto": "Send automatically"},
+        "label": "Help fix problems by sending reports",
+        "help": "If something breaks in Legacy Player, a short report can be sent to the people who maintain it so it gets fixed without you writing a ticket. It holds the app version, your Windows version, what failed and which action it happened in. It never holds your name, your address (IP), folder paths, game file locations, server or invite codes, or anything another player typed, and you can read the exact text first. Off sends nothing. Ask lets you read and approve each one.",
+    },
+    "report_url": {
+        "type": "text", "default": "", "optional": True, "max": 200, "group": "Privacy",
+        "label": "Send reports to (advanced)", "help": "Leave blank to use the address built into Legacy Player. It must start with https://.",
+    },
+    "report_prompt_seen": {
+        "type": "bool", "default": False, "group": "Privacy", "hidden": True,
+        "label": "Asked about reports", "help": "Remembers that the one-time question about problem reports was answered.",
+    },
     "auto_network_test": {
         "type": "bool", "default": True, "group": "Multiplayer",
         "label": "Test my network when Legacy Player opens",

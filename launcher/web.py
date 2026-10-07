@@ -151,14 +151,24 @@ def make_handler(app: LauncherApp, token: str, port_getter, launch: Launch | Non
             method = getattr(app, f"api_{name}", None) if name.replace("_", "").isalnum() else None
             if method is None:
                 return self._json(404, {"error": "unknown action"})
+            reports = getattr(app, "reports", None)
             try:
                 if name in app.UNLOCKED:       # quick read-only calls and slow ones that touch no shared state
-                    return self._json(200, method(body))
-                with api_lock:
-                    return self._json(200, method(body))
+                    result = method(body)
+                else:
+                    with api_lock:
+                        result = method(body)
+                if reports is not None:
+                    reports.crumb(name, 200)
+                return self._json(200, result)
             except AppError as exc:
+                if reports is not None:
+                    reports.crumb(name, 400)
                 return self._json(400, {"error": str(exc)})
             except Exception as exc:  # never leak a traceback to the page
+                if reports is not None:
+                    reports.crumb(name, 500)
+                    reports.capture("internal-error", exc, context={"api": name})
                 return self._json(500, {"error": f"Something went wrong: {type(exc).__name__}"})
 
     return Handler
@@ -169,6 +179,11 @@ def serve(app: LauncherApp, port: int = 8780, open_browser: bool = True, opener=
     """Run the UI server. `opener(url)` may open a window itself; with `exit_when_closed` the
     server stops once the page stops sending its heartbeat (window closed)."""
     token = secrets.token_urlsafe(24)
+    try:
+        from .reports import install_hooks
+        install_hooks(app.reports)          # failures nobody caught also reach the (opt-in) reports
+    except Exception:
+        pass
     class _Server(ThreadingHTTPServer):
         request_queue_size = 64   # the page fires several requests at once; never drop one
         daemon_threads = True

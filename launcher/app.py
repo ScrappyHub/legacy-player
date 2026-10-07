@@ -31,7 +31,7 @@ from adapters.retroarch import tunnel as netplay_tunnel
 
 from . import controllers, emulators, engines, pads, savefolders, saves
 from .installer import EngineInstaller, InstallError, latest_release, pick_asset
-from . import dolphinpads, keyboard, memprobe, netcheck, selfuninstall, sysinfo
+from . import dolphinpads, keyboard, memprobe, netcheck, reports, selfuninstall, sysinfo
 from .covers import (CONTENT_TYPES, CoverFetcher, SYSTEMS as COVER_SYSTEMS, clear_custom_cover, cover_path,
                      custom_cover, set_custom_cover)
 from .pcscan import PcScan
@@ -148,6 +148,7 @@ class LauncherApp:
         self._specs_lock = threading.Lock()
         self.api_lock = threading.RLock()        # one ordinary API call at a time (the web layer takes it)
         self.memprobe = memprobe.MemProbe(self.data_dir)
+        self.reports = reports.ReportCenter(self.data_dir, lambda: self.catalog.settings(), lambda k, v: self.catalog.set_setting(k, v), self._report_context)
         self._scan_lock = threading.Lock()       # one disk walk at a time (rescan)
         self._server_op_lock = threading.Lock()  # starting/stopping the server: one at a time, outside api_lock
         self.tray_mode = False   # the window is closed but the app keeps running in the tray
@@ -377,6 +378,55 @@ class LauncherApp:
         out = dolphinpads.apply(exe, self.catalog.data["player_pads"], self.catalog.data["pad_profiles"], self.catalog.data.get("keyboard"))
         return out.get("notes", [])
 
+    # problem reports (opt in) -------------------------------------------------------------------------------
+    def _report_context(self) -> dict:
+        """Extra facts for a report. Never an address, a name or a path."""
+        last = (self.catalog.data.get("netcheck_last") or {}).get("result") or {}
+        s = self.catalog.settings()
+        net = {"address_kind": last.get("address_kind"), "server_is_local": last.get("server_is_local"),
+               "server_uses_tls": bool(s.get("server_tls")), "direct_connections_allowed": bool(s.get("allow_direct_connections"))}
+        room = self.room or {}
+        doing = {"playing": bool(self.running), "emulator": (self.running or {}).get("emulator"),
+                 "in_room": bool(room), "room_role": room.get("role"), "console": room.get("console")}
+        return {"network": net, "doing": doing, "_roots": list(self.catalog.data.get("roots", []))}
+
+    def api_report_status(self, body: dict) -> dict:
+        out = self.reports.status()
+        out["prompt"] = self.reports.prompt() if body.get("prompt") else None
+        return out
+
+    def api_report_preview(self, body: dict) -> dict:
+        report = self.reports.get(str(body.get("id", "")))
+        if report is None:
+            raise AppError("That report is no longer here.")
+        return {"report": report, "text": json.dumps(report, indent=2)}
+
+    def api_report_list(self, body: dict) -> dict:
+        items = self.reports.pending() + ([self.reports.held] if self.reports.held else [])
+        return {"reports": [{"id": r["id"], "kind": r["kind"], "created": r["created"], "message": r["error"]["message"][:160],
+                             "occurrences": r.get("occurrences", 1)} for r in items], **self.reports.status()}
+
+    def api_report_decide(self, body: dict) -> dict:
+        try:
+            return self.reports.decide(str(body.get("id", "")), str(body.get("choice", "")))
+        except ValueError as exc:
+            raise AppError("Unknown choice.") from exc
+
+    def api_report_send_all(self, body: dict) -> dict:
+        if self.reports.mode() == "off":
+            raise AppError("Problem reports are off. Turn them on in Settings > Privacy first.")
+        return self.reports.send_all()
+
+    def api_report_clear(self, body: dict) -> dict:
+        return {"removed": self.reports.discard(None)}
+
+    def api_report_client_error(self, body: dict) -> dict:
+        """A problem the window itself ran into (the page threw while drawing). Only text; rate limited and cleaned."""
+        message = str(body.get("message") or "")[:400]
+        report = self.reports.capture("page-error", None, message, {"page": str(body.get("page") or "")[:30], "where": str(body.get("where") or "")[:40],
+                                                                   "stack": str(body.get("stack") or "")[:1500]})
+        return {"captured": report is not None}
+
     # Dolphin memory probe (Tools menu) --------------------------------------------------------------------
     def _probe(self, fn, *args) -> dict:
         try:
@@ -527,6 +577,7 @@ class LauncherApp:
         except NetplayError as exc:
             raise AppError(str(exc)) from exc
         except (OSError, FileNotFoundError) as exc:
+            self.reports.capture("launch-failed", exc, context={"emulator": check.get("emulator_id"), "console": game["console"], "extension": game.get("extension")})
             raise AppError(f"Could not start {check['emulator']}: {exc}") from exc
         self.catalog.record_play(game["id"])
         self.running = {"pid": pid, "title": game["title"], "emulator": check["emulator"]}
@@ -1944,7 +1995,7 @@ class LauncherApp:
 
     def api_ping(self, body: dict) -> dict:
         self.last_ping, self.bye_at, self.tray_mode = time.time(), 0.0, False
-        return {"ok": True}
+        return {"ok": True, "report_prompt": self.reports.prompt()}
 
     def api_status(self, body: dict) -> dict:
         """A tiny summary for the window title (shown when hovering the taskbar button). No network calls."""
@@ -2048,6 +2099,7 @@ class LauncherApp:
             raise AppError(f"The server did not respond: {exc}") from exc
         message = " ".join(out.getvalue().split()) or ("Done." if code == 0 else "That did not work.")
         if code != 0 and action != "status":
+            self.reports.capture("server-control-failed", None, message, {"action": action, "shared": bool(body.get("share"))})
             raise AppError(message)
         with self.api_lock:        # settings are shared state, so only this short part takes the big lock
             if args.tls_cert and body.get("share") and action in {"start", "restart"} and code == 0:
