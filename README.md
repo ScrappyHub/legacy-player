@@ -117,6 +117,6 @@ obtained games and emulator environments. See `docs/LEGAL_POSITION.md`.
 Legacy Player is a Venture Lab project with product and research value: a real multiplayer instrument for classic games,
 self-hosted community infrastructure, and a multiplayer knowledge base for the Clio Development Engine (CDE).
 
-## License
-
-See `LICENSE`.
+## License, privacy and security
+MIT licensed (`LICENSE`; third-party notes in `THIRD_PARTY.md`). What the app does with information: `PRIVACY.md` (nothing leaves
+your computer unless you choose). Reporting a vulnerability: `SECURITY.md`. Code signing: `docs/CODE_SIGNING_POLICY.md`.
