@@ -426,12 +426,11 @@ async function viewControllers(m){
  m.append(h("h2",{},"Controllers"),
   h("div",{class:"why"},"Plug in or turn on any gamepad, then press a button on it. It appears below. Use Identify to make it rumble (so you know which is which), assign it to a player, and press Map to teach Legacy Player what each of its buttons is. Nothing is sent anywhere; mapping is saved on this computer."),
   h("h3",{},"Your controllers"),padsBox,wizBox,
-  h("details",{class:"card",style:"margin-top:12px"},h("summary",{style:"cursor:pointer"},"Console layout (advanced): which pad control is each console button"),
   h("h3",{},whyInline("Console layout","A console has its own buttons. This table says which standard control on your pad is each console button. Your pad's own mapping (above) is applied first.")),
   h("div",{class:"row"},sel,h("span",{class:"badge"},L.customized?"customized":"default")),L.note?h("p",{class:"small muted"},L.note):"",
   h("div",{class:"card",style:"margin-top:12px"},h("table",{},h("thead",{},h("tr",{},h("th",{},"Console button"),h("th",{},"Standard control"))),h("tbody",{},...rows)),
    h("div",{class:"row",style:"margin-top:12px"},h("button",{class:"btn primary",onclick:async()=>{if(Object.keys(edits).length){const cur={};L.buttons.forEach(b=>cur[b.name]=b.index);const r=await act(()=>api("controllers",{console:S.ctrl,buttons:{...cur,...edits}}),"Saved");if(r)go()}}},"Save layout"),
-    h("button",{class:"btn",onclick:async()=>{await act(()=>api("controllers",{console:S.ctrl,buttons:{}}),"Reset to default");go()}},"Reset")))),
+    h("button",{class:"btn",onclick:async()=>{await act(()=>api("controllers",{console:S.ctrl,buttons:{}}),"Reset to default");go()}},"Reset"))),
   h("h3",{},"Live test"),live,
   h("p",{class:"small muted"},"Emulator note: RetroArch gets your Xbox-style (standard layout) pad bindings automatically. Other emulators keep their own controller settings; for those, set the pad inside the emulator once."));
  let sig="";
