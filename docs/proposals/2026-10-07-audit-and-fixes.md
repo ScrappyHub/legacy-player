@@ -97,3 +97,13 @@ under "Still to verify on Windows".
 - **Copy buttons** fall back to a hidden text box when the browser refuses clipboard access, and say so if both fail.
 - **Windows:** `tools/windows_selfcheck.py` runs the Recycle Bin move, specs read, icon, tray icon and cleanup script
   and prints PASS/FAIL; `docs/WINDOWS_CHECKLIST.md` lists the hand checks. These still need one run on a real PC.
+
+## Follow-up: Dolphin memory probe in the app
+
+Tools > "Dolphin memory probe" runs the hot-action validator step by step (`launcher/memprobe.py` wraps
+`tools/memory_probe/hot_action_validator.py`): take a baseline, do one thing in the game, capture. It shows which
+known cluster of Dolphin's RAM changed and saves the full record under `<data folder>/probe_exports`. It is read-only
+and local, asks for confirmation first, and says plainly when it is not on Windows or Dolphin is not running. Only
+`coin_total_change_once` is grounded in the current cluster file; the other two clusters are placeholders, and the
+page shows "no strong match" until they are filled in from real captures. `build_exe.bat` now bundles `tools` and
+`game_packs` and installs `psutil`. Needs a real run on Windows with Dolphin open.

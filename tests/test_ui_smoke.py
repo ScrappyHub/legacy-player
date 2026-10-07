@@ -19,7 +19,7 @@ except ImportError:      # pragma: no cover
 
 ROOT = Path(__file__).resolve().parent.parent
 PAGES = ["home", "library", "console", "setup", "together", "servers", "engines", "controllers", "saves",
-         "emulators", "settings", "credits", "help", "storage", "profile", "display"]
+         "emulators", "settings", "credits", "help", "storage", "profile", "display", "probe"]
 
 
 @unittest.skipUnless(sync_playwright, "Playwright is not installed")
@@ -102,6 +102,14 @@ class UiSmokeTests(unittest.TestCase):
             page.locator(".px.doctor").first.dblclick(force=True)
             page.locator(".hero, .doc").first.dblclick(force=True)
             self.assertEqual("", page.evaluate("getSelection().toString()"))
+            # the Dolphin memory probe page, drawn with a pretend "Dolphin found" answer (the real one is Windows only)
+            ready = {"supported": True, "ready": True, "waiting_for_action": False, "label": "", "tracked_pages": 3,
+                     "game": {"id": "GMPE01", "region": "USA", "phase": "board"}, "ram": {"base": "0x1000", "size": 33554432},
+                     "actions": [{"name": "coin_total_change_once", "confidence": "grounded", "pages": 3}]}
+            page.route("**/api/probe_status", lambda route: route.fulfill(status=200, content_type="application/json", body=__import__("json").dumps(ready)))
+            page.evaluate('nav("probe")')
+            page.wait_for_selector("text=Take baseline")
+            self.assertEqual(0, page.locator("#main button:disabled").count())
             # dialogs: Tab stays inside, Esc means Cancel (the link is single-use, so this shares the page above)
             page.evaluate("() => { window.__r = 'unset'; ask('Really?', 'Yes').then(v => { window.__r = v }); }")      # not returned: evaluate would wait for it
             page.wait_for_selector(".modal")

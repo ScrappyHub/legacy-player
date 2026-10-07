@@ -523,7 +523,7 @@ function renderNav(){const n=$("#nav");n.replaceChildren(...PRIMARY.map(([id,l])
 function renderWho(){const w=$("#who");if(!w)return;const p=S.profile||{alias:"Player",avatar:"martin",player:"Player"};
  w.replaceChildren(avatarEl(p.avatar,26),h("span",{class:"nm"},p.player||p.alias))}
 async function go(){closeMenus();renderNav();const old=$("#main"),m=old.cloneNode(false);old.replaceWith(m);window.scrollTo(0,0);
- Promise.resolve(({home:viewHome,library:viewLibrary,together:viewTogether,servers:viewServers,console:viewConsole,setup:viewSetup,engines:viewEngines,controllers:viewControllers,saves:viewSaves,emulators:viewEmulators,settings:viewSettings,credits:viewCredits,welcome:viewWelcome,help:viewHelp,storage:viewStorage,profile:viewProfile,display:viewDisplay})[S.tab](m)).then(()=>{if(S.tab==="home")homeArtTip()}).catch(e=>{console.error("page error",e);toast("Something went wrong drawing this page: "+(e&&e.message||e),"err")})}
+ Promise.resolve(({home:viewHome,library:viewLibrary,together:viewTogether,servers:viewServers,console:viewConsole,setup:viewSetup,engines:viewEngines,controllers:viewControllers,saves:viewSaves,emulators:viewEmulators,settings:viewSettings,credits:viewCredits,welcome:viewWelcome,help:viewHelp,storage:viewStorage,probe:viewProbe,profile:viewProfile,display:viewDisplay})[S.tab](m)).then(()=>{if(S.tab==="home")homeArtTip()}).catch(e=>{console.error("page error",e);toast("Something went wrong drawing this page: "+(e&&e.message||e),"err")})}
 function nav(tab,anchor){S.tab=tab;S.anchor=anchor||null;go()}
 
 /* ---------- menu bar ---------- */
@@ -531,7 +531,7 @@ function menuDefs(){return[
  ["Account",[["Profile and avatar",()=>nav("profile")],["Network",()=>nav("together")],["Settings",()=>nav("settings")],["Check for updates",checkUpdates],"-",["Exit Legacy Player",quitApp]]],
  ["Games",[["Library",()=>nav("library")],["Console mode",()=>nav("console")],["Storage by console",()=>nav("storage")],["Display and video",()=>nav("display")],["Controllers",()=>nav("controllers")],["Saves and backups",()=>nav("saves")],"-",["Rescan my games",()=>rescan()]]],
  ["Online",[...liveMenu(),["Server Info",()=>nav("together")],["Servers",()=>nav("servers")]]],
- ["Tools",[["Doctor's office (Setup)",()=>nav("setup")],["Engines",()=>nav("engines")],["Emulators",()=>nav("emulators")],["Scan this computer",()=>{nav("engines");setTimeout(()=>runScan().then(v=>{if(v)go()}),250)}],["Credits",()=>nav("credits")]]],
+ ["Tools",[["Doctor's office (Setup)",()=>nav("setup")],["Engines",()=>nav("engines")],["Dolphin memory probe",()=>nav("probe")],["Emulators",()=>nav("emulators")],["Scan this computer",()=>{nav("engines");setTimeout(()=>runScan().then(v=>{if(v)go()}),250)}],["Credits",()=>nav("credits")]]],
  ["Help",[["How it works",()=>nav("help")],["How save files work",()=>nav("help","saves")],["Privacy",()=>nav("help","privacy")],["Uninstall Legacy Player...",()=>retireClinic()]]]]}
 function closeMenus(){document.querySelectorAll(".menu.open").forEach(x=>x.classList.remove("open"))}
 function buildMenubar(){const bar=$("#menubar");
@@ -707,6 +707,41 @@ async function viewStorage(m){
    d.consoles.length?h("table",{style:"margin-top:10px"},h("thead",{},h("tr",{},h("th",{},"Console"),h("th",{},"Games"),h("th",{style:"width:45%"},"Size"),h("th",{},""))),
     h("tbody",{},...d.consoles.map(c=>h("tr",{},h("td",{},c.name),h("td",{},String(c.count)),h("td",{},h("div",{class:"bar"},h("i",{style:"width:"+Math.max(2,Math.round(c.bytes/max*100))+"%"}))),h("td",{},h("b",{},fmtBytes(c.bytes)))))))
    :h("p",{class:"muted"},"No games yet. Add a games folder in Library."))) }
+
+/* ---------- Dolphin memory probe ---------- */
+async function viewProbe(m){
+ const st=await api("probe_status");
+ m.append(h("h2",{},"Dolphin memory probe"),
+  h("div",{class:"why"},"For developers: this finds which part of Dolphin's emulated memory changes when you do one thing in Mario Party 4 (start a minigame, land on a space...). It only reads memory from your open Dolphin, on this computer. It never changes the game and sends nothing anywhere."));
+ const box=h("div",{style:"margin-top:12px"});m.append(box);
+ const resultBox=h("div",{style:"margin-top:12px"});m.append(resultBox);
+ const draw=st=>{
+  if(!st.supported){box.replaceChildren(h("div",{class:"card"},h("p",{class:"muted"},st.why||"The probe only works on Windows.")));return}
+  const known=(st.actions||[]).map(a=>a.name);
+  const label=h("input",{type:"text",list:"probe-actions",placeholder:"What will you do? e.g. start_minigame_once","aria-label":"Action label",style:"width:min(360px,100%)",value:st.label||""});
+  const dl=h("datalist",{id:"probe-actions"},...known.map(n=>h("option",{value:n})));
+  const recheck=h("button",{class:"btn",onclick:async()=>{const v=await act(()=>api("probe_status"));if(v)draw(v)}},"Check again");
+  const info=h("div",{class:"card"},h("div",{class:"row"},h("h3",{class:"grow",style:"margin:0"},st.ready?"Dolphin and the game were found":"Not ready yet"),recheck),
+   st.ready?h("p",{class:"small muted"},"Game "+st.game.id+" ("+(st.game.region||"?")+"), RAM at "+st.ram.base+", "+Math.round(st.ram.size/1048576)+" MB. Watching "+st.tracked_pages+" memory pages."):h("p",{class:"small"},st.why||""));
+  const steps=h("div",{class:"card",style:"margin-top:12px"},h("h3",{style:"margin-top:0"},"Run it"),
+   h("div",{class:"row"},label,dl),
+   st.waiting_for_action
+    ?h("div",{style:"margin-top:10px"},h("p",{},h("b",{},"Baseline taken for "+st.label+". "),"Now do that ONE thing in the game, then press the button right after."),
+      h("div",{class:"row"},h("button",{class:"btn primary",onclick:async()=>{const r=await act(()=>api("probe_capture"));if(r){showResult(r);draw(await api("probe_status"))}}},"I did it, capture now"),
+       h("button",{class:"btn",onclick:async()=>{await api("probe_cancel");draw(await api("probe_status"))}},"Cancel")))
+    :h("div",{style:"margin-top:10px"},h("p",{class:"small muted"},"1. Press the button. 2. Do one thing in the game. 3. Press capture."),
+      h("button",{class:"btn primary",disabled:!st.ready,onclick:async()=>{
+        if(!await ask("The probe will read memory from your open Dolphin program, on this computer only. It does not change the game and sends nothing anywhere. Continue?","Take baseline"))return;
+        const r=await act(()=>api("probe_baseline",{label:label.value,consent:true}));if(r)draw(await api("probe_status"))}},"Take baseline")));
+  box.replaceChildren(info,steps)};
+ const showResult=r=>{
+  const good=r.token!=="NO_STRONG_MATCH";
+  resultBox.replaceChildren(h("div",{class:"card"},h("h3",{style:"margin-top:0"},good?"Matched: "+(r.best_cluster||"").replace(/_/g," "):"No strong match"),
+   h("p",{},r.changed_pages+" of the watched pages changed."+(good?"":" Nothing known lined up with this action; that is useful to know too.")),
+   r.best_score?h("p",{class:"small muted"},"Best overlap "+r.best_score.overlap_count+" of "+r.best_score.cluster_size+" pages (score "+r.best_score.score+")."):null,
+   h("p",{class:"small muted"},"Saved to "+r.file),
+   h("div",{class:"row"},h("button",{class:"btn",onclick:()=>copyText(r.file,"Path copied")},"Copy file path"))))};
+ draw(st)}
 
 /* ---------- Profile ---------- */
 async function viewProfile(m){

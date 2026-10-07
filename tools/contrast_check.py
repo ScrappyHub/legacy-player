@@ -18,7 +18,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 PAGES = ["home", "library", "setup", "together", "servers", "engines", "controllers", "saves", "emulators", "settings",
-         "credits", "help", "storage", "profile", "display"]
+         "credits", "help", "storage", "profile", "display", "probe"]
 
 JS_ITEMS = """() => {
   const out = [];

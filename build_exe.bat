@@ -16,12 +16,13 @@ pause
 exit /b %RC%
 :build
 python --version || (echo Python was not found. Install Python 3.13+ from python.org and try again. & exit /b 1)
-python -m pip install --upgrade pip pyinstaller || exit /b 1
+python -m pip install --upgrade pip pyinstaller psutil || exit /b 1
 python -m PyInstaller --noconfirm --clean --onefile --windowed --name LegacyPlayer --icon "launcher\ui\legacy-player.ico" ^
   --paths . ^
   --add-data "launcher\ui;launcher\ui" ^
   --collect-submodules launcher --collect-submodules server ^
   --collect-submodules adapters --collect-submodules runtime --collect-submodules frontend ^
+  --collect-submodules tools --add-data "game_packs;game_packs" ^
   legacy_player_app.py || exit /b 1
 echo.
 echo Built: %CD%\dist\LegacyPlayer.exe

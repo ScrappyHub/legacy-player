@@ -31,7 +31,7 @@ from adapters.retroarch import tunnel as netplay_tunnel
 
 from . import controllers, emulators, engines, pads, savefolders, saves
 from .installer import EngineInstaller, InstallError, latest_release, pick_asset
-from . import dolphinpads, keyboard, netcheck, selfuninstall, sysinfo
+from . import dolphinpads, keyboard, memprobe, netcheck, selfuninstall, sysinfo
 from .covers import (CONTENT_TYPES, CoverFetcher, SYSTEMS as COVER_SYSTEMS, clear_custom_cover, cover_path,
                      custom_cover, set_custom_cover)
 from .pcscan import PcScan
@@ -147,6 +147,7 @@ class LauncherApp:
         self.quit_requested = False
         self._specs_lock = threading.Lock()
         self.api_lock = threading.RLock()        # one ordinary API call at a time (the web layer takes it)
+        self.memprobe = memprobe.MemProbe(self.data_dir)
         self._scan_lock = threading.Lock()       # one disk walk at a time (rescan)
         self._server_op_lock = threading.Lock()  # starting/stopping the server: one at a time, outside api_lock
         self.tray_mode = False   # the window is closed but the app keeps running in the tray
@@ -375,6 +376,29 @@ class LauncherApp:
             return []
         out = dolphinpads.apply(exe, self.catalog.data["player_pads"], self.catalog.data["pad_profiles"], self.catalog.data.get("keyboard"))
         return out.get("notes", [])
+
+    # Dolphin memory probe (Tools menu) --------------------------------------------------------------------
+    def _probe(self, fn, *args) -> dict:
+        try:
+            return fn(*args)
+        except memprobe.ProbeError as exc:
+            raise AppError(str(exc)) from exc
+        except OSError as exc:
+            raise AppError(f"The probe could not read Dolphin's memory: {exc}") from exc
+
+    def api_probe_status(self, body: dict) -> dict:
+        return self.memprobe.status()
+
+    def api_probe_baseline(self, body: dict) -> dict:
+        if not body.get("consent"):
+            raise AppError("Please confirm: the probe will read memory from your open Dolphin program (read-only, on this computer).")
+        return self._probe(self.memprobe.baseline, str(body.get("label") or ""))
+
+    def api_probe_capture(self, body: dict) -> dict:
+        return self._probe(self.memprobe.capture)
+
+    def api_probe_cancel(self, body: dict) -> dict:
+        return self.memprobe.cancel()
 
     def api_dolphin_pads(self, body: dict) -> dict:
         """What Legacy Player would write into Dolphin's GameCube pad file, or put the player's own file back."""
