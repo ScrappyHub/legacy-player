@@ -212,6 +212,7 @@ class UiSmokeTests(unittest.TestCase):
             page.evaluate('nav("settings")')
             page.wait_for_selector("text=Problem reports")
             page.wait_for_selector("text=In-game overlay")
+            self.assertIn("touch grass", page.evaluate('prescription().textContent').lower())
             # the overlay window's own view (last, because it takes over the page)
             page.evaluate('void overlayInit()')
             page.wait_for_selector(".ovl")

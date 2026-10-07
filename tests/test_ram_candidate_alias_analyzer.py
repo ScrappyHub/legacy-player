@@ -29,7 +29,7 @@ class RamCandidateAliasAnalyzerTests(unittest.TestCase):
     def test_distinct_candidates_remain_distinct(self):
         evidence = make_evidence(
             first_posts=[snapshot(b"AAAZ", b"BBBB")],
-            second_posts=[snapshot(b"CCCZ", b"DDDD")],
+            second_posts=[snapshot(b"ZCCC", b"DDDD")],
         )
         receipt = build_receipt(evidence)
         analysis = analyze_aliases(evidence, receipt)

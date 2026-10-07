@@ -445,6 +445,9 @@ textarea{background:var(--panel2);color:var(--text);border:1px solid var(--line)
 .discharge{display:flex;gap:14px;align-items:center;flex-wrap:wrap}.discharge .retro{min-width:260px}
 .stamp2{border:4px double;border-radius:10px;padding:12px 16px;font:800 16px/1.25 ui-monospace,Consolas,monospace;letter-spacing:1px;transform:rotate(-4deg);text-align:center;animation:stampin .5s cubic-bezier(.2,1.6,.4,1)}
 .stamp2.ok{color:#2bd17e}.stamp2.warn{color:#ffd23f}@keyframes stampin{from{transform:rotate(-4deg) scale(2.2);opacity:0}to{transform:rotate(-4deg) scale(1);opacity:1}}
+.rx{background:#fff6c8;color:#2b3157;font:700 13px/1.6 ui-monospace,Consolas,monospace;padding:14px 16px;margin:12px auto;max-width:360px;text-align:left;box-shadow:0 -4px #2b3157,0 4px #2b3157,-4px 0 #2b3157,4px 0 #2b3157;transform:rotate(-1.2deg)}
+.rx .rxh{font-size:15px;letter-spacing:.5px;border-bottom:3px dashed #2b3157;padding-bottom:6px;margin-bottom:8px}
+.rx .rxs{margin-top:10px;font-style:italic;text-align:right}
 .byebye{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center}
 .retire .unlist{max-height:none;overflow:visible}.rrow{display:flex!important;flex-direction:row!important;align-items:center}.rrow .rsize{white-space:nowrap}
 .office,.office *,.docspot,.docspot *,.martin,#brand,.byebye,.startip,.keycap,.hero,.hero *,.doc,.doc *,.flash,.flash *,.case,.case *,.ecard,.ecard *,.px,.chip,.btn,nav,#menubar{-webkit-user-select:none;user-select:none}
@@ -2339,6 +2342,15 @@ async function uninstallGame(g){
      document.querySelectorAll(".modal,.scrim,.drawer").forEach(x=>x.remove());refreshAfter()}},"Uninstall"))));
  document.body.append(ov)}
 
+function prescription(){return h("div",{class:"rx",role:"note","aria-label":"The doctor's final prescription"},
+ h("div",{class:"rxh"},"Rx  FINAL PRESCRIPTION"),
+ h("div",{},"Patient: Legacy Player (discharged)"),
+ h("div",{},"1. One (1) shower. Immediately."),
+ h("div",{},"2. Touch grass. 30 minutes, outdoors, as needed."),
+ h("div",{},"3. Drink water. Blink. Stretch."),
+ h("div",{},"4. Games: unlimited, with daylight."),
+ h("div",{},"Refills: none. I am finally off shift."),
+ h("div",{class:"rxs"},"- The Doctor"))}
 /* ================= closing the clinic: uninstalling Legacy Player itself ================= */
 const RETIRE_LINES={emulators:"Sweeping out the waiting room...",library:"Shredding the paperwork...",saves:"Clearing the save shelves...",logs:"Wiping the clipboard...",program:"Locking up the clinic..."};
 async function retireClinic(){
@@ -2376,7 +2388,7 @@ async function retireClinic(){
   await wait(700);doc.classList.remove("working");
   const ok=!r.problems.length;
   doc.replaceChildren(pixels(doctorRows(ok?"happy":"worried"),104,"doctor "+(ok?"happy":"worried")));
-  say.textContent=ok?"All clean! It was a pleasure treating you. Now go home and play some video games.":"Almost all clean, but a few things wouldn't budge. The notes are below.";
+  say.textContent=ok?"All clean! It was a pleasure treating you. Read the prescription below: I can finally shower and touch grass.":"Almost all clean, but a few things wouldn't budge. The notes are below.";
   const line=(a,b,warn)=>h("div",{class:warn?"w":""},a+": "+b);
   body.replaceChildren(h("div",{class:"discharge"},h("div",{class:"retro"},
     h("div",{class:"hd"},"Discharge report"),
@@ -2386,10 +2398,11 @@ async function retireClinic(){
     r.kept_saves?line("Saves","kept in "+plan.data_dir):line("Saves","deleted"),
     line("Your games","untouched")),
    h("div",{class:"stamp2 "+(ok?"ok":"warn")},ok?"UNINSTALL SUCCESSFULLY COMPLETED":"COMPLETED WITH NOTES")),
+   prescription(),
    r.problems.length?h("div",{class:"small warn",style:"margin-top:10px"},"Could not remove (maybe in use): "+r.problems.slice(0,5).join("; ")+". You can delete those by hand."):null,
    h("p",{class:"small muted"},r.program_pending?"Press the button below. Legacy Player closes and the doctor removes the last pieces a few seconds later.":"Press the button below to close Legacy Player."),
    h("div",{class:"row",style:"justify-content:flex-end;margin-top:10px"},h("button",{class:"btn primary",onclick:async()=>{try{await api("quit",{})}catch(e){}
-     document.body.replaceChildren(h("div",{class:"byebye"},pixels(doctorRows("happy"),120,"doctor happy"),h("h2",{},"Legacy Player has been uninstalled"),h("p",{class:"muted"},"You can close this window. Thanks for playing!")));try{window.close()}catch(e){}}},"Close Legacy Player")))}
+     document.body.replaceChildren(h("div",{class:"byebye"},pixels(doctorRows("happy"),120,"doctor happy"),h("h2",{},"Legacy Player has been uninstalled"),prescription(),h("p",{class:"muted"},"You can close this window. Thanks for playing!")));try{window.close()}catch(e){}}},"Close Legacy Player")))}
  document.body.append(ov)}
 
 /* ================= controller + keyboard status, keyboard layouts ================= */

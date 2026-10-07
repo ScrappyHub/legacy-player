@@ -87,6 +87,7 @@ class FilesAndSavesTests(unittest.TestCase):
         self.game = next(iter(self.app.games.values()))
 
     def test_game_files_refuses_missing_save_folder_and_missing_game(self):
+        self.app.catalog.data["save_sources"][self.game["console"]] = str(self.base / "no-such-save-folder")
         with self.assertRaises(AppError):
             self.app.api_game_files({"id": self.game["id"], "what": "saves"})
         with self.assertRaises(AppError):

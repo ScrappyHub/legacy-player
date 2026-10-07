@@ -3,7 +3,6 @@ from __future__ import annotations
 import hashlib
 from typing import Dict, List, Optional
 
-from tools.memory_probe.memory_reader.reader import read_region
 
 
 DEFAULT_PREVIEW_HEX_BYTES = 32
@@ -141,6 +140,7 @@ def read_sampled_snapshot(
         if current_window_size <= 0:
             continue
 
+        from tools.memory_probe.memory_reader.reader import read_region   # Windows only; imported here so the pure helpers load anywhere
         data = read_region(proc, base_address + offset, current_window_size)
 
         sampled_windows.append(
