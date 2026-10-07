@@ -2,11 +2,15 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import contextlib
 import io
 import json
 import os
 import random
+import shlex
+import subprocess
+import sys
 import threading
 import time
 from pathlib import Path
@@ -25,7 +29,8 @@ from adapters.retroarch import tunnel as netplay_tunnel
 from . import controllers, emulators, engines, pads, savefolders, saves
 from .installer import EngineInstaller, InstallError, latest_release, pick_asset
 from . import netcheck
-from .covers import CoverFetcher, SYSTEMS as COVER_SYSTEMS, cover_path
+from .covers import (CONTENT_TYPES, CoverFetcher, SYSTEMS as COVER_SYSTEMS, clear_custom_cover, cover_path,
+                     custom_cover, set_custom_cover)
 from .pcscan import PcScan
 from .version import REPO, VERSION
 from .setup import Setup, SetupError
@@ -189,9 +194,19 @@ class LauncherApp:
     def _public(self, game: dict, emus: dict | None = None) -> dict:
         history = self.catalog.data["history"].get(game["id"], {})
         emus = emus if emus is not None else getattr(self, "_emus_cache", {})
+        meta = self.catalog.data["game_meta"].get(game["id"], {})
+        own = custom_cover(self.covers.cache, game["id"])
+        auto = cover_path(self.covers.cache, game["id"])
+        shown = own or (auto if auto.exists() else None)
+        emulator = emulators.EMULATORS[meta["emulator"]]["name"] if meta.get("emulator") in emulators.EMULATORS else emus.get(game["console"])
         return {
-            "emulator": emus.get(game["console"]), "cover": cover_path(self.covers.cache, game["id"]).exists(),
-            "id": game["id"], "title": game["title"], "console": game["console"], "region": game["region"],
+            "emulator": emulator, "cover": shown is not None, "custom_cover": own is not None,
+            "cover_v": int(shown.stat().st_mtime) if shown else 0,
+            "hidden": bool(meta.get("hidden")), "own_title": bool(meta.get("title")), "own_emulator": meta.get("emulator", ""),
+            "args": meta.get("args", ""), "note": meta.get("note", ""),
+            "collections": [n for n, ids in self.catalog.data["collections"].items() if game["id"] in ids],
+            "original_title": game["title"],
+            "id": game["id"], "title": meta.get("title") or game["title"], "console": game["console"], "region": game["region"],
             "tags": game["tags"], "size_mb": round(game["size"] / 1048576, 1),
             "favorite": game["id"] in self.catalog.data["favorites"],
             "plays": history.get("plays", 0), "last_played": history.get("last_played", 0),
@@ -203,15 +218,26 @@ class LauncherApp:
         console = body.get("console")
         favorites_only = bool(body.get("favorites"))
         favorites = set(self.catalog.data["favorites"])
+        metas = self.catalog.data["game_meta"]
+        cols = self.catalog.data["collections"]
+        collection = body.get("collection")
+        in_collection = set(cols.get(collection, [])) if collection else None
+        show_hidden = bool(body.get("hidden"))
+        hidden_total = sum(1 for i in self.games if metas.get(i, {}).get("hidden"))
         counts: dict[str, int] = {}
         selected = []
         for game in self.games.values():
+            if bool(metas.get(game["id"], {}).get("hidden")) != show_hidden:
+                continue
             counts[game["console"]] = counts.get(game["console"], 0) + 1
             if console and game["console"] != console:
                 continue
             if favorites_only and game["id"] not in favorites:
                 continue
-            if query and query not in game["title"].lower():
+            if in_collection is not None and game["id"] not in in_collection:
+                continue
+            name = (metas.get(game["id"], {}).get("title") or game["title"]).lower()
+            if query and query not in name:
                 continue
             selected.append(game)
         sort = body.get("sort", "title")
@@ -229,7 +255,9 @@ class LauncherApp:
         ]
         self._emus_cache = emus = self._console_emulators()
         return {
-            "consoles": consoles, "total": len(self.games), "shown": len(selected),
+            "consoles": consoles, "total": sum(counts.values()), "shown": len(selected),
+            "hidden_total": hidden_total, "showing_hidden": show_hidden,
+            "collections": [{"name": n, "count": len(set(ids) & set(self.games))} for n, ids in sorted(cols.items(), key=lambda kv: kv[0].lower())],
             "favorites_total": len(favorites & set(self.games)),
             "games": [self._public(g) for g in selected[:1000]],
             "truncated": len(selected) > 1000, "skipped": self.skipped,
@@ -269,10 +297,10 @@ class LauncherApp:
         except NetplayError:
             return False
 
-    def _emulator_for(self, console_id: str, found: dict | None = None):
+    def _emulator_for(self, console_id: str, found: dict | None = None, prefer: str | None = None):
         found = found or emulators.find_emulators(self._search_roots(), self.catalog.data["emulator_paths"])
         preferred = self.catalog.data["console_emulator"].get(console_id)
-        order = ([preferred] if preferred else []) + list(BY_ID[console_id].emulators)
+        order = ([prefer] if prefer else []) + ([preferred] if preferred else []) + list(BY_ID[console_id].emulators)
         for emulator_id in order:
             if emulator_id in found and found[emulator_id]["path"]:
                 if emulator_id == "retroarch" and not self._core_ok(console_id, found[emulator_id]["path"]):
@@ -284,8 +312,21 @@ class LauncherApp:
         found = emulators.find_emulators(self._search_roots(), self.catalog.data["emulator_paths"])
         return {c.id: (self._emulator_for(c.id, found)[1] or {}).get("name") for c in CONSOLES}
 
+    def _meta(self, game: dict) -> dict:
+        return self.catalog.data["game_meta"].get(game["id"], {})
+
+    def _user_args(self, game: dict) -> list[str]:
+        """Launch options the player typed for this one game (like Steam's launch options), split into arguments."""
+        text = self._meta(game).get("args", "")
+        if not text:
+            return []
+        try:
+            return [t.strip('"') for t in shlex.split(text, posix=False)]
+        except ValueError as exc:
+            raise AppError("The launch options for this game have a quote that is not closed.") from exc
+
     def launch_check(self, game: dict) -> dict:
-        emulator_id, info = self._emulator_for(game["console"])
+        emulator_id, info = self._emulator_for(game["console"], prefer=self._meta(game).get("emulator"))
         if game["is_archive"] and not (game["console"] in ZIP_OK and game["extension"] == ".zip"):
             return {"ready": False, "reason": f"This game is a {game['extension']} archive. Extract it first; the launcher never changes your files."}
         if emulator_id is None:
@@ -386,31 +427,38 @@ class LauncherApp:
         if save_dir:
             save_files = [str(p.name) for p in saves.find_save_files(Path(save_dir), Path(game["path"]).stem)]
         return {
-            **self._public(game),
+            **self._public(game), "path": game["path"],
             "console_name": console.name, "netplay": console.netplay, "netplay_note": console.netplay_note,
             "launch": self.launch_check(game), "compat_id": game["compat_id"],
             "netplay_launch": {k: v for k, v in self.netplay_check(game).items() if k in {"ready", "reason", "experimental", "note"}},
             "controller": controllers.layout(console.controller, self.catalog.data["controller_overrides"].get(console.id)),
             "save_style": console.save_style, "save_source": save_dir, "save_files": save_files,
             "backups": saves.list_backups(self.data_dir, console.id, game["compat_id"]),
+            "emulator_choices": self._emulator_choices(console.id),
         }
+
+    def _emulator_choices(self, console_id: str) -> list[dict]:
+        found = emulators.find_emulators(self._search_roots(), self.catalog.data["emulator_paths"])
+        return [{"id": e, "name": emulators.EMULATORS[e]["name"], "installed": bool(found.get(e, {}).get("path"))}
+                for e in BY_ID[console_id].emulators if e in emulators.EMULATORS]
 
     def api_launch(self, body: dict) -> dict:
         game = self._game(body)
         check = self.launch_check(game)
         if not check["ready"]:
             raise AppError(check["reason"])
-        _, info = self._emulator_for(game["console"])
+        _, info = self._emulator_for(game["console"], prefer=self._meta(game).get("emulator"))
         try:
             if check["emulator_id"] == "retroarch":
                 if game["console"] not in CORES:
                     raise AppError("RetroArch has no core set up for this console.")
                 core = find_core(info["path"], game["console"])
-                command = build_solo_command(info["path"], core, game["path"], self._retroarch_extra(game["console"], info["path"]))
+                command = build_solo_command(info["path"], core, game["path"],
+                                             self._retroarch_extra(game["console"], info["path"]) + self._user_args(game))
                 pid = emulators.launch_command(command)
             else:
                 pid = emulators.launch(check["emulator_id"], info["path"], game["path"],
-                                       emulators.video_args(check["emulator_id"], self._video_for(game["console"])["fullscreen"]))
+                                       emulators.video_args(check["emulator_id"], self._video_for(game["console"])["fullscreen"]) + self._user_args(game))
         except NetplayError as exc:
             raise AppError(str(exc)) from exc
         except (OSError, FileNotFoundError) as exc:
@@ -628,8 +676,84 @@ class LauncherApp:
         return self.covers.view()
 
     def cover_file(self, game_id: str):
+        """The picture to show for a game: one the player picked, else the downloaded box art. Returns (path, content type)."""
+        own = custom_cover(self.covers.cache, game_id)
+        if own is not None:
+            return own, CONTENT_TYPES.get(own.suffix.lstrip("."), "image/png")
         p = cover_path(self.covers.cache, game_id)
-        return p if p.is_file() else None
+        return (p, "image/png") if p.is_file() else None
+
+    def api_game_meta(self, body: dict) -> dict:
+        """Per-game choices: name, hidden, emulator, launch options, note."""
+        game = self._game(body)
+        fields = {k: body[k] for k in ("title", "hidden", "emulator", "args", "note") if k in body}
+        if fields.get("emulator") and fields["emulator"] not in emulators.EMULATORS:
+            raise AppError("That emulator is not one Legacy Player knows.")
+        try:
+            self.catalog.set_game_meta(game["id"], **fields)
+        except CatalogError as exc:
+            raise AppError(str(exc)) from exc
+        return self._public(game)
+
+    def api_game_cover(self, body: dict) -> dict:
+        """Set or remove the picture shown for one game. The page shrinks the picture first and sends it as base64."""
+        game = self._game(body)
+        if body.get("action") == "remove":
+            clear_custom_cover(self.covers.cache, game["id"])
+        else:
+            try:
+                data = base64.b64decode(str(body.get("data", "")), validate=True)
+                set_custom_cover(self.covers.cache, game["id"], data)
+            except (ValueError, TypeError) as exc:
+                raise AppError(str(exc) if "picture" in str(exc) else "That picture could not be read.") from exc
+        return self._public(game)
+
+    def api_game_fetch_cover(self, body: dict) -> dict:
+        game = self._game(body)
+        if not self.catalog.settings()["allow_internet"]:
+            raise AppError("Internet access is off. Turn on 'Allow internet downloads' in Settings first.")
+        if not body.get("consent"):
+            raise AppError("Please confirm: this game's name is sent to thumbnails.libretro.com to ask for its box art.")
+        if game["console"] not in COVER_SYSTEMS:
+            raise AppError("There is no box art library for this console.")
+        self.covers.start([game], force=True)
+        return self.covers.view()
+
+    def api_game_files(self, body: dict) -> dict:
+        """Show the game's file or its save folder in the computer's file manager (this app runs on the same computer)."""
+        game = self._game(body)
+        what = body.get("what", "game")
+        if what == "saves":
+            target = self._save_dir(game)
+            if not target or not Path(target).is_dir():
+                raise AppError("This game has no save folder yet. Play it once, or set one on the Saves page.")
+            target, select = Path(target), False
+        else:
+            target, select = Path(game["path"]), True
+            if not target.exists():
+                raise AppError("That file is no longer there. Try Rescan.")
+        try:
+            if sys.platform.startswith("win"):
+                subprocess.Popen(["explorer", f"/select,{target}"] if select else ["explorer", str(target)])
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", "-R", str(target)] if select else ["open", str(target)])
+            else:
+                subprocess.Popen(["xdg-open", str(target.parent if select else target)])
+        except OSError as exc:
+            raise AppError(f"Could not open the file manager: {exc}") from exc
+        return {"opened": str(target)}
+
+    def api_collections(self, body: dict) -> dict:
+        action = body.get("action", "list")
+        if action != "list":
+            if body.get("id"):
+                self._game(body)
+            try:
+                self.catalog.collection_op(action, body.get("name"), body.get("id"))
+            except CatalogError as exc:
+                raise AppError(str(exc)) from exc
+        cols = self.catalog.data["collections"]
+        return {"collections": [{"name": n, "count": len(set(ids) & set(self.games))} for n, ids in sorted(cols.items(), key=lambda kv: kv[0].lower())]}
 
     # whole-library save backups -----------------------------------------------------
     def _save_sources(self) -> dict[str, Path]:
@@ -972,9 +1096,10 @@ class LauncherApp:
 
     def api_home(self, body: dict) -> dict:
         history = self.catalog.data["history"]
-        recent = sorted((g for g in self.games.values() if history.get(g["id"], {}).get("last_played")),
+        hidden = {i for i, m in self.catalog.data["game_meta"].items() if m.get("hidden")}
+        recent = sorted((g for g in self.games.values() if history.get(g["id"], {}).get("last_played") and g["id"] not in hidden),
                         key=lambda g: -history[g["id"]]["last_played"])[:8]
-        favs = [g for g in self.games.values() if g["id"] in set(self.catalog.data["favorites"])][:8]
+        favs = [g for g in self.games.values() if g["id"] in set(self.catalog.data["favorites"]) and g["id"] not in hidden][:8]
         found = emulators.find_emulators(self._search_roots(), self.catalog.data["emulator_paths"])
         emus = self._console_emulators()
         s = self.catalog.settings()

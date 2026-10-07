@@ -132,6 +132,8 @@ DEFAULT_DATA = {
     "last_scan": None,
     "netcheck_good": None,  # the last time the server answered: {"at", "avg_ms", "name"}
     "backup_root": "",      # where whole-library save backups are kept ("" = inside the data folder)
+    "game_meta": {},        # game id -> {"title", "hidden", "emulator", "args", "note"} the player chose for that one game
+    "collections": {},      # collection name -> [game ids], like Steam categories
     "video": {},            # "all" or console id -> display choices (see launcher/app.py VIDEO_FIELDS)
     "last_rescan": None,    # when the games folders were last read
     "doctor_dismissed": [], # things the user told the doctor not to worry about
@@ -211,6 +213,57 @@ class Catalog:
         favorites = set(self.data["favorites"])
         (favorites.add if favorite else favorites.discard)(game_id)
         self.data["favorites"] = sorted(favorites)
+        self.save()
+
+    META_LIMITS = {"title": 80, "emulator": 40, "args": 200, "note": 400}
+
+    def set_game_meta(self, game_id: str, **fields) -> dict:
+        """Per-game choices (name, hidden, emulator, launch options, note). An empty value clears the choice."""
+        meta = dict(self.data["game_meta"].get(game_id, {}))
+        for key, value in fields.items():
+            if key == "hidden":
+                if value:
+                    meta["hidden"] = True
+                else:
+                    meta.pop("hidden", None)
+            elif key in self.META_LIMITS:
+                text = str(value or "").strip()
+                if any(ch in text for ch in "\r\n\x00"):
+                    raise CatalogError("That text cannot contain line breaks.")
+                if len(text) > self.META_LIMITS[key]:
+                    raise CatalogError(f"Keep it under {self.META_LIMITS[key]} characters.")
+                if text:
+                    meta[key] = text
+                else:
+                    meta.pop(key, None)
+        if meta:
+            self.data["game_meta"][game_id] = meta
+        else:
+            self.data["game_meta"].pop(game_id, None)
+        self.save()
+        return meta
+
+    def collection_op(self, action: str, name: str, game_id: str | None = None) -> None:
+        name = str(name or "").strip()
+        if not name or len(name) > 40 or any(ch in name for ch in "\r\n\x00"):
+            raise CatalogError("Give the collection a short name (up to 40 characters).")
+        cols = self.data["collections"]
+        key = next((k for k in cols if k.lower() == name.lower()), None)
+        if action == "create":
+            if key is None:
+                if len(cols) >= 50:
+                    raise CatalogError("That is plenty of collections already (50).")
+                cols[name] = []
+        elif key is None:
+            raise CatalogError("That collection does not exist.")
+        elif action == "delete":
+            del cols[key]
+        elif action in {"add", "remove"} and game_id:
+            ids = set(cols[key])
+            (ids.add if action == "add" else ids.discard)(game_id)
+            cols[key] = sorted(ids)
+        else:
+            raise CatalogError("Unknown collection action.")
         self.save()
 
     def record_play(self, game_id: str) -> None:

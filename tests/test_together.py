@@ -340,3 +340,50 @@ class CoversBackupsVideoTests(unittest.TestCase):
         from adapters.retroarch.netplay import CORE_SUFFIXES, CORES
         (ra.parent / "cores" / (CORES["nes"][0] + CORE_SUFFIXES.get(sys.platform, ".so"))).write_text("x")
         self.assertEqual(app._emulator_for("nes")[0], "retroarch")
+
+
+class GameMenuTests(unittest.TestCase):
+    def make(self):
+        import tempfile
+        from pathlib import Path
+        from launcher.app import LauncherApp
+        base = Path(tempfile.mkdtemp())
+        games = base / "games"; games.mkdir()
+        (games / "Super Test (USA).nes").write_bytes(b"NES\x1a" + b"0" * 100)
+        (games / "Other Game (USA).nes").write_bytes(b"NES\x1a" + b"1" * 100)
+        app = LauncherApp(base / "data", [str(games)]) if False else LauncherApp(base / "data")
+        app.api_roots({"roots": [str(games)]})
+        app.rescan()
+        return app
+
+    def test_meta_hidden_title_collections_cover(self):
+        import base64
+        from launcher.app import AppError
+        app = self.make()
+        lib = app.api_library({})
+        ids = {g["title"]: g["id"] for g in lib["games"]}
+        gid = ids[next(t for t in ids if t.startswith("Super"))]
+        app.api_game_meta({"id": gid, "title": "My Super Test", "args": "--verbose"})
+        self.assertEqual(app.api_library({"q": "my super"})["games"][0]["title"], "My Super Test")
+        app.api_game_meta({"id": gid, "hidden": True})
+        self.assertEqual(app.api_library({})["total"], 1)
+        self.assertEqual(app.api_library({})["hidden_total"], 1)
+        self.assertEqual(app.api_library({"hidden": True})["games"][0]["id"], gid)
+        app.api_game_meta({"id": gid, "hidden": False})
+        app.api_collections({"action": "create", "name": "Co-op"})
+        app.api_collections({"action": "add", "name": "co-op", "id": gid})
+        self.assertEqual(app.api_library({"collection": "Co-op"})["shown"], 1)
+        self.assertEqual(app.api_library({})["collections"][0]["count"], 1)
+        with self.assertRaises(AppError):
+            app.api_game_meta({"id": gid, "title": "x\ny"})
+        with self.assertRaises(AppError):
+            app.api_game_meta({"id": gid, "emulator": "nope"})
+        png = b"\x89PNG\r\n\x1a\n" + b"0" * 30
+        pub = app.api_game_cover({"id": gid, "data": base64.b64encode(png).decode()})
+        self.assertTrue(pub["custom_cover"] and pub["cover"])
+        path, kind = app.cover_file(gid)
+        self.assertEqual(kind, "image/png")
+        with self.assertRaises(AppError):
+            app.api_game_cover({"id": gid, "data": base64.b64encode(b"<html>").decode()})
+        self.assertFalse(app.api_game_cover({"id": gid, "action": "remove"})["custom_cover"])
+        self.assertEqual(app._user_args(app.games[gid]), ["--verbose"])

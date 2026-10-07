@@ -12,7 +12,7 @@ from pathlib import Path
 from .app import AppError, LauncherApp
 
 UI_FILE = Path(__file__).parent / "ui" / "index.html"
-MAX_BODY = 64 * 1024
+MAX_BODY = 1024 * 1024    # room for a shrunk cover picture (the page sends it as base64)
 
 
 def make_handler(app: LauncherApp, token: str, port_getter):
@@ -53,12 +53,12 @@ def make_handler(app: LauncherApp, token: str, port_getter):
                 u = urlparse(self.path)
                 if not secrets.compare_digest(parse_qs(u.query).get("t", [""])[0], token):
                     return self._json(403, {"error": "missing or wrong token"})
-                f = app.cover_file(u.path[len("/cover/"):].removesuffix(".png"))
-                if f is None:
+                found = app.cover_file(u.path[len("/cover/"):].removesuffix(".png"))
+                if found is None:
                     return self._json(404, {"error": "no cover"})
-                body = f.read_bytes()
+                body = found[0].read_bytes()
                 self.send_response(200)
-                self.send_header("Content-Type", "image/png")
+                self.send_header("Content-Type", found[1])
                 self.send_header("Content-Length", str(len(body)))
                 self.send_header("Cache-Control", "private, max-age=86400")
                 self.send_header("X-Content-Type-Options", "nosniff")

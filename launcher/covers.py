@@ -75,12 +75,12 @@ class CoverFetcher:
         except (OSError, ValueError):
             return {}
 
-    def start(self, games: list[dict]) -> dict:
+    def start(self, games: list[dict], force: bool = False) -> dict:
         if self.state == "running":
             return self.view()
         misses = self.misses()
-        todo = [g for g in games if g["console"] in SYSTEMS and not cover_path(self.cache, g["id"]).exists()
-                and time.time() - misses.get(g["id"], 0) > 7 * 86400]
+        todo = [g for g in games if g["console"] in SYSTEMS and (force or (not cover_path(self.cache, g["id"]).exists()
+                and time.time() - misses.get(g["id"], 0) > 7 * 86400))]
         self._stop.clear()
         self.state, self.done, self.total, self.found = "running", 0, len(todo), 0
 
@@ -118,3 +118,52 @@ class CoverFetcher:
     def view(self) -> dict:
         have = sum(1 for _ in self.cache.glob("*.png"))
         return {"state": self.state, "done": self.done, "total": self.total, "found": self.found, "current": self.current, "have": have}
+
+
+# --- covers the player picks themselves -----------------------------------------------------------------------------
+CUSTOM_MAX = 600_000
+_MAGIC = ((b"\x89PNG\r\n\x1a\n", "png"), (b"\xff\xd8\xff", "jpg"), (b"GIF8", "gif"))
+CONTENT_TYPES = {"png": "image/png", "jpg": "image/jpeg", "gif": "image/gif", "webp": "image/webp"}
+
+
+def image_kind(data: bytes) -> str | None:
+    for magic, kind in _MAGIC:
+        if data.startswith(magic):
+            return kind
+    return "webp" if data[:4] == b"RIFF" and data[8:12] == b"WEBP" else None
+
+
+def _safe(game_id: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_-]", "_", game_id)
+
+
+def custom_cover(cache: Path, game_id: str) -> Path | None:
+    for kind in CONTENT_TYPES:
+        p = Path(cache) / "custom" / f"{_safe(game_id)}.{kind}"
+        if p.is_file():
+            return p
+    return None
+
+
+def set_custom_cover(cache: Path, game_id: str, data: bytes) -> Path:
+    kind = image_kind(data)
+    if kind is None:
+        raise ValueError("That is not a picture Legacy Player can show (use PNG, JPG, GIF or WEBP).")
+    if len(data) > CUSTOM_MAX:
+        raise ValueError("That picture is too big. Pictures up to about 600 KB work.")
+    clear_custom_cover(cache, game_id)
+    folder = Path(cache) / "custom"
+    folder.mkdir(parents=True, exist_ok=True)
+    target = folder / f"{_safe(game_id)}.{kind}"
+    target.write_bytes(data)
+    return target
+
+
+def clear_custom_cover(cache: Path, game_id: str) -> None:
+    p = custom_cover(cache, game_id)
+    while p is not None:
+        try:
+            p.unlink()
+        except OSError:
+            break
+        p = custom_cover(cache, game_id)
