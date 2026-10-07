@@ -140,6 +140,7 @@ DEFAULT_DATA = {
     "save_root": "",        # managed save folder root ("" = inside the data folder)
     "pad_profiles": {},     # pad key -> profile (see launcher/pads.py)
     "player_pads": {},      # "1".."4" -> pad key
+    "keyboard": {"layout": "default", "keys": {}},   # player 1 keyboard controls (see launcher/keyboard.py)
 }
 
 

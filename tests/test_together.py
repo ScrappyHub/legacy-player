@@ -482,3 +482,23 @@ class SelfUninstallTests(unittest.TestCase):
         self.assertEqual(calls[0][2], data)      # the leftover data folder is purged after closing
         app.catalog.save()                        # must not bring the settings file back
         self.assertFalse((data / "user_data.json").exists())
+
+
+class KeyboardTests(unittest.TestCase):
+    def test_layouts(self):
+        import tempfile
+        from pathlib import Path
+        from launcher.app import LauncherApp, AppError
+        from launcher import keyboard
+        app = LauncherApp(Path(tempfile.mkdtemp()))
+        self.assertEqual(app.api_keyboard({})["layout"], "default")
+        self.assertEqual(keyboard.retroarch_lines(app.catalog.data["keyboard"]), [])
+        out = app.api_keyboard({"layout": "wasd"})
+        self.assertEqual(out["keys"]["up"], "w")
+        self.assertIn('input_player1_up = "w"', keyboard.retroarch_lines(app.catalog.data["keyboard"]))
+        with self.assertRaises(AppError):
+            app.api_keyboard({"layout": "custom", "keys": {"a": "escape"}})
+        with self.assertRaises(AppError):
+            app.api_keyboard({"layout": "custom", "keys": {"a": "z"}})     # z is already B
+        ok = app.api_keyboard({"layout": "custom", "keys": {"a": "f", "b": "d"}})
+        self.assertEqual((ok["keys"]["a"], ok["keys"]["b"], ok["name"]), ("f", "d", "Custom"))

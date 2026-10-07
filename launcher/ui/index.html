@@ -403,6 +403,18 @@ textarea{background:var(--panel2);color:var(--text);border:1px solid var(--line)
 .stamp2.ok{color:#2bd17e}.stamp2.warn{color:#ffd23f}@keyframes stampin{from{transform:rotate(-4deg) scale(2.2);opacity:0}to{transform:rotate(-4deg) scale(1);opacity:1}}
 .byebye{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center}
 .retire .unlist{max-height:none;overflow:visible}.rrow{display:flex!important;flex-direction:row!important;align-items:center}.rrow .rsize{white-space:nowrap}
+.office,.office *,.docspot,.docspot *,.martin,#brand,.byebye,.startip,.keycap{-webkit-user-select:none;user-select:none}
+.inpill{display:inline-flex;align-items:center;gap:8px;font:inherit;font-size:.82rem;background:var(--glass,#ffffff14);color:var(--text);border:1px solid var(--line);border-radius:999px;padding:5px 12px;cursor:pointer;margin-right:8px;max-width:300px}
+.inpill #intxt{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.inpill .dot{width:8px;height:8px;border-radius:50%;background:#ffb454;flex:none}.inpill.ok{border-color:#3be0a8}.inpill.ok .dot{background:#3be0a8}
+@media(max-width:900px){.inpill #intxt{display:none}}
+.inbanner{padding:10px 14px;border-radius:10px;border:1px solid var(--line);margin:8px 0 12px;font-size:.9rem}.inbanner.ok{border-color:#3be0a8;background:#3be0a81a}.inbanner.warn{border-color:#ffb454;background:#ffb4541a}
+.kbgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:6px 18px;margin-top:6px}.kbrow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:4px 0;border-bottom:1px solid var(--line)}
+.keycap{min-width:64px;padding:6px 12px;border-radius:8px;border:1px solid var(--line);border-bottom-width:4px;background:#ffffff14;color:var(--text);font:700 13px ui-monospace,Consolas,monospace;cursor:pointer}.keycap.learning{border-color:#ffd23f;color:#ffd23f;animation:blinkc 1s steps(1) infinite}
+.artopts{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:10px}
+.artopt{display:flex;flex-direction:column;gap:4px;text-align:left;padding:12px 14px;border-radius:12px;border:1px solid var(--line);background:#ffffff0d;color:var(--text);cursor:pointer;text-decoration:none;font:inherit}.artopt:hover,.artopt:focus-visible{border-color:#7a9bff;background:#7a9bff1f}
+.startip.inline{margin:6px 0 12px}.libfoot{display:flex;align-items:center;gap:12px;margin:22px 0 8px;padding-top:14px;border-top:1px solid var(--line)}.libfoot .startip{top:auto;bottom:calc(100% + 10px);right:auto;left:0}
+.inpill{max-width:230px}header{flex-wrap:nowrap}
+.inpill{max-width:190px}header{flex-wrap:wrap}.wordmark{white-space:nowrap}#nav{flex-wrap:nowrap;white-space:nowrap}@media(max-width:1400px){.inpill{padding:5px 9px;margin-right:4px}}
 </style>
 </head>
 <body>
@@ -417,6 +429,7 @@ textarea{background:var(--panel2);color:var(--text);border:1px solid var(--line)
   <div class="brand" id="brand" tabindex="0" role="button" title="Home"><span id="logomartin"></span><span class="wordmark">Legacy <b>Player</b></span></div>
   <nav id="nav" aria-label="Sections"></nav>
   <div class="grow"></div>
+  <button type="button" class="inpill off" id="inpill"><span class="dot"></span><span id="intxt">input…</span></button>
   <button type="button" class="srvpill off" id="srv"><span class="dot"></span><span id="srvtxt">server…</span></button>
  </header>
  <div id="livebar" hidden></div>
@@ -433,7 +446,7 @@ const $=(s,r=document)=>r.querySelector(s);
 function h(tag,attrs,...kids){const e=document.createElement(tag);for(const[k,v]of Object.entries(attrs||{})){if(k==="class")e.className=v;else if(k.startsWith("on"))e.addEventListener(k.slice(2),v);else if(v===true)e.setAttribute(k,"");else if(v!==false&&v!=null)e.setAttribute(k,v)}
  for(const c of kids.flat()){if(c==null||c===false)continue;e.append(c.nodeType?c:document.createTextNode(String(c)))}return e}
 /* A thin shimmer bar at the top and a hopping Martin show the app is working. Quiet background polls do not trigger it. */
-let pending=0,busyT=null;const QUIET=new Set(["ping","mp_state","status","scan_pc","server_status","pads","bye","network_last","setup_status","specs"]);
+let pending=0,busyT=null;const QUIET=new Set(["ping","mp_state","status","scan_pc","server_status","pads","bye","network_last","setup_status","specs","keyboard","home"]);
 async function api(name,body={}){const loud=!QUIET.has(name);if(loud){pending++;if(pending===1)busyT=setTimeout(()=>document.body.classList.add("busy"),200)}
  try{const r=await fetch("/api/"+name,{method:"POST",headers:{"Content-Type":"application/json","X-LP-Token":TOKEN},body:JSON.stringify(body)});
   const j=await r.json();if(!r.ok)throw new Error(j.error||"Request failed");return j}
@@ -491,8 +504,8 @@ const PRIMARY=[["home","Home"],["library","Library"],["console","Console mode"],
 function renderNav(){const n=$("#nav");n.replaceChildren(...PRIMARY.map(([id,l])=>h("button",{class:S.tab===id?"on":"",onclick:()=>{S.tab=id;S.anchor=null;go()}},l+(id==="together"&&S.room?" ●":""))));renderWho();renderLive()}
 function renderWho(){const w=$("#who");if(!w)return;const p=S.profile||{alias:"Player",avatar:"martin",player:"Player"};
  w.replaceChildren(avatarEl(p.avatar,26),h("span",{class:"nm"},p.player||p.alias))}
-async function go(){closeMenus();renderNav();const m=$("#main");m.replaceChildren();window.scrollTo(0,0);
- ({home:viewHome,library:viewLibrary,together:viewTogether,servers:viewServers,console:viewConsole,setup:viewSetup,engines:viewEngines,controllers:viewControllers,saves:viewSaves,emulators:viewEmulators,settings:viewSettings,credits:viewCredits,welcome:viewWelcome,help:viewHelp,storage:viewStorage,profile:viewProfile,display:viewDisplay})[S.tab](m)}
+async function go(){closeMenus();renderNav();const old=$("#main"),m=old.cloneNode(false);old.replaceWith(m);window.scrollTo(0,0);
+ Promise.resolve(({home:viewHome,library:viewLibrary,together:viewTogether,servers:viewServers,console:viewConsole,setup:viewSetup,engines:viewEngines,controllers:viewControllers,saves:viewSaves,emulators:viewEmulators,settings:viewSettings,credits:viewCredits,welcome:viewWelcome,help:viewHelp,storage:viewStorage,profile:viewProfile,display:viewDisplay})[S.tab](m)).then(()=>{if(S.tab==="home")homeArtTip()}).catch(()=>{})}
 function nav(tab,anchor){S.tab=tab;S.anchor=anchor||null;go()}
 
 /* ---------- menu bar ---------- */
@@ -819,10 +832,11 @@ async function viewLibrary(m){
  const sort=h("select",{"aria-label":"Sort",onchange:e=>{S.sort=e.target.value;refreshGrid()}},...[["title","A-Z"],["recent","Recently played"],["size","Largest"]].map(([v,l])=>h("option",{value:v,selected:S.sort===v},l)));
  m.append(h("div",{class:"row"},h("h2",{class:"grow"},"Your games ",h("span",{class:"muted small"},d.total+" found")),search,sort,
   h("button",{class:"btn"+(S.fav?" primary":""),onclick:()=>{S.fav=!S.fav;go()}},"★ Favorites ("+d.favorites_total+")"),
-  coverBtn(),h("button",{class:"btn",onclick:rescan},"Rescan")));
+  h("button",{class:"btn",onclick:rescan},"Rescan")));
  m.append(h("div",{class:"chips",id:"chips"}),h("div",{class:"chips",id:"colchips",style:"margin-top:4px"}));
  m.append(h("div",{id:"gridwrap"}));
  drawChips(d);drawGrid(d);
+ m.append(h("div",{class:"libfoot"},coverBtn(),h("span",{class:"small muted"},"Box art is looked up by game name. If a game has none, right-click it to find or add a picture.")));
 }
 function drawChips(d){drawCols(d);const c=$("#chips");c.replaceChildren(h("button",{class:"chip"+(S.console?"":" on"),onclick:()=>{S.console=null;go()}},"All",h("small",{},d.total)),
  ...d.consoles.map(k=>h("button",{class:"chip"+(S.console===k.id?" on":""),title:k.netplay_note,onclick:()=>{S.console=k.id;go()}},k.name,h("small",{},k.count))))}
@@ -1174,12 +1188,13 @@ async function viewControllers(m){
  const padsBox=h("div",{id:"padsbox"}),wizBox=h("div",{id:"wiz"});
  m.append(h("h2",{},"Controllers"),
   h("div",{class:"why"},"Plug in or turn on any gamepad, then press a button on it. It appears below. Use Identify to make it rumble (so you know which is which), assign it to a player, and press Map to teach Legacy Player what each of its buttons is. Nothing is sent anywhere; mapping is saved on this computer."),
-  h("h3",{},"Your controllers"),padsBox,wizBox,
+  inputBanner(),h("h3",{},"Your controllers"),padsBox,wizBox,
   h("h3",{},whyInline("Console layout","A console has its own buttons. This table says which standard control on your pad is each console button. Your pad's own mapping (above) is applied first.")),
   h("div",{class:"row"},sel,h("span",{class:"badge"},L.customized?"customized":"default")),L.note?h("p",{class:"small muted"},L.note):"",
   h("div",{class:"card",style:"margin-top:12px"},h("table",{},h("thead",{},h("tr",{},h("th",{},"Console button"),h("th",{},"Standard control"))),h("tbody",{},...rows)),
    h("div",{class:"row",style:"margin-top:12px"},h("button",{class:"btn primary",onclick:async()=>{if(Object.keys(edits).length){const cur={};L.buttons.forEach(b=>cur[b.name]=b.index);const r=await act(()=>api("controllers",{console:S.ctrl,buttons:{...cur,...edits}}),"Saved");if(r)go()}}},"Save layout"),
     h("button",{class:"btn",onclick:async()=>{await act(()=>api("controllers",{console:S.ctrl,buttons:{}}),"Reset to default");go()}},"Reset"))),
+  h("h3",{},"Keyboard"),kbSection(),
   h("h3",{},"Live test"),live,
   h("p",{class:"small muted"},"Emulator note: RetroArch gets your Xbox-style (standard layout) pad bindings automatically. Other emulators keep their own controller settings; for those, set the pad inside the emulator once."));
  let sig="";
@@ -2050,6 +2065,82 @@ async function retireClinic(){
    h("div",{class:"row",style:"justify-content:flex-end;margin-top:10px"},h("button",{class:"btn primary",onclick:async()=>{try{await api("quit",{})}catch(e){}
      document.body.replaceChildren(h("div",{class:"byebye"},pixels(doctorRows("happy"),120,"doctor happy"),h("h2",{},"Legacy Player has been uninstalled"),h("p",{class:"muted"},"You can close this window. Thanks for playing!")));try{window.close()}catch(e){}}},"Close Legacy Player")))}
  document.body.append(ov)}
+
+/* ================= controller + keyboard status, keyboard layouts ================= */
+function kbKeyName(e){const c=e.code||"",k=e.key||"";
+ if(/^Key[A-Z]$/.test(c)||/^[a-zA-Z]$/.test(k))return(/^[a-zA-Z]$/.test(k)?k:c.slice(3)).toLowerCase();
+ if(/^[0-9]$/.test(k))return"num"+k;if(/^Digit[0-9]$/.test(c))return"num"+c.slice(5);
+ return({ArrowUp:"up",ArrowDown:"down",ArrowLeft:"left",ArrowRight:"right",Enter:"enter",Space:"space",Backspace:"backspace",Tab:"tab",ShiftLeft:"shift",ShiftRight:"rshift",ControlLeft:"ctrl",ControlRight:"rctrl",AltLeft:"alt",AltRight:"ralt"})[c]||null}
+const KEYLABEL={up:"↑",down:"↓",left:"←",right:"→",enter:"Enter",space:"Space",backspace:"Backspace",tab:"Tab",shift:"Left Shift",rshift:"Right Shift",ctrl:"Left Ctrl",rctrl:"Right Ctrl",alt:"Left Alt",ralt:"Right Alt"};
+const keyLabel=k=>KEYLABEL[k]||(/^num\d$/.test(k)?k.slice(3):k.toUpperCase());
+async function loadKb(){try{S.kb=await api("keyboard",{})}catch(e){}paintInput()}
+function paintInput(){const el=$("#inpill");if(!el)return;const ps=livePads(),kbn=S.kb?S.kb.name:"Classic (arrow keys)",kbs=S.kb&&S.kb.layout==="wasd"?"WASD":S.kb&&S.kb.layout==="custom"?"Custom":"Arrows";
+ el.classList.toggle("ok",!!ps.length);el.classList.toggle("off",!ps.length);
+ $("#intxt").textContent=ps.length?"Pad: "+padPrettyName(ps[0].id).slice(0,16)+(ps.length>1?" +"+(ps.length-1):""):"No pad · "+kbs+" keys";
+ el.title=ps.length?ps.length+" controller"+(ps.length>1?"s":"")+" connected. Click to manage controllers and keyboard keys.":"No controller detected. If one is plugged in, press a button on it first. You can play with the keyboard ("+kbn+" layout). Click to change it."}
+(function(){let last=-1;
+ addEventListener("gamepadconnected",e=>{paintInput();toast("Controller connected: "+padPrettyName(e.gamepad.id).slice(0,40))});
+ addEventListener("gamepaddisconnected",e=>{paintInput();toast("Controller disconnected: "+padPrettyName(e.gamepad.id).slice(0,40)+". The keyboard layout takes over.","warn")});
+ setInterval(()=>{const n=livePads().length;if(n!==last){last=n;paintInput()}},2500);
+ setTimeout(()=>{const el=$("#inpill");if(el)el.onclick=()=>nav("controllers");loadKb()},0)})();
+document.addEventListener("selectstart",e=>{const t=e.target&&e.target.closest?e.target:e.target&&e.target.parentElement;if(t&&t.closest&&t.closest(".office,.docspot,.martin,.pet,#brand,.byebye"))e.preventDefault()});
+
+function kbSection(){
+ const box=h("div",{class:"card kbbox"});
+ const draw=k=>{S.kb=k;paintInput();
+  const picked=k.layout;
+  const keysRow=k.roles.map(r=>{const b=h("button",{class:"keycap",type:"button",title:"Click, then press the key you want",onclick:()=>learn(r.id,b)},keyLabel(k.keys[r.id]));
+   return h("div",{class:"kbrow"},h("span",{},r.name),b)});
+  box.replaceChildren(
+   h("p",{class:"small muted",style:"margin:0 0 10px"},"Player 1 can play from the keyboard when no controller is plugged in (or alongside one). Pick a layout, or click a key below and press the one you want. Works with RetroArch."),
+   h("div",{class:"row",style:"gap:8px;margin-bottom:6px"},...Object.entries(k.presets).map(([id,p])=>h("button",{class:"btn"+(picked===id?" primary":""),onclick:async()=>{const r=await act(()=>api("keyboard",{layout:id}),"Keyboard layout: "+p.label);if(r)draw(r)}},p.label)),
+    h("span",{class:"badge"},picked==="custom"?"your own keys":"preset")),
+   picked!=="custom"&&k.presets[picked]?h("p",{class:"small muted",style:"margin:0 0 8px"},k.presets[picked].note):"",
+   h("div",{class:"kbgrid"},...keysRow))};
+ const learn=(role,btn)=>{btn.textContent="Press a key…";btn.classList.add("learning");
+  const off=()=>{removeEventListener("keydown",on,true);btn.classList.remove("learning")};
+  const on=async e=>{e.preventDefault();e.stopPropagation();
+   if(e.key==="Escape"){off();draw(S.kb);return}
+   const name=kbKeyName(e);if(!name){toast("That key can't be used. Try a letter, number, arrow, Enter, Space, Tab, Shift, Ctrl or Alt.","warn");return}
+   off();const keys={...S.kb.keys},old=keys[role];
+   const other=Object.keys(keys).find(r=>r!==role&&keys[r]===name);if(other)keys[other]=old;   // swap so no two buttons share a key
+   keys[role]=name;const r=await act(()=>api("keyboard",{layout:"custom",keys}));draw(r||S.kb)};
+  addEventListener("keydown",on,true)};
+ api("keyboard",{}).then(draw);return box}
+function inputBanner(){const ps=livePads(),kb=S.kb;
+ return h("div",{class:"inbanner "+(ps.length?"ok":"warn")},ps.length?"Controller connected: "+ps.map(p=>padPrettyName(p.id).slice(0,40)).join(", "):"No controller detected. Plug one in and press a button on it, or play with the keyboard ("+(kb?kb.name:"Classic")+" layout, set below).")}
+
+/* ================= finding box art, with options when it isn't available ================= */
+function findArt(g,opts){opts=opts||{};closeModals();
+ const close=()=>{removeEventListener("paste",onPaste);ov.remove()};
+ const onPaste=async e=>{const it=[...(e.clipboardData&&e.clipboardData.items||[])].find(i=>i.type.startsWith("image/"));if(!it)return;e.preventDefault();
+  const f=it.getAsFile();close();await setCoverFile(g,f)};
+ const opt=(t,d,fn,extra)=>h("button",{class:"artopt",type:"button",onclick:fn},h("b",{},t),h("span",{class:"small muted"},d),extra||"");
+ const q=encodeURIComponent(g.title+" "+consoleName(g.console)+" box art");
+ const ov=h("div",{class:"modal tipmodal",onclick:e=>{if(e.target===ov)close()}},h("div",{class:"modalbox wide"},
+  h("h3",{style:"margin:0 0 4px"},"Find box art for "+g.title),
+  h("p",{class:"small muted",style:"margin:0 0 12px"},opts.tried?"The picture library doesn't have this one under that name. Here are other ways to get a picture:":"Choose how you'd like to get a picture:"),
+  h("div",{class:"artopts"},
+   opt(opts.tried?"Try the online library again":"Look it up online","Asks thumbnails.libretro.com using only the game's name.",()=>{close();fetchOneCover(g,{again:true})}),
+   opt("Choose a picture file","Pick an image from this computer (PNG, JPG, WEBP or GIF).",()=>{close();pickCover(g)}),
+   opt("Paste a picture","Copy any image in your browser (right-click, Copy image), then press Ctrl+V right here.",()=>{toast("Ready. Press Ctrl+V to paste your picture.","")}),
+   h("a",{class:"artopt",href:"https://duckduckgo.com/?q="+q+"&iax=images&ia=images",target:"_blank",rel:"noopener noreferrer"},h("b",{},"Search the web for it"),h("span",{class:"small muted"},"Opens an image search in your browser. Copy or save the one you like, then paste or choose it here.")),
+   opt("Keep the plain "+consoleName(g.console)+" card","No picture is fine. The card shows the console's colors.",close)),
+  h("div",{class:"row",style:"justify-content:flex-end;margin-top:12px"},h("button",{class:"btn",onclick:close},"Close"))));
+ addEventListener("paste",onPaste);document.body.append(ov)}
+async function fetchOneCover(g,o){
+ const s=await api("settings");S.settings=s.values;if(!allowNet()){netTipModal();return}
+ if(!(o&&o.again)&&!await ask("Ask thumbnails.libretro.com for the box art of "+g.title+"? Only this game's name is sent. The picture is kept on this computer.","Get box art"))return;
+ let v=await act(()=>api("game_fetch_cover",{id:g.id,consent:true}));if(!v)return;
+ for(let i=0;i<30&&v.state==="running";i++){await new Promise(r=>setTimeout(r,800));v=await api("covers",{}).catch(()=>({state:"error"}))}
+ if(v.found){toast("Got the box art.");refreshAfter()}else findArt(g,{tried:true})}
+async function homeArtTip(){
+ if(S.tab!=="home")return;const d=await api("home").catch(()=>null);if(!d||S.tab!=="home")return;
+ const g=(d.recent||[]).find(x=>!x.cover);if(!g||S.artTipOff===g.id||$(".arttip"))return;
+ const head=[...document.querySelectorAll("#main h2,#main h3")].find(x=>/Recent games/.test(x.textContent));if(!head)return;
+ head.after(h("div",{class:"startip inline arttip",role:"note"},pixels(AVATARS.star.rows,28,"twinkle"),h("div",{class:"bub"},
+  "No box art for "+g.title+" yet.",h("div",{class:"row",style:"gap:6px"},h("button",{class:"btn",onclick:()=>{GAMES[g.id]=GAMES[g.id]||g;findArt(g)}},"Find art"),
+   h("button",{class:"btn",onclick:e=>{S.artTipOff=g.id;e.target.closest(".arttip").remove()}},"Not now")))))}
 
 (async function init(){try{const s=await api("settings");S.settings=s.values;document.documentElement.dataset.theme=s.values.theme}catch(e){}
  buildMenubar();$("#brand").addEventListener("click",()=>nav("home"));$("#logomartin").append(martin(34));$("#bootmartin").append(martin(96,"hop"));

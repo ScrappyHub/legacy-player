@@ -30,7 +30,7 @@ from adapters.retroarch import tunnel as netplay_tunnel
 
 from . import controllers, emulators, engines, pads, savefolders, saves
 from .installer import EngineInstaller, InstallError, latest_release, pick_asset
-from . import netcheck, selfuninstall, sysinfo
+from . import keyboard, netcheck, selfuninstall, sysinfo
 from .covers import (CONTENT_TYPES, CoverFetcher, SYSTEMS as COVER_SYSTEMS, clear_custom_cover, cover_path,
                      custom_cover, set_custom_cover)
 from .pcscan import PcScan
@@ -364,6 +364,7 @@ class LauncherApp:
             profile = self.catalog.data["pad_profiles"].get(key) if key else None
             if profile:
                 lines += pads.retroarch_pad_config(profile, player)[0]
+        lines += keyboard.retroarch_lines(self.catalog.data.get("keyboard"))
         v = self._video_for(console_id)
         lines += [f'video_fullscreen = "{str(v["fullscreen"]).lower()}"', f'video_scale_integer = "{str(v["integer"]).lower()}"',
                   f'video_force_aspect = "{str(v["keep_shape"]).lower()}"', f'video_smooth = "{str(v["smooth"]).lower()}"',
@@ -1021,6 +1022,20 @@ class LauncherApp:
             "layout": controllers.layout(console.controller, self.catalog.data["controller_overrides"].get(console.id)),
             "all": [{"id": c.id, "name": c.name} for c in CONSOLES],
         }
+
+    def api_keyboard(self, body: dict) -> dict:
+        """Player 1's keyboard controls: pick a layout or set each button's key."""
+        if "layout" in body:
+            try:
+                self.catalog.data["keyboard"] = keyboard.validate(body)
+            except ValueError as exc:
+                raise AppError(str(exc)) from exc
+            self.catalog.save()
+        cfg = self.catalog.data.get("keyboard") or {"layout": "default", "keys": {}}
+        layout = cfg.get("layout", "default")
+        return {"layout": layout, "keys": keyboard.resolved(cfg), "roles": [{"id": r, "name": n} for r, n in keyboard.ROLES],
+                "presets": {k: {"label": v["label"], "note": v["note"], "keys": v["keys"]} for k, v in keyboard.PRESETS.items()},
+                "name": keyboard.PRESETS[layout]["label"] if layout in keyboard.PRESETS else "Custom"}
 
     # physical pads ------------------------------------------------------------
     def _pads_payload(self) -> dict:
