@@ -73,3 +73,89 @@ def restore_backup(data_dir: Path, console: str, compat_id: str, backup: str, sa
             shutil.copy2(file, destination)
             restored += 1
     return {"restored": restored, "previous_saves_backed_up_as": safety}
+
+
+# ---- whole-library backups: one zip with every console's saves, kept wherever the user wants ----
+import json as _json
+import zipfile as _zipfile
+
+
+def backup_all(sources: dict[str, Path], dest_root: Path, label: str = "saves") -> dict:
+    """Zip every save file under each console's save folder. sources: console id -> folder."""
+    dest_root = Path(dest_root)
+    dest_root.mkdir(parents=True, exist_ok=True)
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    target = dest_root / f"LegacyPlayer-{_safe(label)}-{stamp}.zip"
+    n = 0
+    while target.exists():
+        n += 1
+        target = dest_root / f"LegacyPlayer-{_safe(label)}-{stamp}-{n}.zip"
+    files = 0
+    size = 0
+    manifest = {"made": time.time(), "consoles": {}}
+    with _zipfile.ZipFile(target, "w", _zipfile.ZIP_DEFLATED) as z:
+        for console, folder in sorted(sources.items()):
+            folder = Path(folder)
+            if not folder.is_dir():
+                continue
+            count = 0
+            for f in folder.rglob("*"):
+                if f.is_file():
+                    z.write(f, f"{console}/{f.relative_to(folder).as_posix()}")
+                    count += 1
+                    size += f.stat().st_size
+            if count:
+                manifest["consoles"][console] = {"files": count, "folder": str(folder)}
+                files += count
+        z.writestr("manifest.json", _json.dumps(manifest))
+    if not files:
+        target.unlink()
+        raise ValueError("there are no save files yet in any save folder")
+    return {"name": target.name, "files": files, "bytes": target.stat().st_size, "consoles": len(manifest["consoles"])}
+
+
+def list_all_backups(dest_root: Path) -> list[dict]:
+    root = Path(dest_root)
+    if not root.is_dir():
+        return []
+    out = []
+    for z in sorted(root.glob("LegacyPlayer-*.zip"), reverse=True):
+        try:
+            with _zipfile.ZipFile(z) as zf:
+                m = _json.loads(zf.read("manifest.json"))
+            out.append({"name": z.name, "bytes": z.stat().st_size, "made": m.get("made") or z.stat().st_mtime,
+                        "consoles": sorted(m["consoles"]), "files": sum(c["files"] for c in m["consoles"].values())})
+        except (OSError, KeyError, ValueError, _zipfile.BadZipFile):
+            continue
+    return out
+
+
+def restore_all(dest_root: Path, name: str, sources: dict[str, Path], safety_root: Path) -> dict:
+    """Put a whole-library backup back. What is there now is zipped first, so restoring never costs progress."""
+    root = Path(dest_root).resolve()
+    archive = (root / name).resolve()
+    if archive.parent != root or not archive.is_file() or not archive.name.startswith("LegacyPlayer-"):
+        raise ValueError("unknown backup")
+    safety = None
+    try:
+        safety = backup_all(sources, safety_root, "before-restore")["name"]
+    except ValueError:
+        pass
+    restored = 0
+    with _zipfile.ZipFile(archive) as z:
+        manifest = _json.loads(z.read("manifest.json"))
+        for member in z.infolist():
+            if member.is_dir() or member.filename == "manifest.json":
+                continue
+            console, _, rel = member.filename.partition("/")
+            folder = sources.get(console)
+            if not folder or not rel:
+                continue
+            target = (Path(folder) / rel).resolve()
+            if Path(folder).resolve() not in target.parents:
+                continue     # never write outside the save folder
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with z.open(member) as src, open(target, "wb") as out:
+                shutil.copyfileobj(src, out)
+            restored += 1
+    return {"restored": restored, "safety_backup": safety, "consoles": sorted(manifest["consoles"])}

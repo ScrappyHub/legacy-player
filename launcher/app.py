@@ -25,6 +25,7 @@ from adapters.retroarch import tunnel as netplay_tunnel
 from . import controllers, emulators, engines, pads, savefolders, saves
 from .installer import EngineInstaller, InstallError, latest_release, pick_asset
 from . import netcheck
+from .covers import CoverFetcher, SYSTEMS as COVER_SYSTEMS, cover_path
 from .pcscan import PcScan
 from .version import REPO, VERSION
 from .setup import Setup, SetupError
@@ -110,6 +111,17 @@ def describe_event(event: dict) -> dict:
             "at": event["at_utc"], "who": event["data"].get("participant_id")}
 
 
+# Display choices. Each is None (use the default), True or False. `how` says what Legacy Player can enforce.
+VIDEO_FIELDS = {
+    "fullscreen": {"label": "Start full screen", "help": "RetroArch is told through its config; other emulators get their full-screen start-up flag where they have one."},
+    "integer": {"label": "Sharp pixels (whole-number scaling)", "help": "RetroArch only. Keeps pixel art crisp by scaling in whole steps, with black bars if needed."},
+    "keep_shape": {"label": "Keep the game's own screen shape", "help": "RetroArch only. Off stretches the picture over the whole screen."},
+    "smooth": {"label": "Smooth the picture (filter)", "help": "RetroArch only. Off gives hard pixels, on blurs them slightly."},
+    "vsync": {"label": "Wait for the screen refresh (vsync)", "help": "RetroArch only. Stops tearing; can add a tiny delay."},
+}
+VIDEO_DEFAULTS = {"fullscreen": False, "integer": False, "keep_shape": True, "smooth": False, "vsync": True}
+
+
 class LauncherApp:
     def __init__(self, data_dir: Path, roots: list[str] | None = None) -> None:
         self.data_dir = Path(data_dir)
@@ -126,6 +138,7 @@ class LauncherApp:
         self.bye_at = 0.0
         self.quit_requested = False
         self._net_running = False
+        self.covers = CoverFetcher(self.data_dir / "covers")
         self.setup = Setup(self.data_dir, self._retroarch_path,
                            lambda path: self.catalog.set_mapping("emulator_paths", "retroarch", path))
         self.installer = EngineInstaller(self.data_dir / "emulators")
@@ -173,9 +186,11 @@ class LauncherApp:
     def api_rescan(self, body: dict) -> dict:
         return self.rescan(body)
 
-    def _public(self, game: dict) -> dict:
+    def _public(self, game: dict, emus: dict | None = None) -> dict:
         history = self.catalog.data["history"].get(game["id"], {})
+        emus = emus if emus is not None else getattr(self, "_emus_cache", {})
         return {
+            "emulator": emus.get(game["console"]), "cover": cover_path(self.covers.cache, game["id"]).exists(),
             "id": game["id"], "title": game["title"], "console": game["console"], "region": game["region"],
             "tags": game["tags"], "size_mb": round(game["size"] / 1048576, 1),
             "favorite": game["id"] in self.catalog.data["favorites"],
@@ -212,6 +227,7 @@ class LauncherApp:
              "netplay": c.netplay, "netplay_note": c.netplay_note}
             for c in CONSOLES if counts.get(c.id)
         ]
+        self._emus_cache = emus = self._console_emulators()
         return {
             "consoles": consoles, "total": len(self.games), "shown": len(selected),
             "favorites_total": len(favorites & set(self.games)),
@@ -243,14 +259,30 @@ class LauncherApp:
             roots.append(self.data_dir / "emulators")
         return roots
 
+    def _core_ok(self, console_id: str, exe: str) -> bool:
+        """RetroArch is only useful for a console once a core for it is installed."""
+        if console_id not in CORES:
+            return False
+        try:
+            find_core(exe, console_id)
+            return True
+        except NetplayError:
+            return False
+
     def _emulator_for(self, console_id: str, found: dict | None = None):
         found = found or emulators.find_emulators(self._search_roots(), self.catalog.data["emulator_paths"])
         preferred = self.catalog.data["console_emulator"].get(console_id)
         order = ([preferred] if preferred else []) + list(BY_ID[console_id].emulators)
         for emulator_id in order:
             if emulator_id in found and found[emulator_id]["path"]:
+                if emulator_id == "retroarch" and not self._core_ok(console_id, found[emulator_id]["path"]):
+                    continue    # installed, but with nothing to run this console yet: try the next emulator
                 return emulator_id, found[emulator_id]
         return None, None
+
+    def _console_emulators(self) -> dict[str, str | None]:
+        found = emulators.find_emulators(self._search_roots(), self.catalog.data["emulator_paths"])
+        return {c.id: (self._emulator_for(c.id, found)[1] or {}).get("name") for c in CONSOLES}
 
     def launch_check(self, game: dict) -> dict:
         emulator_id, info = self._emulator_for(game["console"])
@@ -258,6 +290,9 @@ class LauncherApp:
             return {"ready": False, "reason": f"This game is a {game['extension']} archive. Extract it first; the launcher never changes your files."}
         if emulator_id is None:
             names = ", ".join(emulators.EMULATORS[e]["name"] for e in BY_ID[game["console"]].emulators if e in emulators.EMULATORS)
+            ra = emulators.find_emulators(self._search_roots(), self.catalog.data["emulator_paths"]).get("retroarch", {}).get("path")
+            if ra and game["console"] in CORES:
+                return {"ready": False, "reason": f"RetroArch is installed but has no core for {BY_ID[game['console']].name} yet. Open Setup and press Install missing cores, or add another emulator for it ({names})."}
             return {"ready": False, "reason": f"No emulator set for {BY_ID[game['console']].name}. Supported: {names}. Set its path in Emulators."}
         return {"ready": True, "emulator": info["name"], "emulator_id": emulator_id, "reason": ""}
 
@@ -286,6 +321,10 @@ class LauncherApp:
             profile = self.catalog.data["pad_profiles"].get(key) if key else None
             if profile:
                 lines += pads.retroarch_pad_config(profile, player)[0]
+        v = self._video_for(console_id)
+        lines += [f'video_fullscreen = "{str(v["fullscreen"]).lower()}"', f'video_scale_integer = "{str(v["integer"]).lower()}"',
+                  f'video_force_aspect = "{str(v["keep_shape"]).lower()}"', f'video_smooth = "{str(v["smooth"]).lower()}"',
+                  f'video_vsync = "{str(v["vsync"]).lower()}"']
         try:
             cfg = savefolders.retroarch_append_config(self.data_dir, self._save_root(), console_id, exe, lines)
         except (OSError, ValueError) as exc:
@@ -370,7 +409,8 @@ class LauncherApp:
                 command = build_solo_command(info["path"], core, game["path"], self._retroarch_extra(game["console"], info["path"]))
                 pid = emulators.launch_command(command)
             else:
-                pid = emulators.launch(check["emulator_id"], info["path"], game["path"])
+                pid = emulators.launch(check["emulator_id"], info["path"], game["path"],
+                                       emulators.video_args(check["emulator_id"], self._video_for(game["console"])["fullscreen"]))
         except NetplayError as exc:
             raise AppError(str(exc)) from exc
         except (OSError, FileNotFoundError) as exc:
@@ -428,6 +468,9 @@ class LauncherApp:
         server = netcheck.ping_server(probe)
         kind = netcheck.classify_address(address)
         result = self._netcheck_result(address, kind, mock, room, server, local, s)
+        if server.get("ok"):
+            self.catalog.data["netcheck_good"] = {"at": time.time(), "avg_ms": server["avg_ms"], "name": result["server_name"]}
+        result["last_good"] = self.catalog.data.get("netcheck_good")
         self.catalog.data["netcheck_last"] = {"at": time.time(), "result": result}
         self.catalog.save()
         return {**result, "at": self.catalog.data["netcheck_last"]["at"]}
@@ -527,6 +570,115 @@ class LauncherApp:
 
     def api_engines(self, body: dict) -> dict:
         return self._engines_payload()
+
+    # display and video -----------------------------------------------------------
+    def _video_for(self, console_id: str) -> dict:
+        data = self.catalog.data.get("video", {})
+        out = dict(VIDEO_DEFAULTS)
+        for scope in ("all", console_id):
+            for k, v in (data.get(scope) or {}).items():
+                if k in VIDEO_FIELDS and isinstance(v, bool):
+                    out[k] = v
+        return out
+
+    def api_video(self, body: dict) -> dict:
+        """Display choices for every console. scope is 'all' or a console id; value null clears a console's own choice."""
+        if "key" in body:
+            scope, key, value = body.get("scope", "all"), body.get("key"), body.get("value")
+            if scope != "all" and scope not in BY_ID:
+                raise AppError("Unknown console.")
+            if key not in VIDEO_FIELDS or (value is not None and not isinstance(value, bool)):
+                raise AppError("Unknown display setting.")
+            if value is None and scope == "all":
+                raise AppError("The defaults always have a value.")
+            store = self.catalog.data.setdefault("video", {}).setdefault(scope, {})
+            if value is None:
+                store.pop(key, None)
+            else:
+                store[key] = value
+            self.catalog.save()
+        found = emulators.find_emulators(self._search_roots(), self.catalog.data["emulator_paths"])
+        rows = []
+        for c in CONSOLES:
+            eid, info = self._emulator_for(c.id, found)
+            own = self.catalog.data.get("video", {}).get(c.id) or {}
+            if eid == "retroarch":
+                how = "RetroArch: every display choice is applied each time Legacy Player opens a game."
+            elif eid and emulators.EMULATORS[eid].get("fullscreen"):
+                how = f"{info['name']}: only 'start full screen' can be applied. Everything else is set inside {info['name']} once (Graphics settings)."
+            elif eid:
+                how = f"{info['name']}: has no start-up option for this. Set the display inside {info['name']} once; it remembers."
+            else:
+                how = "No emulator for this console yet."
+            rows.append({"id": c.id, "name": c.name, "emulator": info["name"] if info else None, "how": how, "own": own,
+                         "effective": self._video_for(c.id), "pad_layout_customized": c.id in self.catalog.data["controller_overrides"]})
+        return {"fields": VIDEO_FIELDS, "defaults": self.catalog.data.get("video", {}).get("all") or {}, "base": VIDEO_DEFAULTS, "consoles": rows}
+
+    # cover art ---------------------------------------------------------------------
+    def api_covers(self, body: dict) -> dict:
+        action = body.get("action", "status")
+        if action == "start":
+            if not self.catalog.settings()["allow_internet"]:
+                raise AppError("Internet access is off. Turn on 'Allow internet downloads' in Settings first.")
+            if not body.get("consent"):
+                raise AppError("Please confirm: game names are sent to thumbnails.libretro.com to ask for their box art.")
+            self.covers.start([g for g in self.games.values()])
+        elif action == "cancel":
+            self.covers.cancel()
+        return self.covers.view()
+
+    def cover_file(self, game_id: str):
+        p = cover_path(self.covers.cache, game_id)
+        return p if p.is_file() else None
+
+    # whole-library save backups -----------------------------------------------------
+    def _save_sources(self) -> dict[str, Path]:
+        root = self._save_root()
+        found = emulators.find_emulators(self._search_roots(), self.catalog.data["emulator_paths"])
+        out = {}
+        for c in CONSOLES:
+            eid, _ = self._emulator_for(c.id, found)
+            managed = c.id in CORES and eid == "retroarch"
+            folder = self.catalog.data["save_sources"].get(c.id) or (str(savefolders.console_dir(root, c.id)) if managed else None)
+            if folder and Path(folder).is_dir():
+                out[c.id] = Path(folder)
+        return out
+
+    def _backup_root(self) -> Path:
+        configured = self.catalog.data.get("backup_root")
+        return Path(configured) if configured else self.data_dir / "save_backups" / "all"
+
+    def api_backups(self, body: dict) -> dict:
+        if "folder" in body:
+            folder = str(body["folder"] or "").strip().strip('"')
+            if folder:
+                if not Path(folder).is_absolute():
+                    raise AppError("Use a full folder path, for example E:\\Backups\\LegacyPlayer.")
+                try:
+                    Path(folder).mkdir(parents=True, exist_ok=True)
+                except OSError as exc:
+                    raise AppError(f"Could not use that folder: {exc}") from exc
+            self.catalog.data["backup_root"] = folder
+            self.catalog.save()
+        root = self._backup_root()
+        return {"folder": str(root), "custom": bool(self.catalog.data.get("backup_root")), "backups": saves.list_all_backups(root)[:50],
+                "sources": {k: str(v) for k, v in self._save_sources().items()}}
+
+    def api_backup_all(self, body: dict) -> dict:
+        try:
+            made = saves.backup_all(self._save_sources(), self._backup_root())
+        except ValueError as exc:
+            raise AppError(str(exc)) from exc
+        except OSError as exc:
+            raise AppError(f"Could not write the backup: {exc}") from exc
+        return {**made, **self.api_backups({})}
+
+    def api_restore_all(self, body: dict) -> dict:
+        try:
+            done = saves.restore_all(self._backup_root(), str(body.get("name", "")), self._save_sources(), self.data_dir / "save_backups" / "before_restore")
+        except (ValueError, OSError) as exc:
+            raise AppError(str(exc)) from exc
+        return done
 
     def api_credits(self, body: dict) -> dict:
         found = emulators.find_emulators(self._search_roots(), self.catalog.data["emulator_paths"])
@@ -824,13 +976,14 @@ class LauncherApp:
                         key=lambda g: -history[g["id"]]["last_played"])[:8]
         favs = [g for g in self.games.values() if g["id"] in set(self.catalog.data["favorites"])][:8]
         found = emulators.find_emulators(self._search_roots(), self.catalog.data["emulator_paths"])
+        emus = self._console_emulators()
         s = self.catalog.settings()
         featured = None
         if s["featured_title"]:
             featured = {"title": s["featured_title"], "text": s["featured_text"], "link": s["featured_link"]}
         ready = [c.id for c in CONSOLES if self._emulator_for(c.id, found)[0]]
         return {
-            "recent": [self._public(g) for g in recent], "favorites": [self._public(g) for g in favs],
+            "recent": [self._public(g, emus) for g in recent], "favorites": [self._public(g, emus) for g in favs],
             "emulators": [{"id": k, "name": v["name"], "path": v["path"]} for k, v in found.items() if v["path"]],
             "consoles_ready": len(ready), "consoles_total": len(CONSOLES), "games_total": len(self.games),
             "featured": featured, "version": VERSION, "alias": s["display_name"], "avatar": s["avatar"],
@@ -845,11 +998,16 @@ class LauncherApp:
             counts[g["console"]] = counts.get(g["console"], 0) + 1
         dismissed = set(self.catalog.data.get("doctor_dismissed", []))
         issues = []
+        ra = found.get("retroarch", {}).get("path")
         for c in CONSOLES:
             if counts.get(c.id) and not self._emulator_for(c.id, found)[0]:
                 names = ", ".join(emulators.EMULATORS[e]["name"] for e in c.emulators if e in emulators.EMULATORS)
-                issues.append({"key": c.id, "kind": "emulator", "text": f"{counts[c.id]} {c.name} games but no emulator for them yet ({names}).",
-                               "dismissed": c.id in dismissed})
+                if ra and c.id in CORES:
+                    issues.append({"key": c.id, "kind": "core", "text": f"{counts[c.id]} {c.name} games: RetroArch is here but has no {c.name} core yet.",
+                                   "dismissed": c.id in dismissed})
+                else:
+                    issues.append({"key": c.id, "kind": "emulator", "text": f"{counts[c.id]} {c.name} games still need an emulator ({names}).",
+                                   "dismissed": c.id in dismissed})
         bios_found = self.catalog.data.get("bios_found", {})
         bios_needed = bios_have = 0
         for eid, v in found.items():

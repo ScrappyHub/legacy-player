@@ -48,6 +48,23 @@ def make_handler(app: LauncherApp, token: str, port_getter):
             if self.path in {"/", "/index.html"}:
                 page = UI_FILE.read_text(encoding="utf-8").replace("__LP_TOKEN__", token)
                 return self._send(200, page.encode(), "text/html; charset=utf-8")
+            if self.path.startswith("/cover/"):
+                from urllib.parse import parse_qs, urlparse
+                u = urlparse(self.path)
+                if not secrets.compare_digest(parse_qs(u.query).get("t", [""])[0], token):
+                    return self._json(403, {"error": "missing or wrong token"})
+                f = app.cover_file(u.path[len("/cover/"):].removesuffix(".png"))
+                if f is None:
+                    return self._json(404, {"error": "no cover"})
+                body = f.read_bytes()
+                self.send_response(200)
+                self.send_header("Content-Type", "image/png")
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Cache-Control", "private, max-age=86400")
+                self.send_header("X-Content-Type-Options", "nosniff")
+                self.end_headers()
+                self.wfile.write(body)
+                return
             self._json(404, {"error": "not found"})
 
         def do_POST(self):

@@ -167,6 +167,16 @@ body.busy .brand .martin,.hop{animation:hop .55s ease-in-out infinite}
 .retro::after{content:"_";animation:blinkc 1s steps(1) infinite}@keyframes blinkc{50%{opacity:0}}
 .worry{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0 0;font-size:.84rem}
 .joinbox td,.joinbox th{font-size:.9rem}
+
+.cv{display:block;width:100%;height:150px;object-fit:contain;border-radius:10px;background:linear-gradient(160deg,#1a2350,#0c1130);margin:-2px 0 6px}
+.cv.blank{display:grid;place-items:center;font:800 1.7rem/1 ui-monospace,Consolas,monospace;letter-spacing:.08em;color:rgba(255,255,255,.55);background:linear-gradient(145deg,var(--bc1,#26336e),var(--bc2,#141a3c))}
+.cv.blank[data-c=nes]{--bc1:#7a2b2b;--bc2:#2b1414}.cv.blank[data-c=snes]{--bc1:#4a3f7a;--bc2:#1a1633}.cv.blank[data-c^=gb]{--bc1:#3d6b3d;--bc2:#142414}
+.cv.blank[data-c=n64]{--bc1:#2b6a7a;--bc2:#10262b}.cv.blank[data-c=gamecube]{--bc1:#5a3d9a;--bc2:#1e1536}.cv.blank[data-c^=ps]{--bc1:#2b4a8a;--bc2:#0f1a33}
+.cv.blank[data-c=xbox],.cv.blank[data-c=x360]{--bc1:#2f7a3a;--bc2:#10260f}.cv.blank[data-c=ds],.cv.blank[data-c=3ds],.cv.blank[data-c=wii]{--bc1:#7a6a2b;--bc2:#262010}
+.cv.tv{height:110px}
+.hero{min-height:300px;padding:30px 32px}
+.doc{flex:0 1 430px;min-width:340px}
+.doc .px.doctor.happy{animation:hop 1.1s ease-in-out infinite}
 </style>
 </head>
 <body>
@@ -218,13 +228,21 @@ const EYE_OFF='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
 function ipSpan(text){if(!text)return h("span",{},"–");let on=false;const v=h("span",{class:"ipv"},"•••.•••.•••.•••");const b=h("button",{class:"eye",type:"button",title:"Show or hide the address","aria-label":"Show or hide the address",onclick:()=>{on=!on;v.textContent=on?text:"•••.•••.•••.•••";b.replaceChildren(svgEl(on?EYE_OFF:EYE))}},svgEl(EYE));return h("span",{class:"ip"},v,b)}
 
 /* ---------- pixel art: Martin and the avatars ---------- */
-const PAL={W:"#f6f7fc",G:"#9aa3b8",D:"#3a4058",E:"#14172a",P:"#ff8fb0",R:"#ff5a6a",Y:"#ffd23f",B:"#5b7cff",C:"#4de3ff",S:"#f2c9a0",O:"#ff9f43",N:"#47d36b",K:"#2b3157",L:"#c3b5ff"};
+const PAL={W:"#f6f7fc",G:"#9aa3b8",D:"#3a4058",E:"#14172a",P:"#ff8fb0",R:"#ff5a6a",Y:"#ffd23f",B:"#5b7cff",C:"#4de3ff",S:"#f2c9a0",O:"#ff9f43",N:"#47d36b",K:"#2b3157",L:"#c3b5ff",Z:"#ff8e7a",z:"#ffc2b3",X:"#c24b3a",T:"#2e8f4e"};
 function pixels(rows,size,cls){const w=rows[0].length,hh=rows.length;let r="";rows.forEach((row,y)=>{[...row].forEach((c,x)=>{if(c!==".")r+=`<rect ${c==="E"?'class="peye" ':""}x="${x}" y="${y}" width="1" height="1" fill="${PAL[c]}"/>`})});
  return svgEl(`<svg class="px ${cls||""}" viewBox="0 0 ${w} ${hh}" width="${size}" height="${Math.round(size*hh/w)}" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">${r}</svg>`)}
 /* Martin: a white and grey cat with a tabby M on his forehead */
 const MARTIN=["..DD........DD..",".DGGD......DGGD.",".DGWDDDDDDDDWGD.","DWWWWGWWWWGWWWWD","DWWWWGGWWGGWWWWD","DWWWWGWGGWGWWWWD","DWWWEEWWWWEEWWWD","DWWWEEWWWWEEWWWD","DWGWWWWPPWWWWGWD","DWWWWWDWWDWWWWWD",".DWWWWWDDWWWWWD.","..DDWWWWWWWWDD..","....DDDDDDDD...."];
+/* A salmon-pink heraldic rose, drawn from a few rules: five rounded petals, a lighter inner ring, a gold seed and green barbs between the petals */
+function roseRows(){const n=16,c=7.5,rows=[];
+ for(let y=0;y<n;y++){let r="";for(let x=0;x<n;x++){const dx=x-c,dy=y-c,d=Math.hypot(dx,dy),a=Math.atan2(dy,dx)+Math.PI/2;
+  const petal=5.3+1.9*Math.cos(5*a),barb=d>5.2&&d<7.7&&Math.cos(5*a)<-0.82;
+  let ch=".";if(d<petal)ch=d<2.1?"Y":d<3.6?"X":d<5?"Z":(d<petal-0.9?"Z":"z");if(d<petal&&d>=3.6&&d<4.5)ch="z";if(!(d<petal)&&barb)ch="T";
+  if(d<2.1&&d>1.2&&(x+y)%2===0)ch="Y";r+=ch}rows.push(r)}
+ const out=rows.map((row,y)=>[...row].map((ch,x)=>{if(ch!==".")return ch;const nb=[[1,0],[-1,0],[0,1],[0,-1]].some(([ox,oy])=>{const rr=rows[y+oy];return rr&&rr[x+ox]&&rr[x+ox]!=="."});return nb?"D":"."}).join(""));return out}
 const AVATARS={
  martin:{name:"Martin",rows:MARTIN},
+ rose:{name:"Rose",rows:roseRows()},
  heart:{name:"Heart",rows:[".RR..RR.","RRRRRRRR","RRRRRRRR","RRRRRRRR",".RRRRRR.","..RRRR..","...RR...","........"]},
  star:{name:"Star",rows:["...YY...","...YY...","YYYYYYYY",".YYYYYY.","..YYYY..",".YYYYYY.",".YY..YY.","YY....YY"]},
  ghost:{name:"Ghost",rows:["..WWWW..",".WWWWWW.","WWWWWWWW","WEEWWEEW","WWWWWWWW","WWWWWWWW","WWWWWWWW","WW.WW.WW"]},
@@ -247,13 +265,13 @@ function renderNav(){const n=$("#nav");n.replaceChildren(...PRIMARY.map(([id,l])
 function renderWho(){const w=$("#who");if(!w)return;const p=S.profile||{alias:"Player",avatar:"martin",player:"Player"};
  w.replaceChildren(avatarEl(p.avatar,26),h("span",{class:"nm"},p.player||p.alias))}
 async function go(){closeMenus();renderNav();const m=$("#main");m.replaceChildren();window.scrollTo(0,0);
- ({home:viewHome,library:viewLibrary,together:viewTogether,servers:viewServers,console:viewConsole,setup:viewSetup,engines:viewEngines,controllers:viewControllers,saves:viewSaves,emulators:viewEmulators,settings:viewSettings,credits:viewCredits,welcome:viewWelcome,help:viewHelp,storage:viewStorage,profile:viewProfile})[S.tab](m)}
+ ({home:viewHome,library:viewLibrary,together:viewTogether,servers:viewServers,console:viewConsole,setup:viewSetup,engines:viewEngines,controllers:viewControllers,saves:viewSaves,emulators:viewEmulators,settings:viewSettings,credits:viewCredits,welcome:viewWelcome,help:viewHelp,storage:viewStorage,profile:viewProfile,display:viewDisplay})[S.tab](m)}
 function nav(tab,anchor){S.tab=tab;S.anchor=anchor||null;go()}
 
 /* ---------- menu bar ---------- */
 function menuDefs(){return[
  ["Account",[["Profile and avatar",()=>nav("profile")],["Network",()=>nav("together")],["Settings",()=>nav("settings")],["Check for updates",checkUpdates],"-",["Exit Legacy Player",quitApp]]],
- ["Games",[["Library",()=>nav("library")],["Console mode",()=>nav("console")],["Storage by console",()=>nav("storage")],["Controllers",()=>nav("controllers")],["Saves and backups",()=>nav("saves")],"-",["Rescan my games",()=>rescan()]]],
+ ["Games",[["Library",()=>nav("library")],["Console mode",()=>nav("console")],["Storage by console",()=>nav("storage")],["Display and video",()=>nav("display")],["Controllers",()=>nav("controllers")],["Saves and backups",()=>nav("saves")],"-",["Rescan my games",()=>rescan()]]],
  ["Online",[["Server Info",()=>nav("together")],["Servers",()=>nav("servers")]]],
  ["Tools",[["Setup (RetroArch)",()=>nav("setup")],["Engines",()=>nav("engines")],["Emulators",()=>nav("emulators")],["Scan this computer",()=>{nav("engines");setTimeout(()=>runScan().then(v=>{if(v)go()}),250)}],["Credits",()=>nav("credits")]]],
  ["Help",[["How it works",()=>nav("help")],["How save files work",()=>nav("help","saves")],["Privacy",()=>nav("help","privacy")]]]]}
@@ -298,6 +316,10 @@ document.addEventListener("click",e=>{const m=e.target.closest&&e.target.closest
  /* after a pet he keeps chatting, a new line every 10 seconds, for about a minute */
  pet.timer=setInterval(()=>{if(Date.now()-pet.last>62000){clearInterval(pet.timer);const b=$("#bubble");if(b)b.remove();return}say(nextMeow())},10000)});
 
+/* the little rose is also the tab icon */
+{const l=document.createElement("link");l.rel="icon";const rows=AVATARS.rose.rows;let r="";rows.forEach((row,y)=>[...row].forEach((c,x)=>{if(c!==".")r+=`<rect x="${x}" y="${y}" width="1" height="1" fill="${PAL[c]}"/>`}));
+ l.href="data:image/svg+xml,"+encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" shape-rendering="crispEdges">${r}</svg>`);document.head.append(l)}
+
 /* ---------- Home ---------- */
 async function viewHome(m){
  const d=await api("home");const last=await api("network_last").catch(()=>({at:null}));if(last.at&&!S.netcheck)S.netcheck=last;
@@ -309,7 +331,7 @@ async function viewHome(m){
  const go1=h("button",{class:"btn good",onclick:()=>getStarted(code.value,joinBox)},"Get started");
  const joinBox=h("div",{class:"joinbox"});
  const dr=await api("doctor");
- m.append(h("div",{class:"hero"},martin(120),h("div",{class:"grow"},
+ m.append(h("div",{class:"hero"},martin(150),h("div",{class:"grow"},
    h("h1",{},"Welcome back, "+d.alias),
    h("p",{},d.games_total?d.games_total+" games, "+d.consoles_ready+" of "+d.consoles_total+" consoles ready to play.":"Point me at your games folder and I'll line everything up."),
    h("div",{class:"row",style:"margin-top:12px"},...cta),h("div",{class:"row",style:"margin-top:8px"},code,go1),
@@ -331,7 +353,7 @@ async function viewHome(m){
    h("button",{class:"btn",onclick:()=>nav("emulators")},"Manage"),h("button",{class:"btn primary",onclick:()=>{nav("engines")}},"Find more")),
   h("div",{class:"chips"},...(d.emulators.length?d.emulators.map(e=>h("span",{class:"chip",title:e.path,onclick:()=>nav("emulators")},"✓ "+e.name)):[h("span",{class:"muted small"},"None found yet. Open Engines and scan this computer.")]))));
  const f=d.featured;
- m.append(f?h("div",{class:"card featured",style:"margin-top:14px"},h("div",{class:"row"},h("span",{class:"tag"},"Featured"),h("h3",{class:"grow",style:"margin:0"},f.title),f.link?h("a",{class:"btn",href:f.link,target:"_blank",rel:"noopener noreferrer"},"Open"):null),f.text?h("p",{},f.text):null,
+ m.append(f?h("div",{class:"card featured",style:"margin-top:14px"},h("div",{class:"row"},pixels(AVATARS.rose.rows,36),h("span",{class:"tag"},"Featured"),h("h3",{class:"grow",style:"margin:0"},f.title),f.link?h("a",{class:"btn",href:f.link,target:"_blank",rel:"noopener noreferrer"},"Open"):null),f.text?h("p",{},f.text):null,
    h("p",{class:"small muted"},"Chosen by whoever set up this copy of Legacy Player. It is not an ad and nothing is paid for it."))
   :h("div",{class:"card featured",style:"margin-top:14px"},h("div",{class:"row"},h("span",{class:"tag"},"Featured"),h("b",{class:"grow"},"Your featured spot"),h("button",{class:"btn",onclick:()=>nav("settings")},"Set it up")),
    h("p",{class:"small muted"},"Put a game night, a friend's server or a link here. Set the title, text and link under Settings > Home page.")));
@@ -362,6 +384,7 @@ async function showJoin(box){
 /* ---------- Doc: checks that everything is in place ---------- */
 const DOC_BASE=[".....KKKKKK.....","....KKKKKKKK....","....KSSSSSSK....","....SSSSSSSS....","....SEESSEES....","....SSSSSSSS....","....SDSSSSDS....",".....SDDDDS.....","...WWWWWWWWWW...","..WWGWWWWWWGWW..","..WWGWWWWWWGRW..","..WWWGGGGGWRRR..","..WWWWWWWWWWRW..","..WWWWWWWWWWWW..","...WWWWWWWWWW...","....KK....KK...."];
 function doctorRows(mood){const r=DOC_BASE.slice();
+ if(mood==="happy"){r[2]="....KSSSSSSK.Y..";r[3]="....SSSSSSSS....";r[5]="Y...SSSSSSSS....";r[6]="....SDSSSSDS....";r[7]=".....SDDDDS.....";r[6]="....SDDDDDDS....";r[7]=".....SDDDDS.....";}
  if(mood==="worried"){r[3]="....SDDSSDDS.C..";r[6]="....SSDDDDSS....";r[7]=".....SDSSDS.....";r[4]="....SEESSEES.C..";}
  if(mood==="sad"){r[3]="....SSDSSDSS....";r[6]="....SSSDDSSS....";r[7]=".....SSSSSS.....";r[5]="....SSSSSSSS....";}
  return r}
@@ -371,20 +394,22 @@ async function scanEverything(refresh){
 function doctorCard(dr){
  const box=h("div",{class:"doc"});
  const refresh=async()=>{const x=await api("doctor");S.doc=x;draw(x)};
- const say={happy:"All good! I can see everything.",worried:"Hmm... a few things worry me.",sad:dr.games?"No emulators found yet...":"No games found yet..."};
+ const cheers=["Let's play!","Ready, player one!","Game on!","So many games!","Press start!","Pick something!"];
+ const say={happy:cheers[Math.floor(Date.now()/60000)%cheers.length],worried:"Almost there! A few things to sort.",sad:dr.games?"Let's find you an emulator!":"Show me your games!"};
  const draw=dr=>{
   const active=dr.issues.filter(i=>!i.dismissed),quiet=dr.issues.filter(i=>i.dismissed);
   const L=(a,b,warn)=>h("div",{class:warn?"w":""},a+": "+b);
-  box.replaceChildren(h("div",{class:"row",style:"align-items:flex-start;flex-wrap:nowrap"},pixels(doctorRows(dr.mood),88,"doctor "+dr.mood),
-   h("div",{class:"retro"},h("div",{class:"hd"},say[dr.mood]),
+  box.replaceChildren(h("div",{class:"row",style:"align-items:center;flex-wrap:nowrap;gap:14px"},pixels(doctorRows(dr.mood),104,"doctor "+dr.mood),
+   h("div",{style:"flex:1;min-width:0"},h("div",{class:"retro"},h("div",{class:"hd"},say[dr.mood]),
     L("Games",dr.games+" read "+ago(dr.last_rescan),!dr.games),L("Emulators",dr.emulators.length+" found",!dr.emulators.length),L("Consoles",dr.consoles_ready+"/"+dr.consoles_total+" ready"),
     L("Saves",dr.saves_ready?"folders ready":"not made yet",!dr.saves_ready),L("BIOS",dr.bios_needed?dr.bios_have+"/"+dr.bios_needed+" found":"none needed yet"),
-    L("PC scanned",ago(dr.last_scan),!dr.last_scan))),
+    L("PC scanned",ago(dr.last_scan),!dr.last_scan)),
+    h("button",{class:"btn primary",style:"margin:10px 3px 0;width:calc(100% - 6px)",onclick:()=>scanEverything(refresh)},"Scan everything"))),
    ...active.map(i=>h("div",{class:"worry"},h("span",{class:"grow"},i.text),
-    i.kind==="emulator"||i.kind==="bios"?h("button",{class:"btn",onclick:()=>nav("engines")},"Fix"):null,
+    i.kind==="core"?h("button",{class:"btn",onclick:()=>nav("setup")},"Fix"):(i.kind==="emulator"||i.kind==="bios")?h("button",{class:"btn",onclick:()=>nav("engines")},"Fix"):null,
     h("button",{class:"btn",title:"I do not want to install that. Stop worrying about it.",onclick:async()=>{await act(()=>api("doctor_dismiss",{key:i.key}));refresh()}},"I don't need it"))),
    quiet.length?h("div",{class:"small muted",style:"margin-top:6px"},quiet.length+" worr"+(quiet.length>1?"ies":"y")+" set aside. ",h("a",{href:"#",onclick:async e=>{e.preventDefault();for(const q of quiet)await api("doctor_dismiss",{key:q.key,undo:true});refresh()}},"Bring back")):null,
-   h("div",{class:"row",style:"margin-top:8px"},h("button",{class:"btn primary",onclick:()=>scanEverything(refresh)},"Scan everything")))};
+  )};
  draw(dr);return box}
 
 /* ---------- Storage by console ---------- */
@@ -486,6 +511,60 @@ function viewHelp(m){
   sec("privacy","Privacy","Legacy Player never sends anything about you, your computer or your games anywhere. Addresses are hidden behind a little eye until you press it. Matches go through the server relay by default so players never learn each other's address. Scans read names only. Downloads and update checks happen only when you press a button and have allowed internet access in Settings."));
  if(S.anchor){const el=$("#h-"+S.anchor);if(el)setTimeout(()=>el.scrollIntoView({behavior:"smooth",block:"start"}),60)}
 }
+/* ---------- cover art ---------- */
+function coverEl(g,cls){
+ if(g.cover)return h("img",{class:"cv "+(cls||""),src:"/cover/"+encodeURIComponent(g.id)+".png?t="+encodeURIComponent(TOKEN),alt:"",loading:"lazy"});
+ const init=consoleName(g.console).replace(/[^A-Z0-9]/g,"")||consoleName(g.console).slice(0,3).toUpperCase();
+ return h("div",{class:"cv blank "+(cls||""),"data-c":g.console},h("span",{},init.slice(0,4)))}
+async function fetchCovers(){
+ if(!await ask("Get cover art? Legacy Player asks thumbnails.libretro.com (the picture library RetroArch uses) for each game's box art by its name. Only game names are sent. Pictures are kept on this computer and it runs in the background.","Get cover art"))return;
+ const first=await act(()=>api("covers",{action:"start",consent:true}));if(!first)return;
+ const id="covtoast";let v=first;
+ while(v.state==="running"){const old=$("#"+id);if(old)old.remove();$("#toasts").append(h("div",{class:"toast",id})) ;$("#"+id).append(h("span",{class:"spin"}),"Getting cover art… "+v.done+" of "+v.total+" ("+v.found+" found)");
+  await new Promise(r=>setTimeout(r,1500));v=await api("covers",{}).catch(()=>({state:"error"}))}
+ const old=$("#"+id);if(old)old.remove();
+ toast(v.state==="done"?"Cover art finished: "+v.found+" new, "+v.have+" in total.":"Cover art stopped.",v.found?"":"warn");go()}
+
+/* ---------- Display and video ---------- */
+async function viewDisplay(m){
+ const d=await api("video");const F=Object.entries(d.fields);
+ const eff=(v)=>v?"On":"Off";const def=k=>d.defaults[k]!==undefined?d.defaults[k]:d.base[k];
+ const defRow=h("div",{},...F.map(([k,f])=>h("div",{style:"margin:8px 0"},h("label",{},h("input",{type:"checkbox",checked:(d.defaults[k]!==undefined?d.defaults[k]:d.base[k]),onchange:async e=>{await act(()=>api("video",{scope:"all",key:k,value:e.target.checked}),"Saved");go()}})," "+f.label),h("div",{class:"small muted"},f.help))));
+ const cell=(c,k)=>{const own=c.own[k];return h("select",{"aria-label":c.name+" "+k,onchange:async e=>{const v=e.target.value;await act(()=>api("video",{scope:c.id,key:k,value:v===""?null:v==="1"}));go()}},
+   h("option",{value:"",selected:own===undefined},"Default ("+eff(def(k))+")"),h("option",{value:"1",selected:own===true},"On"),h("option",{value:"0",selected:own===false},"Off"))};
+ m.append(h("h2",{},"Display and video"),
+  h("div",{class:"why"},"Pick how games should look once, here. Legacy Player applies it every time it opens a game: fully for RetroArch, and the start-up full-screen option for the emulators that have one. Where an emulator keeps its own graphics settings (resolution, shaders, 3D scaling), you set those inside the emulator once and it remembers; the table says which is which."),
+  h("div",{class:"card"},h("h3",{style:"margin-top:0"},"For every console"),defRow),
+  h("div",{class:"card",style:"margin-top:14px"},h("h3",{style:"margin-top:0"},whyInline("One console different?","Pick On or Off for a console to override the choice above for just that console. Default follows the choice above.")),
+   h("div",{style:"overflow-x:auto"},h("table",{},h("thead",{},h("tr",{},h("th",{},"Console"),...F.map(([k,f])=>h("th",{},f.label)),h("th",{},"Controls"))),
+    h("tbody",{},...d.consoles.map(c=>h("tr",{},h("td",{},h("b",{},c.name),h("div",{class:"small muted"},c.how)),...F.map(([k])=>h("td",{},c.emulator?cell(c,k):h("span",{class:"muted small"},"–"))),
+     h("td",{},h("button",{class:"btn",onclick:()=>{S.ctrl=c.id;nav("controllers")}},c.pad_layout_customized?"Custom layout":"Open")))))))));
+}
+
+/* ---------- Saves: backups ---------- */
+function backupsCard(B){
+ const inp=h("input",{type:"text",value:B.custom?B.folder:"",placeholder:B.folder,style:"min-width:min(480px,100%)"});
+ const setFolder=async v=>{const r=await act(()=>api("backups",{folder:v}),v?"Backups will be stored there":"Back to the default folder");if(r)go()};
+ return h("div",{class:"card",style:"margin-top:12px"},h("h3",{style:"margin-top:0"},whyInline("Backups","A backup is one zip file with every save file from every console, stamped with the date. Keep them in the default folder, or point this at a USB drive, another disk or a synced folder (OneDrive, Dropbox) to store them somewhere safer. Restoring zips whatever is there now first, so it can never cost you progress.")),
+  h("div",{class:"row"},h("button",{class:"btn primary",onclick:async()=>{const r=await act(()=>api("backup_all"));if(r){toast("Backed up "+r.files+" save file"+(r.files===1?"":"s")+" from "+r.consoles+" console"+(r.consoles===1?"":"s"));go()}}},"Back up all saves now"),
+   h("span",{class:"small muted"},"Backups are kept in: "+B.folder)),
+  h("div",{class:"row",style:"margin-top:10px"},inp,h("button",{class:"btn",onclick:()=>setFolder(inp.value.trim())},"Store backups here"),B.custom?h("button",{class:"btn",onclick:()=>setFolder("")},"Use the default folder"):null),
+  B.backups.length?h("table",{style:"margin-top:10px"},h("thead",{},h("tr",{},["Backup","When","Consoles","Files","Size",""].map(t=>h("th",{},t)))),
+   h("tbody",{},...B.backups.map(b=>h("tr",{},h("td",{class:"small"},b.name),h("td",{},new Date(b.made*1000).toLocaleString()),h("td",{class:"small"},b.consoles.join(", ")),h("td",{},String(b.files)),h("td",{},fmtBytes(b.bytes)),
+    h("td",{},h("button",{class:"btn",onclick:async()=>{if(!await ask("Restore this backup? Every save file in it goes back to its console's save folder. What is there now is zipped and kept first.","Restore"))return;const r=await act(()=>api("restore_all",{name:b.name}));if(r){toast("Restored "+r.restored+" file"+(r.restored===1?"":"s")+(r.safety_backup?". Your previous saves were kept as "+r.safety_backup:""));go()}}},"Restore"))))))
+   :h("p",{class:"small muted",style:"margin-top:10px"},"No whole-library backups yet."))}
+
+/* ---------- Pick a game: console first, then game, only what you can actually play ---------- */
+function gamePicker(games){
+ let list=games.filter(g=>g.emulator);const note=list.length?null:"None of your games has an emulator ready yet, so all of them are listed. The doctor on Home can tell you what is missing.";if(!list.length)list=games;
+ const cons=[...new Set(list.map(g=>g.console))];
+ const start=S.joinGame&&list.find(g=>g.id===S.joinGame);
+ const cs=h("select",{"aria-label":"Console"},...cons.map(c=>h("option",{value:c,selected:start?start.console===c:false},consoleName(c)+" ("+list.filter(g=>g.console===c).length+")")));
+ const q=h("input",{type:"search",placeholder:"Search this console","aria-label":"Search games",style:"width:200px"});
+ const sel=h("select",{"aria-label":"Game",style:"min-width:min(320px,100%)"});
+ const fill=()=>{const t=q.value.toLowerCase();sel.replaceChildren(...list.filter(g=>g.console===cs.value&&(!t||g.title.toLowerCase().includes(t))).map(g=>h("option",{value:g.id,selected:start&&g.id===start.id},g.title+(g.region?" ("+g.region+")":"")+(g.emulator?" · "+g.emulator:""))))};
+ cs.addEventListener("change",()=>{q.value="";fill()});q.addEventListener("input",fill);fill();
+ return{sel,el:h("div",{},h("div",{class:"row"},h("label",{class:"small"},"1. Console ",cs),h("label",{class:"small"},"Find ",q)),h("div",{class:"row",style:"margin-top:6px"},h("label",{class:"small"},"2. Game ",sel)),note?h("p",{class:"small warn"},note):null)}}
 
 /* ---------- Library ---------- */
 async function viewLibrary(m){
@@ -497,7 +576,7 @@ async function viewLibrary(m){
  const sort=h("select",{"aria-label":"Sort",onchange:e=>{S.sort=e.target.value;refreshGrid()}},...[["title","A-Z"],["recent","Recently played"],["size","Largest"]].map(([v,l])=>h("option",{value:v,selected:S.sort===v},l)));
  m.append(h("div",{class:"row"},h("h2",{class:"grow"},"Your games ",h("span",{class:"muted small"},d.total+" found")),search,sort,
   h("button",{class:"btn"+(S.fav?" primary":""),onclick:()=>{S.fav=!S.fav;go()}},"★ Favorites ("+d.favorites_total+")"),
-  h("button",{class:"btn",onclick:rescan},"Rescan")));
+  h("button",{class:"btn",title:"Fetch box art for your games (asks first)",onclick:fetchCovers},"Get cover art"),h("button",{class:"btn",onclick:rescan},"Rescan")));
  m.append(h("div",{class:"chips",id:"chips"}));
  m.append(h("div",{id:"gridwrap"}));
  drawChips(d);drawGrid(d);
@@ -516,7 +595,7 @@ function card(g){
  const star=h("button",{class:"star"+(g.favorite?" on":""),title:g.favorite?"Remove favorite":"Favorite","aria-label":"Toggle favorite",onclick:async e=>{e.stopPropagation();const r=await act(()=>api("favorite",{id:g.id,favorite:!g.favorite}));if(r){g.favorite=r.favorite;star.classList.toggle("on",r.favorite);star.title=r.favorite?"Remove favorite":"Favorite"}}},"★");
  const showRegion=!S.settings||S.settings.show_region;
  return h("div",{class:"game",tabindex:0,role:"button",onclick:()=>openGame(g.id),onkeydown:e=>{if(e.key==="Enter")openGame(g.id)}},star,
-  h("div",{class:"t"},g.title),h("div",{class:"m"},consoleName(g.console)+(showRegion&&g.region?" · "+g.region:"")+" · "+g.size_mb+" MB"),
+  coverEl(g),h("div",{class:"t"},g.title),h("div",{class:"m"},consoleName(g.console)+(showRegion&&g.region?" · "+g.region:"")+" · "+g.size_mb+" MB"+(g.emulator?" · "+g.emulator:"")),
   g.plays?h("div",{class:"m"},"Played "+g.plays+"×"):null,g.is_archive?h("span",{class:"badge"},"archive "+g.extension):null)}
 function consoleName(id){const c=(S.lib&&S.lib.consoles||[]).find(x=>x.id===id);return c?c.name:id}
 function emptyState(){const input=h("input",{type:"text",placeholder:"Paste your games folder path, e.g. C:\\Games\\Vimm",style:"min-width:min(480px,100%)"});
@@ -580,13 +659,13 @@ async function viewTogether(m){
  const waitsBox=h("div",{id:"waits"});m.append(waitsBox);drawWaits(waitsBox);
  const box=h("div",{id:"room"});m.append(box);drawRoom(box);
  if(!S.room){
-  const games=(await api("library",{})).games;
-  const sel=h("select",{"aria-label":"Game"},...games.map(g=>h("option",{value:g.id,selected:S.joinGame===g.id},g.title+" ("+consoleName(g.console)+")")));
+  const lib2=await api("library",{});S.lib=lib2;const games=lib2.games;
+  const picker=gamePicker(games);const sel=picker.sel;
   const code=h("input",{type:"text",placeholder:"XXXXX-XXXXX",value:S.joinCode||"",maxlength:12,style:"width:160px","aria-label":"Invite code"});
   const approve=h("input",{type:"checkbox",checked:true,id:"appr"});
   const maxp=h("select",{"aria-label":"Player limit",title:"How many people can play at once. Others wait in line."},...[2,3,4,5,6,7,8].map(n=>h("option",{value:n,selected:n===4},String(n))));
   const openRoom=h("input",{type:"checkbox",id:"openroom"});const label=h("input",{type:"text",placeholder:"Room name (optional)",maxlength:48,style:"width:200px"});
-  m.append(h("div",{class:"card",style:"margin-top:14px"},h("h3",{},"Pick the game you will play"),h("div",{class:"row"},sel),
+  m.append(h("div",{class:"card",style:"margin-top:14px"},h("h3",{},"Pick the game you will play"),picker.el,
    h("p",{class:"small muted"},"Everyone in a room must have the same game and region. The host can check this before starting."),
    h("div",{class:"row"},h("label",{class:"small"},"Players ",maxp),
     h("button",{class:"btn primary",onclick:async()=>{const r=await act(()=>api("mp_host",{id:sel.value,require_approval:approve.checked,max_players:+maxp.value,open:openRoom.checked,label:label.value}));if(r){S.room=r.room;go();poll()}}},"Host a room"),
@@ -609,7 +688,8 @@ function drawNetCheck(box){
     h("div",{class:"panel",style:"margin:8px 0"},h("b",{class:r.advice.verdict==="join"?"warn":"good"},r.advice.headline),h("ul",{class:"small"},...r.advice.reasons.map(t=>h("li",{},t)))),
     h("table",{},h("tbody",{},
      h("tr",{},h("td",{},"This computer's network address"),h("td",{},ipSpan(r.address)," · "+kinds[r.address_kind])),
-     h("tr",{},h("td",{},"Ping to "+r.server_name),h("td",{},r.server.ok?r.server.avg_ms+" ms average ("+r.server.min_ms+"–"+r.server.max_ms+"), jitter "+r.server.jitter_ms+" ms, "+r.server.loss_pct+"% lost":"no answer")),
+     h("tr",{},h("td",{},"Ping to "+r.server_name),h("td",{},r.server.ok?r.server.avg_ms+" ms average ("+r.server.min_ms+"–"+r.server.max_ms+"), jitter "+r.server.jitter_ms+" ms, "+r.server.loss_pct+"% lost"
+       :[r.server_is_local?"Your server is not running, so nothing answered. Start it in Servers.":"That server did not answer.",r.last_good?h("div",{class:"small muted"},"Last answer: "+r.last_good.avg_ms+" ms from "+r.last_good.name+", "+ago(r.last_good.at)+"."):h("div",{class:"small muted"},"It has not answered yet, so there is no earlier result to show.")])),
      h("tr",{},h("td",{},"Pretend room on this computer"),h("td",{},r.room_load.players+" players, "+r.room_load.requests_per_s+" requests per second")),
      h("tr",{},h("td",{},"This computer's own speed"),h("td",{},r.mock.rtt_ms+" ms round trip, "+Math.round(r.mock.mbps)+" Mbps")))))
    :null)}
@@ -920,7 +1000,7 @@ async function viewControllers(m){
 
 /* ---------- Saves ---------- */
 async function viewSaves(m){
- const d=await api("save_folders");
+ const d=await api("save_folders");const B=await api("backups");
  const rootIn=h("input",{type:"text",value:d.custom_root?d.root:"",placeholder:d.root,style:"min-width:min(520px,100%)"});
  m.append(h("h2",{},"Saves"),
   h("div",{class:"why"},"Game saves matter more than the games. Legacy Player gives every RetroArch console its own tidy folder (saves and save states) under one root, and passes that to RetroArch when it launches. Other emulators keep their own folders; you can point backups at them below. Backups are timestamped copies, and restoring first backs up what you have now."),
@@ -930,6 +1010,7 @@ async function viewSaves(m){
     h("button",{class:"btn",onclick:async()=>{const r=await act(()=>api("save_folders",{create:true}),"Created any missing folders");if(r)go()}},"Create folders"),
     h("button",{class:"btn",onclick:async()=>{const r=await act(()=>api("save_folders",{root:""}),"Back to the default");if(r)go()}},"Use default")),
    h("p",{class:"small muted"},"Backups are kept in: "+d.backups_folder)),
+  backupsCard(B),
   h("div",{class:"card",style:"margin-top:12px"},h("table",{},h("thead",{},h("tr",{},h("th",{},"Console"),h("th",{},"Save folder"),h("th",{},"Files"),h("th",{},"Managed by"))),h("tbody",{},...d.consoles.map(c=>{
     const inp=h("input",{type:"text",placeholder:"Custom folder",value:c.mode==="custom"?c.folder:"",style:"width:100%"});
     return h("tr",{},h("td",{},c.name),
@@ -1039,7 +1120,7 @@ async function viewConsole(m){
      h("select",{"aria-label":"Emulator for "+c.name,onchange:async e=>{const r=await act(()=>api("console_emulator",{console:c.id,emulator:e.target.value||null}));if(r){E.consoles=r.consoles;const f=await api("library",{sort:S.sort});d.games=f.games;render()}}},
       h("option",{value:""},"Automatic"),...emu(c.id).options.map(o=>h("option",{value:o.id,selected:emu(c.id).chosen===o.id},o.name+(o.installed?"":" (not found)"))))),
      h("span",{class:"muted"},"This only changes which program opens "+c.name+" games.")):null,
-   consoles.length?h("div",{class:"tvgrid"},...games.map((g,i)=>h("div",{class:"tvcard"+(i===gi?" sel":""),onclick:()=>{gi=i;render()},ondblclick:()=>play(g)},h("div",{class:"tvtitle"},g.title),h("div",{class:"small muted"},[g.region,consoleName(g.console),g.launch&&g.launch.ready?g.launch.emulator:"no emulator"].filter(Boolean).join(" · "))))):h("p",{class:"muted"},"No games yet. Add your games folder in Library."),
+   consoles.length?h("div",{class:"tvgrid"},...games.map((g,i)=>h("div",{class:"tvcard"+(i===gi?" sel":""),onclick:()=>{gi=i;render()},ondblclick:()=>play(g)},coverEl(g,"tv"),h("div",{class:"tvtitle"},g.title),h("div",{class:"small muted"},[g.region,consoleName(g.console),g.emulator||"no emulator"].filter(Boolean).join(" · "))))):h("p",{class:"muted"},"No games yet. Add your games folder in Library."),
    h("p",{class:"small muted tvhelp"},"D-pad or arrows: move · A / Enter: play · Shoulder buttons or [ ]: change console · B / Esc: back to Library"));
   const sel=wrap.querySelector(".tvcard.sel");if(sel)sel.scrollIntoView({block:"nearest"});
  };

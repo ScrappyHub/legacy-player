@@ -25,15 +25,15 @@ SETTINGS_SCHEMA: dict[str, dict] = {
         "help": "Runs the quick network check in the background at start-up and again once you connect to a server, so Server Info already shows where you stand. It only talks to this computer and the server you chose. Turn off to test only when you press the button.",
     },
     "featured_title": {
-        "type": "text", "default": "", "optional": True, "max": 60, "group": "Home page",
+        "type": "text", "default": "My GitHub", "optional": True, "max": 60, "group": "Home page",
         "label": "Featured: title", "help": "A section on the Home page for something you want to point people at. Leave blank to hide it.",
     },
     "featured_text": {
-        "type": "text", "default": "", "optional": True, "max": 240, "group": "Home page",
+        "type": "text", "default": "Source code, releases and the rest of my projects.", "optional": True, "max": 240, "group": "Home page",
         "label": "Featured: text", "help": "One or two sentences shown under the title.",
     },
     "featured_link": {
-        "type": "text", "default": "", "optional": True, "max": 300, "group": "Home page",
+        "type": "text", "default": "https://github.com/ScrappyHub", "optional": True, "max": 300, "group": "Home page",
         "label": "Featured: link", "help": "An https:// address the card opens. Always labelled Featured so nobody mistakes it for part of the app.",
     },
     "setup_done": {
@@ -130,6 +130,9 @@ DEFAULT_DATA = {
     "install_id": "",       # random tag so two players with the same name never collide
     "bios_found": {},       # bios kind -> list of files found by the last scan
     "last_scan": None,
+    "netcheck_good": None,  # the last time the server answered: {"at", "avg_ms", "name"}
+    "backup_root": "",      # where whole-library save backups are kept ("" = inside the data folder)
+    "video": {},            # "all" or console id -> display choices (see launcher/app.py VIDEO_FIELDS)
     "last_rescan": None,    # when the games folders were last read
     "doctor_dismissed": [], # things the user told the doctor not to worry about
     "save_root": "",        # managed save folder root ("" = inside the data folder)

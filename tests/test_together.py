@@ -267,3 +267,76 @@ class HomeProfileTests(unittest.TestCase):
         with self.assertRaises(CatalogError):
             app.catalog.set_setting("featured_link", "http://x")
         self.assertIn("consoles", app.api_engines({}))
+
+
+class CoversBackupsVideoTests(unittest.TestCase):
+    def test_cover_candidates_and_fetch(self):
+        import tempfile, time
+        from pathlib import Path
+        from launcher import covers
+        game = {"id": "g1", "title": "Super Test", "path": "/x/Super Test (USA).nes", "region": "USA", "console": "nes"}
+        self.assertEqual(covers.candidates(game)[0], "Super Test (USA)")
+        self.assertEqual(covers.clean_name("A: B/C"), "A_ B_C")
+        png = b"\x89PNG\r\n\x1a\n" + b"0" * 20
+        asked = []
+
+        class Resp:
+            def __init__(self, data): self.data = data
+            def read(self, n): return self.data[:n]
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+
+        def opener(req, timeout=0):
+            asked.append(req.full_url)
+            if "Super%20Test%20%28USA%29" in req.full_url:
+                return Resp(png)
+            import urllib.error
+            raise urllib.error.URLError("404")
+        f = covers.CoverFetcher(Path(tempfile.mkdtemp()), opener=opener, pause=0)
+        f.start([game, {**game, "id": "g2", "title": "Nope", "path": "/x/Nope.nes"}])
+        for _ in range(100):
+            if f.state != "running": break
+            time.sleep(0.05)
+        self.assertEqual((f.state, f.found, f.done), ("done", 1, 2))
+        self.assertTrue(covers.cover_path(f.cache, "g1").is_file())
+        self.assertTrue(all(u.startswith("https://thumbnails.libretro.com/") for u in asked))
+
+    def test_whole_library_backup_and_restore(self):
+        import tempfile
+        from pathlib import Path
+        from launcher import saves
+        base = Path(tempfile.mkdtemp())
+        nes = base / "nes"; nes.mkdir()
+        (nes / "a.srm").write_bytes(b"one")
+        dest = base / "bk"
+        made = saves.backup_all({"nes": nes}, dest)
+        self.assertEqual(made["files"], 1)
+        (nes / "a.srm").write_bytes(b"changed")
+        saves.restore_all(dest, made["name"], {"nes": nes}, base / "safety")
+        self.assertEqual((nes / "a.srm").read_bytes(), b"one")
+        self.assertTrue(list((base / "safety").glob("*.zip")))     # what was there is kept
+        with self.assertRaises(ValueError):
+            saves.restore_all(dest, "../evil.zip", {"nes": nes}, base / "safety")
+        with self.assertRaises(ValueError):
+            saves.backup_all({"nes": base / "nothing"}, dest)
+
+    def test_video_settings_and_retroarch_without_core(self):
+        import tempfile
+        from pathlib import Path
+        from launcher.app import LauncherApp, AppError
+        app = LauncherApp(Path(tempfile.mkdtemp()))
+        app.api_video({"scope": "all", "key": "fullscreen", "value": True})
+        app.api_video({"scope": "snes", "key": "fullscreen", "value": False})
+        self.assertTrue(app._video_for("nes")["fullscreen"])
+        self.assertFalse(app._video_for("snes")["fullscreen"])
+        with self.assertRaises(AppError):
+            app.api_video({"scope": "all", "key": "bogus", "value": True})
+        ra = Path(tempfile.mkdtemp()) / "retroarch.exe"; ra.write_text("x")
+        app.catalog.set_mapping("emulator_paths", "retroarch", str(ra))
+        self.assertFalse(app._core_ok("nes", str(ra)))
+        self.assertIsNone(app._emulator_for("nes")[0])      # installed, but no core: not "ready"
+        (ra.parent / "cores").mkdir()
+        import sys
+        from adapters.retroarch.netplay import CORE_SUFFIXES, CORES
+        (ra.parent / "cores" / (CORES["nes"][0] + CORE_SUFFIXES.get(sys.platform, ".so"))).write_text("x")
+        self.assertEqual(app._emulator_for("nes")[0], "retroarch")

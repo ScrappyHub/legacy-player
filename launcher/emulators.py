@@ -13,20 +13,20 @@ from pathlib import Path
 # name, executable candidates, argument template. Defaults are the common documented
 # command lines; they are marked unverified until proven on the user's machine.
 EMULATORS: dict[str, dict] = {
-    "dolphin": {"name": "Dolphin", "exes": ["Dolphin.exe", "dolphin-emu"], "args": ["-b", "-e", "{rom}"]},
-    "pcsx2": {"name": "PCSX2", "exes": ["pcsx2-qt.exe", "pcsx2-qt", "pcsx2.exe", "PCSX2"], "args": ["-batch", "--", "{rom}"]},
-    "mgba": {"name": "mGBA", "exes": ["mGBA.exe", "mgba-qt", "mgba"], "args": ["{rom}"]},
-    "duckstation": {"name": "DuckStation", "exes": ["duckstation-qt-x64-ReleaseLTCG.exe", "duckstation-qt"], "args": ["-batch", "--", "{rom}"]},
-    "mesen": {"name": "Mesen", "exes": ["Mesen.exe", "mesen"], "args": ["{rom}"]},
+    "dolphin": {"name": "Dolphin", "exes": ["Dolphin.exe", "dolphin-emu"], "args": ["-b", "-e", "{rom}"], "fullscreen": ["-C","Dolphin.Display.Fullscreen=True"]},
+    "pcsx2": {"name": "PCSX2", "exes": ["pcsx2-qt.exe", "pcsx2-qt", "pcsx2.exe", "PCSX2"], "args": ["-batch", "--", "{rom}"], "fullscreen": ["-fullscreen"]},
+    "mgba": {"name": "mGBA", "exes": ["mGBA.exe", "mgba-qt", "mgba"], "args": ["{rom}"], "fullscreen": ["-f"]},
+    "duckstation": {"name": "DuckStation", "exes": ["duckstation-qt-x64-ReleaseLTCG.exe", "duckstation-qt"], "args": ["-batch", "--", "{rom}"], "fullscreen": ["-fullscreen"]},
+    "mesen": {"name": "Mesen", "exes": ["Mesen.exe", "mesen"], "args": ["{rom}"], "fullscreen": ["--fullscreen"]},
     "bsnes": {"name": "bsnes", "exes": ["bsnes.exe", "bsnes"], "args": ["{rom}"]},
     "snes9x": {"name": "Snes9x", "exes": ["snes9x-x64.exe", "snes9x"], "args": ["{rom}"]},
     "mupen": {"name": "Mupen64Plus", "exes": ["mupen64plus-gui.exe", "mupen64plus"], "args": ["{rom}"]},
     "melonds": {"name": "melonDS", "exes": ["melonDS.exe", "melonDS"], "args": ["{rom}"]},
-    "ppsspp": {"name": "PPSSPP", "exes": ["PPSSPPWindows64.exe", "PPSSPPSDL"], "args": ["{rom}"]},
-    "azahar": {"name": "Azahar", "exes": ["azahar.exe", "azahar"], "args": ["{rom}"]},
-    "citra": {"name": "Citra", "exes": ["citra-qt.exe", "citra-qt"], "args": ["{rom}"]},
+    "ppsspp": {"name": "PPSSPP", "exes": ["PPSSPPWindows64.exe", "PPSSPPSDL"], "args": ["{rom}"], "fullscreen": ["--fullscreen"]},
+    "azahar": {"name": "Azahar", "exes": ["azahar.exe", "azahar"], "args": ["{rom}"], "fullscreen": ["-f"]},
+    "citra": {"name": "Citra", "exes": ["citra-qt.exe", "citra-qt"], "args": ["{rom}"], "fullscreen": ["-f"]},
     "xemu": {"name": "xemu", "exes": ["xemu.exe", "xemu"], "args": ["-dvd_path", "{rom}"]},
-    "xenia": {"name": "Xenia", "exes": ["xenia.exe", "xenia_canary.exe"], "args": ["{rom}"]},
+    "xenia": {"name": "Xenia", "exes": ["xenia.exe", "xenia_canary.exe"], "args": ["{rom}"], "fullscreen": ["--fullscreen=true"]},
     "rpcs3": {"name": "RPCS3", "exes": ["rpcs3.exe", "rpcs3"], "args": ["{rom}"]},
     "retroarch": {"name": "RetroArch", "exes": ["retroarch.exe", "retroarch"], "args": ["{rom}"]},
 }
@@ -97,11 +97,18 @@ def build_command(emulator_id: str, exe: str, rom_path: str) -> list[str]:
     return [exe] + [arg.replace("{rom}", rom_path) for arg in spec["args"]]
 
 
-def launch(emulator_id: str, exe: str, rom_path: str) -> int:
+def video_args(emulator_id: str, fullscreen: bool | None) -> list[str]:
+    """Command-line flags that make this emulator start full screen, when it has one. Only added when asked for."""
+    return list(EMULATORS[emulator_id].get("fullscreen", [])) if fullscreen else []
+
+
+def launch(emulator_id: str, exe: str, rom_path: str, extra_args: list[str] | None = None) -> int:
     if not Path(rom_path).is_file():
         raise FileNotFoundError("the game file is missing; rescan your library")
+    command = build_command(emulator_id, exe, rom_path)
+    command[1:1] = extra_args or []
     process = subprocess.Popen(
-        build_command(emulator_id, exe, rom_path),
+        command,
         cwd=str(Path(exe).parent),
         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
     )
