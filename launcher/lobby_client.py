@@ -97,7 +97,10 @@ class LobbyClient:
                 f"Could not reach the multiplayer server at {self.host}:{self.port} ({exc}). "
                 "Is it running? Start it with: python -m server.cli start --detach"
             ) from exc
-        response = json.loads(line)
+        try:
+            response = json.loads(line)
+        except ValueError as exc:
+            raise LobbyClientError(f"Something answered at {self.host}:{self.port} but it is not a Legacy Player server.") from exc
         if not response.get("ok"):
             raise LobbyClientError(response.get("error", "server error"))
         return response["result"]

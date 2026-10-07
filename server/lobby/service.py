@@ -56,6 +56,8 @@ class LobbyService:
         self.joined_at: dict[tuple[str, str], float] = {}
         self.established: set[tuple[str, str]] = set()   # players whose app reported a running match
         self.establish_grace = 180.0   # a seat someone is waiting for is freed if its holder never connects in this time
+        self.aliases: dict[str, dict] = {}   # "alias#1234" (lowercase) -> {"install": id, "seen": clock time}
+        self.alias_active_seconds = 900.0    # a name+tag is taken while its owner's app was heard from this recently
         self.last_seen: dict[tuple[str, str], float] = {}
         self.disconnected: set[tuple[str, str]] = set()
         self.max_sessions = max_sessions
@@ -844,6 +846,42 @@ class LobbyService:
         self.stats[(session.session_id, participant_id)] = clean
         return {"ok": True}
 
+    _ALIAS_RE = re.compile(r"^[A-Za-z0-9 _.\-]{1,24}$")
+
+    def claim_alias(self, request: dict) -> dict:
+        """Give a player a name#tag nobody else who is active right now has. Asking again with the same install
+        id keeps the same tag. Nothing about the machine is sent: the install id is a random number the app made."""
+        alias = str(request.get("alias") or "").strip()
+        install = str(request.get("install_id") or "")
+        if not self._ALIAS_RE.match(alias):
+            raise LobbyError("a name is 1 to 24 letters, numbers, spaces, dots, dashes or underscores")
+        if not re.fullmatch(r"[0-9a-f]{4,32}", install):
+            raise LobbyError("install_id must be a short hex number")
+        now = self.clock()
+        for key in [k for k, v in self.aliases.items() if now - v["seen"] > self.alias_active_seconds]:
+            del self.aliases[key]
+        low = alias.lower()
+        # an install keeps one name at a time: drop whatever it held before under another name
+        for key in [k for k, v in self.aliases.items() if v["install"] == install and not k.startswith(low + "#")]:
+            del self.aliases[key]
+        wanted = str(request.get("tag") or "")
+        mine = next((k for k, v in self.aliases.items() if v["install"] == install and k.startswith(low + "#")), None)
+        if mine:
+            tag = mine.split("#", 1)[1]
+        else:
+            taken = {k.split("#", 1)[1] for k in self.aliases if k.startswith(low + "#")}
+            if re.fullmatch(r"\d{4}", wanted) and wanted not in taken:
+                tag = wanted
+            else:
+                free = [f"{n:04d}" for n in range(10000) if f"{n:04d}" not in taken]
+                if not free:
+                    raise LobbyError("that name is used by too many active players; pick another")
+                tag = secrets.choice(free)
+        self.aliases[f"{low}#{tag}"] = {"install": install, "seen": now}
+        if len(self.aliases) > 50000:
+            raise LobbyError("too many active names on this server")
+        return {"alias": alias, "tag": tag, "player": f"{alias}#{tag}"}
+
     def _stats_view(self, session: Session) -> dict:
         now = self.clock()
         people: dict[str, dict] = {}
@@ -933,6 +971,7 @@ class LobbyService:
             "announce_start": self.announce_start,
             "consent_start": self.consent_start,
             "set_game": self.set_game,
+            "claim_alias": self.claim_alias,
         }
         try:
             handler = handlers[operation]

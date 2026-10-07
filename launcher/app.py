@@ -7,6 +7,7 @@ import io
 import json
 import os
 import random
+import threading
 import time
 from pathlib import Path
 
@@ -25,6 +26,7 @@ from . import controllers, emulators, engines, pads, savefolders, saves
 from .installer import EngineInstaller, InstallError, latest_release, pick_asset
 from . import netcheck
 from .pcscan import PcScan
+from .version import REPO, VERSION
 from .setup import Setup, SetupError
 from .catalog import SETTINGS_SCHEMA, Catalog, CatalogError
 from .consoles import BY_ID, CONSOLES
@@ -123,11 +125,13 @@ class LauncherApp:
         self.last_ping = 0.0
         self.bye_at = 0.0
         self.quit_requested = False
+        self._net_running = False
         self.setup = Setup(self.data_dir, self._retroarch_path,
                            lambda path: self.catalog.set_mapping("emulator_paths", "retroarch", path))
         self.installer = EngineInstaller(self.data_dir / "emulators")
         self.pcscan = PcScan({k: v["exes"] for k, v in emulators.EMULATORS.items()},
-                             lambda: [Path(r) for r in self.catalog.data["roots"]] + [Path(f) for f in self.catalog.data.get("emulator_folders", [])])
+                             lambda: [Path(r) for r in self.catalog.data["roots"]] + [Path(f) for f in self.catalog.data.get("emulator_folders", [])],
+                             matcher=emulators.program_for, archive_matcher=emulators.archive_for)
         self._prepare_certificate()
         self._load_cache()
         if not self.games and self.catalog.data["roots"]:
@@ -421,6 +425,34 @@ class LauncherApp:
                     raise
         server = netcheck.ping_server(probe)
         kind = netcheck.classify_address(address)
+        result = self._netcheck_result(address, kind, mock, room, server, local, s)
+        self.catalog.data["netcheck_last"] = {"at": time.time(), "result": result}
+        self.catalog.save()
+        return {**result, "at": self.catalog.data["netcheck_last"]["at"]}
+
+    def api_network_start(self, body: dict) -> dict:
+        """Run the network test in the background so the app stays responsive; read it with network_last."""
+        if not self._net_running:
+            self._net_running = True
+
+            def work() -> None:
+                try:
+                    self.api_network_check({})
+                except Exception:      # a failed test just leaves the old result
+                    pass
+                finally:
+                    self._net_running = False
+
+            threading.Thread(target=work, daemon=True).start()
+        return {"running": True}
+
+    def api_network_last(self, body: dict) -> dict:
+        """What the last test found, without testing again. `running` is true while a test is in progress."""
+        last = self.catalog.data.get("netcheck_last")
+        base = {**last["result"], "at": last["at"]} if last else {"at": None}
+        return {**base, "running": self._net_running}
+
+    def _netcheck_result(self, address, kind, mock, room, server, local, s) -> dict:
         return {"address": address, "address_kind": kind["kind"], "address_text": kind["text"], "mock": mock, "room_load": room,
                 "server": server, "server_is_local": local, "server_name": "this computer" if local else s["server_host"],
                 "advice": netcheck.advise(kind["kind"], mock, room, server, local)}
@@ -438,6 +470,8 @@ class LauncherApp:
         have = {eid: v["path"] for eid, v in emulators.find_emulators(self._search_roots(), self.catalog.data["emulator_paths"]).items()}
         view["emulators"] = {eid: {"name": emulators.EMULATORS[eid]["name"], "paths": paths, "in_use": have.get(eid)}
                              for eid, paths in view["found"].items()}
+        view["packages"] = {eid: {"name": emulators.EMULATORS[eid]["name"], "paths": paths}
+                            for eid, paths in view.get("archives", {}).items() if eid not in view["found"] and not have.get(eid)}
         return view
 
     def api_scan_apply(self, body: dict) -> dict:
@@ -481,7 +515,11 @@ class LauncherApp:
         for kind, spec in engines.BIOS.items():
             cached = self.catalog.data.get("bios_found", {}).get(kind, [])
             bios.append({"kind": kind, "name": spec["name"], "for": spec["for"], "how": spec["how"], "found": cached})
-        return {"engines": rows, "bios": bios, "allow_internet": self.catalog.settings()["allow_internet"],
+        consoles = []
+        for c in CONSOLES:
+            eid, info = self._emulator_for(c.id, found)
+            consoles.append({"id": c.id, "name": c.name, "ready": bool(eid), "via": info["name"] if info else None})
+        return {"engines": rows, "bios": bios, "consoles": consoles, "allow_internet": self.catalog.settings()["allow_internet"],
                 "install_folder": str(self.data_dir / "emulators"), "job": self.installer.snapshot(),
                 "last_scan": self.catalog.data.get("last_scan")}
 
@@ -726,7 +764,92 @@ class LauncherApp:
             raise AppError("You are not in a room.")
         return {"session_id": r["session_id"], "participant_id": r["me"], "credential": r["credential"]}
 
+    # who you are on servers --------------------------------------------------------
+    _ALIAS_OK = __import__("re").compile(r"^[A-Za-z0-9 _.\-]{1,24}$")
+
+    def _claim_alias(self) -> str | None:
+        """Ask the server for a #tag no other active player with this name has. Best effort: an older server
+        or no server means the local tag is used."""
+        s = self.catalog.settings()
+        name = s["display_name"]
+        if not self._ALIAS_OK.match(name):
+            return None
+        try:
+            got = self._client().call({"operation": "claim_alias", "alias": name, "install_id": self.catalog.data["install_id"],
+                                       "tag": self.catalog.data.get("alias_tag") or ""})
+        except (LobbyClientError, OSError, ValueError, KeyError):
+            return None
+        self.catalog.data["alias_tag"] = got["tag"]
+        self.catalog.save()
+        return got["tag"]
+
+    def api_profile(self, body: dict) -> dict:
+        """Your name and picture. The #tag comes from the server so nobody active shares your name and tag."""
+        if "alias" in body:
+            name = str(body["alias"]).strip()
+            if not self._ALIAS_OK.match(name):
+                raise AppError("A name is 1 to 24 letters, numbers, spaces, dots, dashes or underscores.")
+            self.catalog.set_setting("display_name", name)
+        if "avatar" in body:
+            self.catalog.set_setting("avatar", str(body["avatar"])[:24])
+        claimed = self._claim_alias() if ("alias" in body or body.get("claim")) else None
+        s = self.catalog.settings()
+        tag = self.catalog.data.get("alias_tag") or ""
+        return {"alias": s["display_name"], "avatar": s["avatar"], "tag": tag, "claimed": bool(tag),
+                "player": f"{s['display_name']}#{tag or self.catalog.data['install_id']}",
+                "note": "" if tag else "No server gave this name a tag yet, so a local tag is used. It is claimed when you connect to a server."}
+
+    def api_storage(self, body: dict) -> dict:
+        per: dict[str, dict] = {}
+        for g in self.games.values():
+            row = per.setdefault(g["console"], {"id": g["console"], "name": BY_ID[g["console"]].name, "count": 0, "bytes": 0})
+            row["count"] += 1
+            row["bytes"] += g["size"]
+        rows = sorted(per.values(), key=lambda r: -r["bytes"])
+        free = None
+        try:
+            import shutil
+            roots = self.catalog.data["roots"]
+            if roots:
+                free = shutil.disk_usage(roots[0]).free
+        except OSError:
+            pass
+        return {"consoles": rows, "total_bytes": sum(r["bytes"] for r in rows), "total_games": sum(r["count"] for r in rows), "free_bytes": free}
+
+    def api_home(self, body: dict) -> dict:
+        history = self.catalog.data["history"]
+        recent = sorted((g for g in self.games.values() if history.get(g["id"], {}).get("last_played")),
+                        key=lambda g: -history[g["id"]]["last_played"])[:8]
+        favs = [g for g in self.games.values() if g["id"] in set(self.catalog.data["favorites"])][:8]
+        found = emulators.find_emulators(self._search_roots(), self.catalog.data["emulator_paths"])
+        s = self.catalog.settings()
+        featured = None
+        if s["featured_title"]:
+            featured = {"title": s["featured_title"], "text": s["featured_text"], "link": s["featured_link"]}
+        ready = [c.id for c in CONSOLES if self._emulator_for(c.id, found)[0]]
+        return {
+            "recent": [self._public(g) for g in recent], "favorites": [self._public(g) for g in favs],
+            "emulators": [{"id": k, "name": v["name"], "path": v["path"]} for k, v in found.items() if v["path"]],
+            "consoles_ready": len(ready), "consoles_total": len(CONSOLES), "games_total": len(self.games),
+            "featured": featured, "version": VERSION, "alias": s["display_name"], "avatar": s["avatar"],
+        }
+
+    def api_check_update(self, body: dict) -> dict:
+        """Ask GitHub whether a newer release exists. Only when the user presses the button and allows internet."""
+        if not self.catalog.settings()["allow_internet"]:
+            raise AppError("Internet access is off. Turn on 'Allow internet downloads' in Settings to check for updates (it only asks api.github.com).")
+        try:
+            rel = latest_release(REPO)
+        except InstallError as exc:
+            return {"current": VERSION, "ok": False, "message": f"Could not check: {exc}"}
+        def nums(v: str) -> tuple:
+            return tuple(int(x) for x in __import__("re").findall(r"\d+", v)[:3])
+        newer = nums(rel["tag"]) > nums(VERSION) if nums(rel["tag"]) else False
+        return {"current": VERSION, "ok": True, "latest": rel["tag"], "newer": newer, "page": rel["page"], "published_at": rel["published_at"],
+                "message": ("Version " + rel["tag"] + " is available.") if newer else "You have the latest version."}
+
     def api_mp_host(self, body: dict) -> dict:
+        self._claim_alias()
         game = self._game(body)
         me = self.catalog.player_tag()
         _, info = self._emulator_for(game["console"])
@@ -750,6 +873,7 @@ class LauncherApp:
         """Join with an invite code, or an open room by id. With background=true the join
         only queues you (keep playing); you switch over when a spot is ready."""
         game = self._game(body)
+        self._claim_alias()
         me = self.catalog.player_tag()
         request = {"operation": "join", "participant_id": me, "profile": self._profile(game)}
         if body.get("session_id"):

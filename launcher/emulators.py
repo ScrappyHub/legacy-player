@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -31,6 +32,37 @@ EMULATORS: dict[str, dict] = {
 }
 
 
+# Program names differ between releases (snes9x.exe, snes9x-x64.exe, xemu.exe ...), so match by prefix as well.
+_PREFIX = {"dolphin": "dolphin", "pcsx2": "pcsx2", "mgba": "mgba", "duckstation": "duckstation", "mesen": "mesen", "bsnes": "bsnes",
+           "snes9x": "snes9x", "mupen": "mupen64plus", "melonds": "melonds", "ppsspp": "ppsspp", "azahar": "azahar",
+           "citra": "citra-qt", "xemu": "xemu", "xenia": "xenia", "rpcs3": "rpcs3", "retroarch": "retroarch"}
+_NOT_THE_EMULATOR = re.compile(r"(uninst|unins\d|updater|setup|installer|tool|-room|-sdl|crashpad|helper|dspt)", re.I)
+_EXE = {eid: re.compile(r"^" + re.escape(pre) + r"[\w.\-]*\.exe$", re.I) for eid, pre in _PREFIX.items()}
+_ARCHIVE = {eid: re.compile(r"^" + re.escape(pre) + r"[\w.\-]*\.(zip|7z|rar)$", re.I) for eid, pre in _PREFIX.items()}
+
+
+def program_for(filename: str) -> str | None:
+    """Which emulator a file name belongs to, or None. Exact names win; otherwise a known prefix with .exe."""
+    low = filename.lower()
+    for eid, spec in EMULATORS.items():
+        if low in {e.lower() for e in spec["exes"]}:
+            return eid
+    if not low.endswith(".exe") or _NOT_THE_EMULATOR.search(low):
+        return None
+    for eid, rx in _EXE.items():
+        if rx.match(filename):
+            return eid
+    return None
+
+
+def archive_for(filename: str) -> str | None:
+    """A downloaded but not yet extracted emulator (zip/7z/rar), by name."""
+    for eid, rx in _ARCHIVE.items():
+        if rx.match(filename):
+            return eid
+    return None
+
+
 def find_emulators(search_roots: list[Path], configured: dict[str, str]) -> dict[str, dict]:
     result = {}
     for emulator_id, spec in EMULATORS.items():
@@ -40,12 +72,11 @@ def find_emulators(search_roots: list[Path], configured: dict[str, str]) -> dict
             path = None
         if not path:
             source = "found automatically"
-            wanted = {e.lower() for e in spec["exes"]}
             for root in search_roots:
                 for dirpath, dirnames, filenames in os.walk(root):
-                    if len(Path(dirpath).relative_to(root).parts) >= 3:
+                    if len(Path(dirpath).relative_to(root).parts) >= 4:
                         dirnames[:] = []  # emulators live near the top; keep the search quick
-                    hit = next((f for f in filenames if f.lower() in wanted), None)
+                    hit = next((f for f in filenames if program_for(f) == emulator_id), None)
                     if hit:
                         path = str(Path(dirpath) / hit)
                         break

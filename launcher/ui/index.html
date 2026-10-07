@@ -5,74 +5,180 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Legacy Player</title>
 <style>
-:root{--bg:#0f1220;--panel:#171b2e;--panel2:#1f2440;--line:#2b3157;--text:#e8ebff;--mute:#9aa3d0;--accent:#6c8cff;--accent2:#35d0a5;--warn:#ffb454;--bad:#ff6b7a;--r:14px}
-[data-theme=light]{--bg:#f4f5fb;--panel:#fff;--panel2:#eef0fa;--line:#d8dcf0;--text:#171a2e;--mute:#5a6190;--accent:#3b5bdb;--accent2:#0b8f6c;--warn:#b25e00;--bad:#c92a3b}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 system-ui,Segoe UI,Roboto,sans-serif}
+:root{--bg:#050816;--panel:rgba(22,30,64,.58);--panel2:rgba(255,255,255,.07);--line:rgba(255,255,255,.13);--text:#eef1ff;--mute:#a3b2e0;--accent:#4f8cff;--accent2:#3be0a8;--warn:#ffb454;--bad:#ff6b7a;--r:16px;--grad:linear-gradient(135deg,#4f8cff,#7a5cff 55%,#3be0a8);--glow:0 0 22px rgba(79,140,255,.45);--chrome:rgba(8,12,30,.72)}
+[data-theme=light]{--bg:#eef2fb;--panel:rgba(255,255,255,.78);--panel2:rgba(30,50,120,.07);--line:rgba(30,50,120,.16);--text:#141a36;--mute:#4d5a8f;--accent:#2f62e0;--accent2:#0b8f6c;--warn:#a85a00;--bad:#c92a3b;--glow:0 0 18px rgba(47,98,224,.28);--chrome:rgba(255,255,255,.82)}
+*{box-sizing:border-box}
+html{scrollbar-color:#3a4a8a transparent}
+body{margin:0;color:var(--text);font:15px/1.5 "Segoe UI Variable","Segoe UI",system-ui,Roboto,sans-serif;background:var(--bg);min-height:100vh}
 button,input,select{font:inherit;color:inherit}
-header{display:flex;align-items:center;gap:16px;padding:12px 20px;background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5;flex-wrap:wrap}
-.logo{font-weight:800;letter-spacing:.3px}.logo b{color:var(--accent)}
-nav{display:flex;gap:6px;flex-wrap:wrap}nav button{background:none;border:0;padding:8px 14px;border-radius:999px;cursor:pointer;color:var(--mute)}
-nav button.on{background:var(--accent);color:#fff}nav button:hover:not(.on){background:var(--panel2)}
-main{max-width:1200px;margin:0 auto;padding:20px}
-h2{margin:.2em 0 .6em;font-size:1.3rem}h3{margin:1em 0 .4em;font-size:1.02rem}
+option{background:#141a33;color:#eef1ff}
+[data-theme=light] option{background:#fff;color:#141a36}
+/* living background: drifting waves and soft light, like a console dashboard */
+.bg{position:fixed;inset:0;z-index:-1;overflow:hidden;background:radial-gradient(1100px 700px at 12% -8%,#1c2f80 0%,transparent 60%),radial-gradient(900px 620px at 98% 8%,#0d6a6a 0%,transparent 55%),linear-gradient(180deg,#090e2c,#050816)}
+[data-theme=light] .bg{background:radial-gradient(1100px 700px at 12% -8%,#c9d8ff 0%,transparent 60%),radial-gradient(900px 620px at 98% 8%,#c6f5e6 0%,transparent 55%),linear-gradient(180deg,#f3f6ff,#e6ecf9)}
+.bg svg{position:absolute;left:-10%;width:140%;bottom:0;height:40vh;opacity:.3}
+.bg svg path{fill:url(#wg)}
+.bg .w1{animation:drift 26s ease-in-out infinite alternate}.bg .w2{bottom:-4vh;opacity:.22;animation:drift 38s ease-in-out infinite alternate-reverse}.bg .w3{bottom:-9vh;opacity:.16;animation:drift 52s ease-in-out infinite alternate}
+.orb{position:absolute;border-radius:50%;filter:blur(60px);opacity:.35;animation:float 18s ease-in-out infinite alternate}
+.o1{width:380px;height:380px;background:#4f8cff;left:8%;top:18%}.o2{width:320px;height:320px;background:#3be0a8;right:6%;top:42%;animation-duration:24s}
+@keyframes drift{from{transform:translateX(-4%)}to{transform:translateX(6%)}}
+@keyframes float{from{transform:translate(0,0)}to{transform:translate(40px,-30px)}}
+/* window chrome: menu bar then brand and tabs */
+.chrome{position:sticky;top:0;z-index:30;background:var(--chrome);backdrop-filter:blur(18px) saturate(1.3);border-bottom:1px solid var(--line)}
+#menubar{display:flex;align-items:center;gap:2px;padding:3px 10px;border-bottom:1px solid var(--line);font-size:.88rem}
+.menu{position:relative}
+.menu>button{background:none;border:0;padding:4px 12px;border-radius:6px;cursor:pointer;color:var(--text)}
+.menu>button:hover,.menu.open>button{background:var(--panel2)}
+.dd{position:absolute;top:100%;left:0;min-width:230px;padding:6px;border-radius:12px;background:var(--chrome);backdrop-filter:blur(22px);border:1px solid var(--line);box-shadow:0 18px 40px #0008;display:none;animation:pop .14s ease both}
+.menu.open .dd{display:block}
+.dd button{display:flex;width:100%;gap:10px;align-items:center;background:none;border:0;text-align:left;padding:7px 12px;border-radius:8px;cursor:pointer;color:var(--text)}
+.dd button:hover,.dd button:focus-visible{background:var(--accent);color:#fff;outline:none}
+.dd hr{border:0;border-top:1px solid var(--line);margin:5px 4px}
+.who{display:flex;align-items:center;gap:8px;background:none;border:1px solid transparent;border-radius:999px;padding:2px 12px 2px 3px;cursor:pointer}
+.who:hover{background:var(--panel2);border-color:var(--line)}.who .nm{font-size:.86rem}
+header{display:flex;align-items:center;gap:18px;padding:8px 20px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:10px;cursor:pointer;user-select:none}
+.wordmark{font-weight:800;letter-spacing:.4px;font-size:1.15rem}.wordmark b{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+nav{display:flex;gap:4px;flex-wrap:wrap}
+nav button{position:relative;background:none;border:0;padding:9px 16px;border-radius:10px;cursor:pointer;color:var(--mute);font-weight:600;transition:color .2s,background .2s}
+nav button:hover{color:var(--text);background:var(--panel2)}
+nav button.on{color:var(--text)}
+nav button.on::after{content:"";position:absolute;left:14px;right:14px;bottom:2px;height:3px;border-radius:3px;background:var(--grad);box-shadow:var(--glow)}
+#busybar{position:fixed;top:0;left:0;right:0;height:3px;z-index:60;opacity:0;transition:opacity .2s;background:linear-gradient(90deg,transparent,#4f8cff,#3be0a8,transparent);background-size:40% 100%;background-repeat:no-repeat;animation:slide 1.1s linear infinite}
+body.busy #busybar{opacity:1}
+@keyframes slide{from{background-position:-40% 0}to{background-position:140% 0}}
+main{max-width:1240px;margin:0 auto;padding:22px 20px 60px}
+main>*{animation:rise .45s cubic-bezier(.2,.8,.2,1) both}main>*:nth-child(2){animation-delay:.04s}main>*:nth-child(3){animation-delay:.08s}main>*:nth-child(4){animation-delay:.12s}main>*:nth-child(n+5){animation-delay:.16s}
+@keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@keyframes pop{from{opacity:0;transform:translateY(-4px) scale(.98)}to{opacity:1;transform:none}}
+h2{margin:.2em 0 .6em;font-size:1.5rem;letter-spacing:.2px}h3{margin:1em 0 .4em;font-size:1.05rem}
 .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.grow{flex:1}
-.card,.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:16px}
-.btn{background:var(--panel2);border:1px solid var(--line);padding:8px 14px;border-radius:10px;cursor:pointer}
-.btn:hover{border-color:var(--accent)}.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
-.btn.good{background:var(--accent2);border-color:var(--accent2);color:#04251c}.btn.bad{border-color:var(--bad);color:var(--bad)}
-.modal{position:fixed;inset:0;background:#000a;display:flex;align-items:center;justify-content:center;z-index:99}.modalbox{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px;max-width:460px;width:90%}
-.btn:disabled{opacity:.45;cursor:not-allowed}
-input[type=text],input[type=number],input[type=search],select{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:8px 10px;min-width:0}
+.card,.panel{background:linear-gradient(180deg,rgba(255,255,255,.08),rgba(255,255,255,.025)),var(--panel);backdrop-filter:blur(14px);border:1px solid var(--line);border-radius:var(--r);padding:16px;box-shadow:0 10px 30px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.1)}
+[data-theme=light] .card,[data-theme=light] .panel{box-shadow:0 8px 24px rgba(40,60,130,.12),inset 0 1px 0 #fff}
+.btn{background:var(--panel2);border:1px solid var(--line);padding:8px 15px;border-radius:11px;cursor:pointer;transition:transform .12s,border-color .2s,box-shadow .2s}
+.btn:hover{border-color:var(--accent);box-shadow:0 0 0 3px rgba(79,140,255,.18)}.btn:active{transform:scale(.97)}
+.btn.primary{background:var(--grad);border-color:transparent;color:#fff;font-weight:600;box-shadow:0 6px 18px rgba(79,140,255,.35)}
+.btn.good{background:linear-gradient(135deg,#34d399,#3be0a8);border-color:transparent;color:#04251c;font-weight:600}.btn.bad{border-color:var(--bad);color:var(--bad)}
+.btn:disabled{opacity:.45;cursor:not-allowed;box-shadow:none}
+.modal{position:fixed;inset:0;background:#000b;backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:99;animation:rise .2s both}
+.modalbox{background:var(--chrome);backdrop-filter:blur(24px);border:1px solid var(--line);border-radius:18px;padding:22px;max-width:460px;width:90%;box-shadow:0 30px 70px #000a}
+input[type=text],input[type=number],input[type=search],select{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:8px 10px;min-width:0;transition:border-color .2s,box-shadow .2s}
+input:focus,select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(79,140,255,.22)}
+input[type=checkbox]{accent-color:var(--accent);width:16px;height:16px;vertical-align:-3px}
 .chips{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
-.chip{padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:var(--panel);cursor:pointer;font-size:.9rem}
-.chip.on{background:var(--accent);border-color:var(--accent);color:#fff}.chip small{opacity:.75;margin-left:4px}
+.chip{padding:6px 13px;border-radius:999px;border:1px solid var(--line);background:var(--panel2);cursor:pointer;font-size:.9rem;transition:all .15s}
+.chip:hover{border-color:var(--accent)}.chip.on{background:var(--grad);border-color:transparent;color:#fff;box-shadow:0 4px 14px rgba(79,140,255,.35)}.chip small{opacity:.75;margin-left:4px}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px;margin-top:12px}
-.game{position:relative;padding:14px;border-radius:var(--r);background:var(--panel);border:1px solid var(--line);cursor:pointer;display:flex;flex-direction:column;gap:6px;min-height:128px}
-.game:hover,.game:focus-visible{border-color:var(--accent);outline:none;transform:translateY(-2px)}
+.game{position:relative;padding:14px;border-radius:var(--r);background:linear-gradient(160deg,rgba(255,255,255,.1),rgba(255,255,255,.02)),var(--panel);border:1px solid var(--line);cursor:pointer;display:flex;flex-direction:column;gap:6px;min-height:128px;transition:transform .18s,border-color .2s,box-shadow .2s;overflow:hidden}
+.game::before{content:"";position:absolute;inset:0 0 auto 0;height:3px;background:var(--grad);opacity:.7}
+.game:hover,.game:focus-visible{border-color:var(--accent);outline:none;transform:translateY(-4px);box-shadow:0 14px 30px rgba(0,0,0,.4),var(--glow)}
 .game .t{font-weight:650;line-height:1.25;padding-right:28px}.game .m{color:var(--mute);font-size:.82rem}
-.star{position:absolute;top:8px;right:8px;background:none;border:0;font-size:1.25rem;cursor:pointer;color:var(--mute)}.star.on{color:#ffcf40}
-.badge{display:inline-block;font-size:.72rem;padding:2px 8px;border-radius:999px;border:1px solid var(--line);color:var(--mute)}
-.badge.strong{color:var(--accent2);border-color:var(--accent2)}.badge.per-game{color:var(--accent);border-color:var(--accent)}
+.star{position:absolute;top:8px;right:8px;background:none;border:0;font-size:1.25rem;cursor:pointer;color:var(--mute);transition:transform .15s}.star:hover{transform:scale(1.25) rotate(12deg)}.star.on{color:#ffcf40;text-shadow:0 0 10px #ffcf4088}
+.badge{display:inline-block;font-size:.72rem;padding:2px 9px;border-radius:999px;border:1px solid var(--line);color:var(--mute)}
+.badge.strong,.badge.good{color:var(--accent2);border-color:var(--accent2)}.badge.per-game{color:var(--accent);border-color:var(--accent)}
 .badge.experimental,.badge.not-practical{color:var(--warn);border-color:var(--warn)}
 .list .game{flex-direction:row;align-items:center;min-height:0;padding:10px 14px}
-.muted{color:var(--mute)}.small{font-size:.85rem}.bad{color:var(--bad)}.good{color:var(--accent2)}
-.why{background:var(--panel2);border-left:3px solid var(--accent);padding:8px 12px;border-radius:8px;margin:8px 0;color:var(--mute);font-size:.88rem}
+.muted{color:var(--mute)}.small{font-size:.85rem}.bad{color:var(--bad)}.good{color:var(--accent2)}.warn{color:var(--warn)}
+.why{background:var(--panel2);border-left:3px solid var(--accent);padding:9px 14px;border-radius:10px;margin:8px 0 14px;color:var(--mute);font-size:.9rem}
 .i{display:inline-grid;place-items:center;width:18px;height:18px;border-radius:50%;border:1px solid var(--mute);color:var(--mute);font-size:.7rem;cursor:pointer;margin-left:6px;background:none}
-table{border-collapse:collapse;width:100%}td,th{padding:7px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:middle}
+table{border-collapse:collapse;width:100%}td,th{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:middle}th{color:var(--mute);font-weight:600;font-size:.82rem}
+tr.avg td{border-top:2px solid var(--line)}
 .code{font:700 2rem/1 ui-monospace,Consolas,monospace;letter-spacing:.12em;background:var(--panel2);padding:12px 18px;border-radius:12px;border:1px dashed var(--accent);display:inline-block}
-.drawer{position:fixed;inset:0 0 0 auto;width:min(480px,100%);background:var(--panel);border-left:1px solid var(--line);padding:20px;overflow:auto;z-index:8;box-shadow:-10px 0 30px #0006}
-.scrim{position:fixed;inset:0;background:#0007;z-index:7}
-#toasts{position:fixed;right:16px;bottom:16px;display:flex;flex-direction:column;gap:8px;z-index:20;max-width:360px}
-.toast{background:var(--panel2);border:1px solid var(--line);border-left:4px solid var(--accent);padding:10px 14px;border-radius:10px;box-shadow:0 6px 20px #0005}
+.drawer{position:fixed;inset:0 0 0 auto;width:min(480px,100%);background:var(--chrome);backdrop-filter:blur(22px);border-left:1px solid var(--line);padding:20px;overflow:auto;z-index:48;box-shadow:-10px 0 40px #0008;animation:slidein .25s ease both}
+@keyframes slidein{from{transform:translateX(30px);opacity:0}to{transform:none;opacity:1}}
+.scrim{position:fixed;inset:0;background:#0007;z-index:47}
+#toasts{position:fixed;right:16px;bottom:16px;display:flex;flex-direction:column;gap:8px;z-index:70;max-width:380px}
+.toast{background:var(--chrome);backdrop-filter:blur(18px);border:1px solid var(--line);border-left:4px solid var(--accent);padding:10px 14px;border-radius:12px;box-shadow:0 10px 28px #0007;animation:toastin .3s cubic-bezier(.2,.9,.3,1.2) both}
+@keyframes toastin{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:none}}
 .toast.warn{border-left-color:var(--warn)}.toast.err{border-left-color:var(--bad)}
 .feed{max-height:240px;overflow:auto;display:flex;flex-direction:column;gap:6px}.feed div{padding:6px 10px;background:var(--panel2);border-radius:8px}.feed .warn{border-left:3px solid var(--warn)}
 .pad{display:flex;gap:6px;flex-wrap:wrap}.pad span{padding:4px 10px;border-radius:8px;border:1px solid var(--line)}.pad span.hit{background:var(--accent2);color:#04251c;border-color:var(--accent2)}
-.dot{width:10px;height:10px;border-radius:50%;display:inline-block;background:var(--bad)}.dot.on{background:var(--accent2)}
+.dot{width:10px;height:10px;border-radius:50%;display:inline-block;background:var(--bad)}.dot.on{background:var(--accent2);animation:pulse 2s ease-out infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(59,224,168,.7)}100%{box-shadow:0 0 0 10px rgba(59,224,168,0)}}
 a{color:var(--accent)}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+details>summary{cursor:pointer;list-style:none}details>summary::-webkit-details-marker{display:none}
+details.fold>summary{display:flex;align-items:center;gap:10px;padding:2px 0}details.fold>summary::before{content:"▸";color:var(--mute);transition:transform .2s}details.fold[open]>summary::before{transform:rotate(90deg)}
 @media(max-width:600px){main{padding:12px}.grid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}}
 .tv{padding:8px}.tvbar{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}.tvgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px}
-.tvcard{padding:22px 14px;border-radius:14px;border:2px solid var(--line);background:var(--panel);min-height:90px;cursor:pointer}.tvcard.sel{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 35%,transparent);transform:scale(1.03)}.tvtitle{font-size:16px;font-weight:600}.tvhelp{margin-top:14px}
+.tvcard{padding:22px 14px;border-radius:16px;border:2px solid var(--line);background:var(--panel);backdrop-filter:blur(10px);min-height:90px;cursor:pointer;transition:transform .15s,border-color .15s}.tvcard.sel{border-color:var(--accent);box-shadow:0 0 0 3px rgba(79,140,255,.35),var(--glow);transform:scale(1.04)}.tvtitle{font-size:16px;font-weight:600}.tvhelp{margin-top:14px}
+/* pixel art and Martin */
+.px{image-rendering:pixelated;display:block}
+.px .peye{transform-box:fill-box;transform-origin:center;animation:blink 5s infinite}
+@keyframes blink{0%,91%,100%{transform:scaleY(1)}94%{transform:scaleY(.08)}}
+.martin{animation:bob 3.2s ease-in-out infinite;filter:drop-shadow(0 4px 10px rgba(79,140,255,.45))}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
+@keyframes hop{0%,100%{transform:translateY(0) scaleY(1)}40%{transform:translateY(-9px) scaleY(1.06)}70%{transform:translateY(0) scaleY(.92)}}
+body.busy .brand .martin,.hop{animation:hop .55s ease-in-out infinite}
+.cheer{animation:hop .8s ease-in-out 3}
+.avatar{border-radius:10px;background:linear-gradient(145deg,#26336e,#141a3c);padding:3px;border:1px solid var(--line)}
+.avatars{display:flex;flex-wrap:wrap;gap:10px;margin:10px 0}
+.avatars button{background:none;border:2px solid transparent;border-radius:14px;padding:3px;cursor:pointer;transition:transform .15s,border-color .15s}
+.avatars button:hover{transform:translateY(-3px) scale(1.05)}.avatars button.on{border-color:var(--accent2);box-shadow:0 0 0 3px rgba(59,224,168,.25)}
+/* hero, flashy cards, shelves */
+.hero{display:flex;gap:26px;align-items:center;padding:26px 28px;border-radius:22px;border:1px solid var(--line);position:relative;overflow:hidden;background:linear-gradient(120deg,rgba(79,140,255,.28),rgba(122,92,255,.18) 50%,rgba(59,224,168,.22)),var(--panel);box-shadow:0 16px 40px rgba(0,0,0,.35)}
+.hero::after{content:"";position:absolute;inset:-40% -10% auto auto;width:420px;height:420px;background:radial-gradient(circle,rgba(255,255,255,.18),transparent 65%);animation:float 14s ease-in-out infinite alternate;pointer-events:none}
+.hero h1{margin:0 0 4px;font-size:2rem;letter-spacing:.3px}.hero p{margin:4px 0;color:var(--mute);max-width:620px}
+.flashes{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;margin:18px 0}
+.flash{position:relative;border-radius:18px;padding:18px 18px 20px;border:1px solid var(--line);overflow:hidden;background:linear-gradient(145deg,var(--c1),var(--c2));color:#fff;transition:transform .2s,box-shadow .2s;min-height:150px}
+.flash:hover{transform:translateY(-5px) rotate(-.4deg);box-shadow:0 18px 36px rgba(0,0,0,.45)}
+.flash::after{content:"";position:absolute;top:0;left:-60%;width:40%;height:100%;background:linear-gradient(100deg,transparent,rgba(255,255,255,.28),transparent);transform:skewX(-18deg);animation:shine 5.5s ease-in-out infinite}
+.flash:nth-child(2)::after{animation-delay:1.2s}.flash:nth-child(3)::after{animation-delay:2.4s}.flash:nth-child(4)::after{animation-delay:3.6s}
+@keyframes shine{0%,60%{left:-60%}100%{left:130%}}
+.flash h3{margin:.6em 0 .3em;font-size:1.08rem;color:#fff}.flash p{margin:0;font-size:.88rem;color:rgba(255,255,255,.88)}
+.shelf{display:flex;gap:14px;overflow-x:auto;padding:4px 2px 12px}.shelf .game{min-width:220px;max-width:240px;flex:0 0 auto}
+.featured{border:1px dashed var(--accent);background:linear-gradient(120deg,rgba(255,180,84,.14),rgba(255,107,122,.1)),var(--panel)}
+.tag{display:inline-block;font-size:.68rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;padding:2px 9px;border-radius:999px;background:var(--warn);color:#2a1800}
+.pstat{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.bar{height:10px;border-radius:6px;background:var(--panel2);overflow:hidden}.bar>i{display:block;height:100%;border-radius:6px;background:var(--grad)}
+.bar.live>i{width:40%;animation:slide2 1.2s ease-in-out infinite alternate}
+@keyframes slide2{from{margin-left:0}to{margin-left:60%}}
+.spin{display:inline-block;width:14px;height:14px;border-radius:50%;border:2px solid var(--line);border-top-color:var(--accent2);animation:rot .8s linear infinite;vertical-align:-2px;margin-right:6px}
+@keyframes rot{to{transform:rotate(360deg)}}
+.dots::after{content:"";animation:dots 1.4s steps(4) infinite}
+@keyframes dots{0%{content:""}25%{content:"."}50%{content:".."}75%{content:"..."}}
+.ip{display:inline-flex;align-items:center;gap:6px;font-family:ui-monospace,Consolas,monospace}
+.eye{background:none;border:1px solid var(--line);border-radius:8px;padding:1px 6px;cursor:pointer;color:var(--mute);line-height:1}.eye:hover{color:var(--text);border-color:var(--accent)}
+.eye svg{width:16px;height:16px;vertical-align:-3px}
+#boot{position:fixed;inset:0;z-index:100;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:var(--bg);transition:opacity .5s .1s}
+#boot.gone{opacity:0;pointer-events:none}
+.wizsteps{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}
+.sumrow{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--line)}
+@media(prefers-reduced-motion:reduce){*{animation-duration:.001s!important;animation-iteration-count:1!important;transition:none!important}}
 </style>
 </head>
 <body>
-<header>
-  <div class="logo">Legacy <b>Player</b></div>
+<div class="bg" aria-hidden="true"><div class="orb o1"></div><div class="orb o2"></div>
+<svg class="w1" viewBox="0 0 1440 320" preserveAspectRatio="none"><defs><linearGradient id="wg" x1="0" x2="1"><stop offset="0" stop-color="#4f8cff"/><stop offset=".55" stop-color="#7a5cff"/><stop offset="1" stop-color="#3be0a8"/></linearGradient></defs><path d="M0,170 C240,270 480,60 720,160 S1200,270 1440,150 L1440,320 L0,320Z"/></svg>
+<svg class="w2" viewBox="0 0 1440 320" preserveAspectRatio="none"><path d="M0,120 C300,40 540,250 800,150 S1230,60 1440,170 L1440,320 L0,320Z"/></svg>
+<svg class="w3" viewBox="0 0 1440 320" preserveAspectRatio="none"><path d="M0,200 C260,120 600,300 900,190 S1300,120 1440,210 L1440,320 L0,320Z"/></svg></div>
+<div id="busybar"></div>
+<div class="chrome">
+ <div id="menubar" role="menubar"></div>
+ <header>
+  <div class="brand" id="brand" tabindex="0" role="button" title="Home"><span id="logomartin"></span><span class="wordmark">Legacy <b>Player</b></span></div>
   <nav id="nav" aria-label="Sections"></nav>
   <div class="grow"></div>
-  <button class="btn" id="quitbtn" title="Close Legacy Player completely. Minimize the window instead to keep it in the taskbar." style="margin-right:10px">Quit</button>
   <span class="small muted" id="srv"><span class="dot" id="srvdot"></span> <span id="srvtxt">server…</span></span>
-</header>
+ </header>
+</div>
 <main id="main"></main>
 <div id="toasts" aria-live="polite"></div>
+<div id="boot"><div id="bootmartin"></div><div class="muted">Waking Martin<span class="dots"></span></div></div>
 <script>
 "use strict";
 const TOKEN="__LP_TOKEN__";
 const $=(s,r=document)=>r.querySelector(s);
+/* null or false children of replaceChildren would print as the word "null": drop them everywhere */
+{const rc=Element.prototype.replaceChildren;Element.prototype.replaceChildren=function(...k){return rc.apply(this,k.flat(3).filter(x=>x!=null&&x!==false))}}
 function h(tag,attrs,...kids){const e=document.createElement(tag);for(const[k,v]of Object.entries(attrs||{})){if(k==="class")e.className=v;else if(k.startsWith("on"))e.addEventListener(k.slice(2),v);else if(v===true)e.setAttribute(k,"");else if(v!==false&&v!=null)e.setAttribute(k,v)}
  for(const c of kids.flat()){if(c==null||c===false)continue;e.append(c.nodeType?c:document.createTextNode(String(c)))}return e}
-async function api(name,body={}){const r=await fetch("/api/"+name,{method:"POST",headers:{"Content-Type":"application/json","X-LP-Token":TOKEN},body:JSON.stringify(body)});
- const j=await r.json();if(!r.ok)throw new Error(j.error||"Request failed");return j}
+/* A thin shimmer bar at the top and a hopping Martin show the app is working. Quiet background polls do not trigger it. */
+let pending=0,busyT=null;const QUIET=new Set(["ping","mp_state","status","scan_pc","server_status","pads","bye","network_last"]);
+async function api(name,body={}){const loud=!QUIET.has(name);if(loud){pending++;if(pending===1)busyT=setTimeout(()=>document.body.classList.add("busy"),200)}
+ try{const r=await fetch("/api/"+name,{method:"POST",headers:{"Content-Type":"application/json","X-LP-Token":TOKEN},body:JSON.stringify(body)});
+  const j=await r.json();if(!r.ok)throw new Error(j.error||"Request failed");return j}
+ finally{if(loud){pending=Math.max(0,pending-1);if(!pending){clearTimeout(busyT);document.body.classList.remove("busy")}}}}
 function toast(text,level){const t=h("div",{class:"toast "+(level||"")},text);$("#toasts").append(t);setTimeout(()=>t.remove(),level==="warn"?9000:5000)}
 function ask(text,yes){return new Promise(res=>{const done=v=>{ov.remove();res(v)};const ov=h("div",{class:"modal",role:"dialog","aria-modal":"true"},h("div",{class:"modalbox"},h("p",{},text),h("div",{class:"row",style:"justify-content:flex-end;gap:8px"},h("button",{class:"btn",onclick:()=>done(false)},"Cancel"),h("button",{class:"btn primary",onclick:()=>done(true)},yes||"OK"))));document.body.append(ov);ov.querySelector(".primary").focus()})}
 async function act(fn,ok){try{const r=await fn();if(ok)toast(ok);return r}catch(e){toast(e.message,"err")}}
@@ -80,11 +186,213 @@ function why(text){const box=h("div",{class:"why",hidden:true},text);const b=h("
 function whyInline(label,text){const[b,box]=why(text);return h("span",{},label,b,box)}
 const NETPLAY={strong:"Good fit",["per-game"]:"Needs a game pack","experimental":"Experimental","not-practical":"Not practical yet"};
 
-const S={tab:"library",console:null,q:"",fav:false,sort:"title",lib:null,settings:null,room:null,online:null,lastNotice:null};
-const TABS=[["library","Library"],["together","Server Info"],["servers","Servers"],["console","Console mode"],["setup","Setup"],["engines","Engines"],["controllers","Controllers"],["saves","Saves"],["emulators","Emulators"],["settings","Settings"],["credits","Credits"],["help","How it works"]];
+/* ---------- small helpers ---------- */
+function ago(t){if(!t)return"never";const s=Math.max(0,Date.now()/1000-t);if(s<45)return"just now";if(s<3600)return Math.round(s/60)+" min ago";if(s<86400)return Math.round(s/3600)+" h ago";return Math.round(s/86400)+" days ago"}
+function fmtBytes(b){if(b==null)return"–";const g=b/1073741824;return g>=1?g.toFixed(g>=10?0:1)+" GB":Math.round(b/1048576)+" MB"}
+function svgEl(html){const t=document.createElement("template");t.innerHTML=html.trim();return t.content.firstElementChild}
+const EYE='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+const EYE_OFF='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 19c-7 0-11-7-11-7a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 7 11 7a18.5 18.5 0 0 1-2.16 3.19M14.12 14.12a3 3 0 1 1-4.24-4.24"/><path d="M1 1l22 22"/></svg>';
+/* An address is hidden until the little eye is pressed. The mask has a fixed length so it says nothing about the address. */
+function ipSpan(text){if(!text)return h("span",{},"–");let on=false;const v=h("span",{class:"ipv"},"•••.•••.•••.•••");const b=h("button",{class:"eye",type:"button",title:"Show or hide the address","aria-label":"Show or hide the address",onclick:()=>{on=!on;v.textContent=on?text:"•••.•••.•••.•••";b.replaceChildren(svgEl(on?EYE_OFF:EYE))}},svgEl(EYE));return h("span",{class:"ip"},v,b)}
 
-function renderNav(){const n=$("#nav");n.replaceChildren(...TABS.map(([id,l])=>h("button",{class:S.tab===id?"on":"",onclick:()=>{S.tab=id;go()}},l+(id==="together"&&S.room?" ●":""))))}
-async function go(){renderNav();const m=$("#main");m.replaceChildren();({library:viewLibrary,together:viewTogether,servers:viewServers,console:viewConsole,setup:viewSetup,engines:viewEngines,controllers:viewControllers,saves:viewSaves,emulators:viewEmulators,settings:viewSettings,credits:viewCredits,welcome:viewWelcome,help:viewHelp})[S.tab](m)}
+/* ---------- pixel art: Martin and the avatars ---------- */
+const PAL={W:"#f6f7fc",G:"#9aa3b8",D:"#3a4058",E:"#14172a",P:"#ff8fb0",R:"#ff5a6a",Y:"#ffd23f",B:"#5b7cff",C:"#4de3ff",S:"#f2c9a0",O:"#ff9f43",N:"#47d36b",K:"#2b3157",L:"#c3b5ff"};
+function pixels(rows,size,cls){const w=rows[0].length,hh=rows.length;let r="";rows.forEach((row,y)=>{[...row].forEach((c,x)=>{if(c!==".")r+=`<rect ${c==="E"?'class="peye" ':""}x="${x}" y="${y}" width="1" height="1" fill="${PAL[c]}"/>`})});
+ return svgEl(`<svg class="px ${cls||""}" viewBox="0 0 ${w} ${hh}" width="${size}" height="${Math.round(size*hh/w)}" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">${r}</svg>`)}
+/* Martin: a white and grey cat with a tabby M on his forehead */
+const MARTIN=["..DD........DD..",".DGGD......DGGD.",".DGWDDDDDDDDWGD.","DWWWWGWWWWGWWWWD","DWWWWGGWWGGWWWWD","DWWWWGWGGWGWWWWD","DWWWEEWWWWEEWWWD","DWWWEEWWWWEEWWWD","DWGWWWWPPWWWWGWD","DWWWWWDWWDWWWWWD",".DWWWWWDDWWWWWD.","..DDWWWWWWWWDD..","....DDDDDDDD...."];
+const AVATARS={
+ martin:{name:"Martin",rows:MARTIN},
+ heart:{name:"Heart",rows:[".RR..RR.","RRRRRRRR","RRRRRRRR","RRRRRRRR",".RRRRRR.","..RRRR..","...RR...","........"]},
+ star:{name:"Star",rows:["...YY...","...YY...","YYYYYYYY",".YYYYYY.","..YYYY..",".YYYYYY.",".YY..YY.","YY....YY"]},
+ ghost:{name:"Ghost",rows:["..WWWW..",".WWWWWW.","WWWWWWWW","WEEWWEEW","WWWWWWWW","WWWWWWWW","WWWWWWWW","WW.WW.WW"]},
+ robot:{name:"Robot",rows:["...GG...","..GGGG..",".GGGGGG.",".GCGGCG.",".GGGGGG.",".GGRRGG.","..G..G..",".GG..GG."]},
+ mushroom:{name:"Mushroom",rows:["..RRRR..",".RWRRWR.","RRRWWRRR","RRRRRRRR","..SSSS..","..SESS..","..SSSS..","..SSSS.."]},
+ rocket:{name:"Rocket",rows:["...BB...","..BWWB..","..BWWB..","..BBBB..",".RBBBBR.",".R.BB.R.","...OO...","..O..O.."]},
+ alien:{name:"Alien",rows:[".N....N.","..N..N..",".NNNNNN.","NNENNENN","NNNNNNNN",".NNNNNN.",".N.NN.N.","N......N"]},
+ controller:{name:"Controller",rows:["........",".GGGGGG.","GGGGGGGG","GWGGGRRG","WWWGGRRG","GWGGGGGG","GG....GG","........"]},
+ slime:{name:"Slime",rows:["........","...CC...","..CCCC..",".CCCCCC.","CCECCECC","CCCCCCCC","CCCCCCCC",".CCCCCC."]},
+ gem:{name:"Gem",rows:["........",".LLLLLL.","LWLLLLBL","LLLLLLBB",".LLLLBB.","..LLBB..","...LB...","........"]},
+ moon:{name:"Moon",rows:["..YYY...",".YYY....","YYY.....","YYY.....","YYY.....",".YYY....","..YYYY..","........"]},
+};
+function martin(size,cls){return pixels(MARTIN,size,"martin "+(cls||""))}
+function avatarEl(id,size,cls){const a=AVATARS[id]||AVATARS.martin;return pixels(a.rows,size,"avatar "+(cls||""))}
+
+const S={tab:"home",console:null,q:"",fav:false,sort:"title",lib:null,settings:null,room:null,online:null,lastNotice:null,profile:null,netcheck:null,netBusy:false};
+const PRIMARY=[["home","Home"],["library","Library"],["console","Console mode"],["together","Server Info"],["servers","Servers"]];
+
+function renderNav(){const n=$("#nav");n.replaceChildren(...PRIMARY.map(([id,l])=>h("button",{class:S.tab===id?"on":"",onclick:()=>{S.tab=id;S.anchor=null;go()}},l+(id==="together"&&S.room?" ●":""))));renderWho()}
+function renderWho(){const w=$("#who");if(!w)return;const p=S.profile||{alias:"Player",avatar:"martin",player:"Player"};
+ w.replaceChildren(avatarEl(p.avatar,26),h("span",{class:"nm"},p.player||p.alias))}
+async function go(){closeMenus();renderNav();const m=$("#main");m.replaceChildren();window.scrollTo(0,0);
+ ({home:viewHome,library:viewLibrary,together:viewTogether,servers:viewServers,console:viewConsole,setup:viewSetup,engines:viewEngines,controllers:viewControllers,saves:viewSaves,emulators:viewEmulators,settings:viewSettings,credits:viewCredits,welcome:viewWelcome,help:viewHelp,storage:viewStorage,profile:viewProfile})[S.tab](m)}
+function nav(tab,anchor){S.tab=tab;S.anchor=anchor||null;go()}
+
+/* ---------- menu bar ---------- */
+function menuDefs(){return[
+ ["Account",[["Profile and avatar",()=>nav("profile")],["Network",()=>nav("together")],["Settings",()=>nav("settings")],["Check for updates",checkUpdates],"-",["Exit Legacy Player",quitApp]]],
+ ["Games",[["Library",()=>nav("library")],["Console mode",()=>nav("console")],["Storage by console",()=>nav("storage")],["Controllers",()=>nav("controllers")],["Saves and backups",()=>nav("saves")],"-",["Rescan my games",()=>rescan()]]],
+ ["Online",[["Server Info",()=>nav("together")],["Servers",()=>nav("servers")]]],
+ ["Tools",[["Setup (RetroArch)",()=>nav("setup")],["Engines",()=>nav("engines")],["Emulators",()=>nav("emulators")],["Scan this computer",()=>{nav("engines");setTimeout(()=>runScan().then(v=>{if(v)go()}),250)}],["Credits",()=>nav("credits")]]],
+ ["Help",[["How it works",()=>nav("help")],["How save files work",()=>nav("help","saves")],["Privacy",()=>nav("help","privacy")]]]]}
+function closeMenus(){document.querySelectorAll(".menu.open").forEach(x=>x.classList.remove("open"))}
+function buildMenubar(){const bar=$("#menubar");
+ const menus=menuDefs().map(([name,items])=>{const m=h("div",{class:"menu"},h("button",{type:"button",onclick:e=>{e.stopPropagation();const was=m.classList.contains("open");closeMenus();if(!was)m.classList.add("open")},onmouseenter:()=>{if(document.querySelector(".menu.open")){closeMenus();m.classList.add("open")}}},name),
+  h("div",{class:"dd",role:"menu"},...items.map(it=>it==="-"?h("hr"):h("button",{type:"button",role:"menuitem",onclick:()=>{closeMenus();it[1]()}},it[0]))));return m});
+ bar.replaceChildren(...menus,h("div",{class:"grow"}),h("button",{class:"who",id:"who",type:"button",title:"Your profile",onclick:()=>nav("profile")}));renderWho()}
+document.addEventListener("click",closeMenus);document.addEventListener("keydown",e=>{if(e.key==="Escape")closeMenus()});
+async function checkUpdates(){const r=await act(()=>api("check_update"));if(!r)return;
+ if(r.newer){if(await ask("Version "+r.latest+" is available (you have "+r.current+"). Open its download page?","Open page"))window.open(r.page,"_blank","noopener")}
+ else toast(r.ok?r.message+" You have "+r.current+".":r.message,r.ok?"":"warn")}
+async function quitApp(){const busy=S.room||(S.waits&&S.waits.length)||S.running;
+ if(await ask(busy?"Quit Legacy Player? You will leave your room"+(S.running?" and your game keeps running in its own window":"")+". Your server, if you started one, keeps running.":"Quit Legacy Player? A server you started keeps running. To keep the app open, minimize the window instead.","Quit")){
+  try{await api("quit")}catch(e){}document.title="Legacy Player closed";try{window.close()}catch(e){}document.body.replaceChildren(h("div",{style:"padding:60px;text-align:center"},martin(96),h("p",{},"Legacy Player has closed. You can close this window.")))}}
+
+/* ---------- network test runs by itself so Server Info already knows where you stand ---------- */
+async function pollNet(){S.netBusy=true;redrawNet();
+ for(let i=0;i<60;i++){const r=await api("network_last").catch(()=>null);if(r){if(r.at)S.netcheck=r;if(!r.running)break}await new Promise(x=>setTimeout(x,800))}
+ S.netBusy=false;redrawNet()}
+async function runNetTest(){if(S.netBusy)return;await act(()=>api("network_start"));pollNet()}
+async function autoNetTest(maxAge){
+ if(S.netBusy||!S.settings||!S.settings.auto_network_test)return;
+ if(!S.netcheck){const last=await api("network_last").catch(()=>null);if(last&&last.at)S.netcheck=last}
+ if(S.netcheck&&S.netcheck.at&&Date.now()/1000-S.netcheck.at<maxAge)return;
+ runNetTest()}
+function redrawNet(){const b=$("#netbox");if(b)drawNetCheck(b)}
+
+/* ---------- Home ---------- */
+async function viewHome(m){
+ const d=await api("home");const last=await api("network_last").catch(()=>({at:null}));if(last.at&&!S.netcheck)S.netcheck=last;
+ S.profile=S.profile||await api("profile");
+ const resume=d.recent[0];
+ const cta=[resume?h("button",{class:"btn primary",onclick:()=>openGame(resume.id)},"Continue: "+resume.title):null,
+  h("button",{class:"btn "+(resume?"":"primary"),onclick:()=>nav("library")},"Browse my games"),h("button",{class:"btn",onclick:()=>nav("together")},"Play together")];
+ m.append(h("div",{class:"hero"},martin(120),h("div",{class:"grow"},
+   h("h1",{},"Welcome back, "+d.alias),
+   h("p",{},d.games_total?d.games_total+" games, "+d.consoles_ready+" of "+d.consoles_total+" consoles ready to play.":"Point me at your games folder and I'll line everything up."),
+   h("div",{class:"row",style:"margin-top:12px"},...cta),
+   h("div",{class:"pstat"},
+    h("span",{class:"badge "+(S.online?"good":"")},(S.online?"● ":"○ ")+(S.online?"server online":"server offline")),
+    h("span",{class:"badge"},"network tested "+(S.netBusy?"now…":ago(S.netcheck&&S.netcheck.at))),
+    h("span",{class:"badge"},"version "+d.version)))));
+ const cards=[["One home for every console","NES to PS3 in a single place. Legacy Player opens the right emulator for each game, the way a console picks the right disc.","#3b6bff","#7a5cff",AVATARS.controller],
+  ["Your games stay yours","It only reads your folders. Nothing is copied, moved or sent anywhere, and no games or BIOS files are included.","#0aa57a","#2bd1b0",AVATARS.gem],
+  ["Play together, privately","Run a small server on your own computer, share a short code and play in a room. Other players never see your address.","#d9468f","#ff8a5c",AVATARS.rocket],
+  ["Made to feel like a console","Plug in a pad, map it once and drive everything from the couch in Console mode. Your saves are backed up for you.","#7b4dff","#4fc3ff",AVATARS.star]];
+ m.append(h("h3",{},"What Legacy Player is"),h("div",{class:"flashes"},...cards.map(([t,x,a,b,av])=>h("div",{class:"flash",style:`--c1:${a};--c2:${b}`},pixels(av.rows,40),h("h3",{},t),h("p",{},x)))));
+ const shelf=(title,list,empty)=>h("div",{},h("h3",{},title),list.length?h("div",{class:"shelf"},...list.map(g=>card(g))):h("p",{class:"muted small"},empty));
+ S.lib=S.lib||await api("library",{});
+ m.append(shelf("Recent games",d.recent,"Play something and it shows up here."));
+ if(d.favorites.length)m.append(shelf("Favorites",d.favorites,""));
+ m.append(h("div",{class:"card",style:"margin-top:10px"},h("div",{class:"row"},h("h3",{class:"grow",style:"margin:0"},"Your emulators"),
+   h("button",{class:"btn",onclick:()=>nav("emulators")},"Manage"),h("button",{class:"btn primary",onclick:()=>{nav("engines")}},"Find more")),
+  h("div",{class:"chips"},...(d.emulators.length?d.emulators.map(e=>h("span",{class:"chip",title:e.path,onclick:()=>nav("emulators")},"✓ "+e.name)):[h("span",{class:"muted small"},"None found yet. Open Engines and scan this computer.")]))));
+ const f=d.featured;
+ m.append(f?h("div",{class:"card featured",style:"margin-top:14px"},h("div",{class:"row"},h("span",{class:"tag"},"Featured"),h("h3",{class:"grow",style:"margin:0"},f.title),f.link?h("a",{class:"btn",href:f.link,target:"_blank",rel:"noopener noreferrer"},"Open"):null),f.text?h("p",{},f.text):null,
+   h("p",{class:"small muted"},"Chosen by whoever set up this copy of Legacy Player. It is not an ad and nothing is paid for it."))
+  :h("div",{class:"card featured",style:"margin-top:14px"},h("div",{class:"row"},h("span",{class:"tag"},"Featured"),h("b",{class:"grow"},"Your featured spot"),h("button",{class:"btn",onclick:()=>nav("settings")},"Set it up")),
+   h("p",{class:"small muted"},"Put a game night, a friend's server or a link here. Set the title, text and link under Settings > Home page.")));
+}
+
+/* ---------- Storage by console ---------- */
+async function viewStorage(m){
+ const d=await api("storage");const max=Math.max(1,...d.consoles.map(c=>c.bytes));
+ m.append(h("h2",{},"Storage by console"),h("div",{class:"why"},"How much space the games in your library folders take, console by console. Legacy Player only measures the files; it never moves or deletes them."),
+  h("div",{class:"card"},h("div",{class:"row"},h("h3",{class:"grow",style:"margin:0"},fmtBytes(d.total_bytes)+" across "+d.total_games+" games"),d.free_bytes!=null?h("span",{class:"badge"},fmtBytes(d.free_bytes)+" free on that drive"):null),
+   d.consoles.length?h("table",{style:"margin-top:10px"},h("thead",{},h("tr",{},h("th",{},"Console"),h("th",{},"Games"),h("th",{style:"width:45%"},"Size"),h("th",{},""))),
+    h("tbody",{},...d.consoles.map(c=>h("tr",{},h("td",{},c.name),h("td",{},String(c.count)),h("td",{},h("div",{class:"bar"},h("i",{style:"width:"+Math.max(2,Math.round(c.bytes/max*100))+"%"}))),h("td",{},h("b",{},fmtBytes(c.bytes)))))))
+   :h("p",{class:"muted"},"No games yet. Add a games folder in Library."))) }
+
+/* ---------- Profile ---------- */
+async function viewProfile(m){
+ const p=S.profile=await api("profile");let pick=p.avatar;
+ const name=h("input",{type:"text",value:p.alias,maxlength:24,"aria-label":"Your name",style:"width:240px"});
+ const grid=h("div",{class:"avatars"});
+ const draw=()=>grid.replaceChildren(...Object.entries(AVATARS).map(([id,a])=>h("button",{type:"button",class:pick===id?"on":"",title:a.name,onclick:()=>{pick=id;draw()}},avatarEl(id,56))));draw();
+ m.append(h("h2",{},"Your profile"),
+  h("div",{class:"why"},"This is how other players see you in a room: your name and a four-character tag, like an old console gamertag. The tag is given by the server you connect to, so nobody who is active there shares your name and tag. It says nothing about you or your computer."),
+  h("div",{class:"card"},h("div",{class:"row"},avatarEl(pick,72),h("div",{},h("div",{class:"small muted"},"You appear as"),h("b",{style:"font-size:1.3rem"},p.player))),
+   h("h3",{},"Name"),h("div",{class:"row"},name),h("h3",{},"Picture"),grid,
+   h("div",{class:"row",style:"margin-top:8px"},h("button",{class:"btn primary",onclick:async()=>{const r=await act(()=>api("profile",{alias:name.value.trim(),avatar:pick}),"Saved");if(r){S.profile=r;renderWho();go()}}},"Save"),
+    h("button",{class:"btn",onclick:async()=>{const r=await act(()=>api("profile",{claim:true}));if(r){S.profile=r;toast(r.claimed?"Your tag is "+r.player:r.note,r.claimed?"":"warn");renderWho();go()}}},"Ask my server for my tag")),
+   p.note?h("p",{class:"small muted"},p.note):null))}
+
+/* ---------- First-run: scan everything once, then you are set ---------- */
+function scanPanel(onDone){
+ const box=h("div",{});let timer=null;
+ const draw=v=>{
+  const found=Object.entries(v.emulators||{}),pk=Object.entries(v.packages||{});
+  const running=v.state==="running";
+  box.replaceChildren(
+   running?h("div",{},h("div",{class:"row"},martin(48,"hop"),h("div",{class:"grow"},h("b",{},"Looking around your computer",h("span",{class:"dots"})),h("div",{class:"small muted"},v.visited+" folders checked"+(v.where?" · "+v.where.slice(-60):""))),h("button",{class:"btn",onclick:()=>api("scan_pc",{action:"cancel"})},"Stop")),h("div",{class:"bar live",style:"margin-top:10px"},h("i"))):null,
+   (v.state==="done"||v.state==="stopped")?h("div",{},h("p",{class:"good"},"✓ "+(v.state==="stopped"?"Stopped early. ":"Finished. ")+(found.length?found.length+" emulator program"+(found.length>1?"s":"")+" found: "+found.map(([,e])=>e.name).join(", ")+".":"No emulator programs found yet.")),
+    pk.length?h("p",{class:"small warn"},"Found downloads that are not unpacked yet: "+pk.map(([,e])=>e.name+" ("+e.paths[0]+")").join("; ")+". Extract them, then add that folder under Emulators."):null):null,
+   v.state==="error"?h("p",{class:"bad small"},"The scan stopped: "+v.where):null);
+  if(!running&&timer){clearInterval(timer);timer=null;finish(v)}};
+ const finish=async v=>{await act(()=>api("scan_apply",{}));onDone&&onDone(v)};
+ const start=h("button",{class:"btn primary",onclick:async()=>{
+   if(!await ask("Scan this computer? It reads folder and file names only: program names like Dolphin.exe and BIOS files in the usual places. It changes nothing, sends nothing and does not use the internet.","Scan"))return;
+   const v=await act(()=>api("scan_pc",{action:"start",consent:true}));if(!v)return;start.disabled=true;draw(v);timer=setInterval(async()=>{draw(await api("scan_pc",{}).catch(()=>({state:"error",where:"lost the app"})))},900)}},"Scan my computer");
+ return h("div",{},h("div",{class:"row"},start),box)}
+async function viewWelcome(m){
+ const st=S.settings||{};let step=S.wizStep||0;const box=h("div",{});
+ S.profile=S.profile||await api("profile");let pick=S.profile.avatar||"martin";
+ const steps=["Meet Martin","Your games","Scan my computer","Privacy","All set"];
+ const fin=async()=>{await api("settings",{key:"setup_done",value:true});S.wizStep=0;S.tab="home";go()};
+ const nav2=(back,next,label)=>h("div",{class:"row",style:"margin-top:16px"},back?h("button",{class:"btn",onclick:()=>{S.wizStep=step-1;go()}},"Back"):null,h("button",{class:"btn primary",onclick:next},label||"Next"),step<4?h("button",{class:"btn",onclick:fin},"Skip setup"):null);
+ m.append(h("h2",{},"Welcome to Legacy Player"),box);
+ const render=async()=>{
+  box.replaceChildren(h("div",{class:"wizsteps"},...steps.map((t,i)=>h("span",{class:"chip"+(i===step?" on":"")},(i+1)+". "+t))));
+  if(step===0){const name=h("input",{type:"text",value:S.profile.alias==="Player"?"":S.profile.alias,placeholder:"Pick a name",maxlength:24,style:"width:240px"});const grid=h("div",{class:"avatars"});
+   const draw=()=>grid.replaceChildren(...Object.entries(AVATARS).map(([id,a])=>h("button",{type:"button",class:pick===id?"on":"",title:a.name,onclick:()=>{pick=id;draw()}},avatarEl(id,48))));draw();
+   box.append(h("div",{class:"hero",style:"margin-bottom:14px"},martin(110),h("div",{},h("h1",{},"Hi, I'm Martin."),h("p",{},"I'll get you set up in about a minute: pick who you are, tell me where your games live, and I'll look around for the emulators."))),
+    h("div",{class:"card"},h("h3",{},"Who are you?"),h("div",{class:"row"},name),
+     h("p",{class:"small muted"},"Other players see your name with a four-character tag, like #4821. The server you connect to gives the tag, and nobody active on it shares your name and tag."),h("h3",{},"Pick a picture"),grid,
+     nav2(false,async()=>{const v=name.value.trim();if(!v){toast("Pick a name first","warn");return}const r=await act(()=>api("profile",{alias:v,avatar:pick}));if(!r)return;S.profile=r;renderWho();S.wizStep=1;go()})))}
+  else if(step===1){const roots=await api("roots");const inp=h("input",{type:"text",placeholder:"P:\\Vimm",value:(roots.roots||[])[0]||"",style:"min-width:min(480px,100%)"});
+   box.append(h("div",{class:"card"},h("h3",{},"Where are your games?"),h("p",{class:"small muted"},"Paste the folder that holds your game files, sorted into folders like NES, SNES, PS2. Legacy Player only reads it; nothing is moved or renamed."),
+    h("div",{class:"row"},inp),nav2(true,async()=>{const v=inp.value.trim();if(v){const cur=roots.roots||[];const r=await act(()=>api("roots",{roots:cur.includes(v)?cur:cur.concat([v])}));if(!r)return;const sc=await act(()=>api("rescan"));if(sc)toast("Found "+sc.games+" games")}S.wizStep=2;go()})))}
+  else if(step===2){let done=false;
+   box.append(h("div",{class:"card"},h("h3",{},"Let me look around"),h("p",{class:"small muted"},"One scan finds your emulators and the BIOS files you already have, so you don't have to point at each one. It only reads names, stays on this computer and uses no internet."),
+    scanPanel(()=>{done=true;toast("Scan finished. Everything it found is in use.");}),nav2(true,()=>{S.wizStep=3;go()},"Next")))}
+  else if(step===3){const allow=h("input",{type:"checkbox",checked:!!st.allow_internet}),auto=h("input",{type:"checkbox",checked:st.auto_network_test!==false});
+   box.append(h("div",{class:"card"},h("h3",{},"Privacy and downloads"),
+    h("p",{class:"small"},"Legacy Player never sends anything about you, your computer or your games anywhere. Multiplayer talks only to the server address you choose; other players see your name and tag and nothing else."),
+    h("p",{},h("label",{class:"small"},allow," Allow internet downloads (engines from official project releases, RetroArch cores from libretro, update checks). Each download still asks you first.")),
+    h("p",{},h("label",{class:"small"},auto," Test my network when Legacy Player opens, so I can tell you if you should host or join. Only this computer and your chosen server are contacted.")),
+    h("p",{class:"small muted"},"BIOS files for PS1/PS2/Xbox/DS are never downloaded: they belong to the console makers. I use the copies you dumped from your own consoles."),
+    nav2(true,async()=>{await act(()=>api("settings",{key:"allow_internet",value:allow.checked}));const r=await act(()=>api("settings",{key:"auto_network_test",value:auto.checked}));if(r)S.settings=r.values;S.wizStep=4;go()})))}
+  else{const hm=await api("home");const en=await api("engines");const bios=en.bios.reduce((n,b)=>n+(b.found.length?1:0),0);const p=await api("profile",{claim:true});S.profile=p;renderWho();
+   box.append(h("div",{class:"hero"},martin(120,"cheer"),h("div",{},h("h1",{},"You're good to go."),h("p",{},"Everything is locked in. Here is what I found:"))),
+    h("div",{class:"card",style:"margin-top:14px"},
+     h("div",{class:"sumrow"},h("span",{},"You are"),h("b",{},p.player)),
+     h("div",{class:"sumrow"},h("span",{},"Games in your library"),h("b",{},String(hm.games_total))),
+     h("div",{class:"sumrow"},h("span",{},"Consoles ready to play"),h("b",{},hm.consoles_ready+" of "+hm.consoles_total)),
+     h("div",{class:"sumrow"},h("span",{},"Emulators"),h("b",{},hm.emulators.length?hm.emulators.map(e=>e.name).join(", "):"none yet")),
+     h("div",{class:"sumrow"},h("span",{},"BIOS sets found"),h("b",{},bios+" of "+en.bios.length)),
+     p.claimed?null:h("p",{class:"small muted",style:"margin-top:10px"},p.note),
+     h("div",{class:"row",style:"margin-top:16px"},h("button",{class:"btn primary",onclick:fin},"Enter Legacy Player"))))}
+ };render()}
+
+/* ---------- Help ---------- */
+function viewHelp(m){
+ const sec=(id,t,...p)=>h("div",{class:"card",id:"h-"+id,style:"margin-bottom:12px"},h("h3",{style:"margin-top:0"},t),...p.map(x=>h("p",{},x)));
+ m.append(h("h2",{},"Help"),
+  sec("games","Your games stay yours","Legacy Player scans your games folder by file type and folder name. It lists files; it never opens, copies, moves, or changes them, and it ships no games, BIOS, or firmware."),
+  sec("playing","Playing","Pressing Play starts the emulator you chose for that console with your game. Emulators are separate programs; Legacy Player opens and organizes them. Console mode shows the same library in a big-screen layout you can drive with a pad."),
+  sec("saves","How save files work",
+   "A game's progress lives in a save file, and a quick snapshot of the exact moment is a save state. They are written by the emulator, not by Legacy Player, so where they end up depends on the emulator.",
+   "For RetroArch consoles Legacy Player gives every console its own tidy folder (saves and save states) under one root and passes it to RetroArch each time it launches. Look at Saves to see the folders or move the root, for example into a OneDrive or Dropbox folder if you want them synced.",
+   "Other emulators keep their own folders. Under Saves you can point each console at the folder its emulator uses, and backups will copy from there. PS1, PS2 and GameCube use a memory card file that is shared by many games, so one backup holds all of them.",
+   "A backup is a plain timestamped copy kept in the Legacy Player data folder. Restoring first backs up whatever is there now, so restoring can never cost you progress. Nothing is ever overwritten without a backup, and game files are never touched."),
+  sec("together","Playing together (technical)","A coordination server runs on Windows, Linux, or a Raspberry Pi. Each player's emulator sends button presses; the server releases a frame only when every player's input has arrived (lockstep), and players compare state checksums to detect desync. This only works when the emulator is deterministic, so support is tiered per console and per game."),
+  sec("codes","Server codes, invite codes and names","A server code (LP-...) gets a friend to your server. A room invite code lets them into one room. Both expire or can be revoked. Your name comes with a four-character tag from the server so nobody active there shares it. The server stores only hashes of codes. Traffic is encrypted when the server runs with TLS, which internet hosting requires."),
+  sec("notify","Notifications","You are told when someone asks to join, joins, leaves, disconnects, is removed by the host, or when the server restarts. A removed player sees the host's reason."),
+  sec("server","Starting and stopping the server","Use Servers: Start, Restart and Stop. From a terminal, python -m server.cli start --detach, stop, restart, and status work the same everywhere. Stopping saves rooms; starting resumes them. A match in progress returns to the ready step so everyone re-syncs."),
+  sec("match","Starting a match","NES, SNES, Game Boy, GBA, Genesis and Atari start through RetroArch netplay. GameCube and Wii open Dolphin and guide you through its NetPlay window with the room address filled in. Other consoles have rooms and invites but no match launcher yet."),
+  sec("privacy","Privacy","Legacy Player never sends anything about you, your computer or your games anywhere. Addresses are hidden behind a little eye until you press it. Matches go through the server relay by default so players never learn each other's address. Scans read names only. Downloads and update checks happen only when you press a button and have allowed internet access in Settings."));
+ if(S.anchor){const el=$("#h-"+S.anchor);if(el)setTimeout(()=>el.scrollIntoView({behavior:"smooth",block:"start"}),60)}
+}
 
 /* ---------- Library ---------- */
 async function viewLibrary(m){
@@ -157,7 +465,7 @@ async function openGame(id){
 function controllerWhy(){return"Every pad is read in a standard layout. Each console has its own buttons, so Legacy Player maps your pad to that console automatically. You can change any mapping in Controllers."}
 
 /* ---------- Play Together ---------- */
-async function pingServer(){const r=await api("server_status").catch(()=>({online:false}));S.online=r.online;$("#srvdot").className="dot"+(r.online?" on":"");$("#srvtxt").textContent=r.online?"multiplayer server online":"multiplayer server offline";return r}
+async function pingServer(){const r=await api("server_status").catch(()=>({online:false}));S.online=r.online;$("#srvdot").className="dot"+(r.online?" on":"");$("#srvtxt").textContent=r.online?"multiplayer server online":"multiplayer server offline";if(r.online&&!S.onlineSeen){S.onlineSeen=true;autoNetTest(S.netcheck&&S.netcheck.server&&S.netcheck.server.ok?1200:0)}return r}
 async function viewTogether(m){
  const st=await pingServer();
  m.append(h("h2",{},"Server Info"),
@@ -165,13 +473,13 @@ async function viewTogether(m){
  const mine=await api("server_control",{action:"status",share:false}).catch(()=>({running:false}));
  const roomNow=(await api("mp_state").catch(()=>({room:null}))).room;
  const remote=S.settings&&S.settings.server_host!=="127.0.0.1";
- const pill=(ok,text)=>h("span",{class:"badge "+(ok?"good":"")},(ok?"● ":"○ ")+text);
+ const pill=(ok,text)=>h("span",{class:"badge "+(ok?"good":"")},(ok?"● ":"○ "),text);
  m.append(h("div",{class:"panel"},h("div",{class:"row"},
    pill(!!roomNow,roomNow?"In a room: "+roomNow.game+" ("+roomNow.members.length+(roomNow.max_players?"/"+roomNow.max_players:"")+" players)":"Not in a room"),
    pill(!!mine.running,mine.running?"Your server is running":"Your server is not running"),
-   pill(st.online,st.online?"Connected to "+(remote?S.settings.server_host:"your own server"):"No server answering")),
+   pill(st.online,st.online?["Connected to ",remote?ipSpan(S.settings.server_host):"your own server"]:"No server answering")),
   h("div",{class:"row",style:"margin-top:8px"},h("button",{class:"btn",onclick:()=>{S.tab="servers";go()}},"Open Servers")," ",h("span",{class:"small muted"},"Start, share or connect to a server there."))));
- if(!roomNow){const net=h("div",{class:"card",style:"margin-top:12px"});m.append(net);drawNetCheck(net)}
+ if(!roomNow){const net=h("div",{class:"card",id:"netbox",style:"margin-top:12px"});m.append(net);drawNetCheck(net);if(!(S.netcheck&&S.netcheck.at))api("network_last").then(x=>{if(x.at){S.netcheck=x;redrawNet()}}).catch(()=>{})}
  S.allGames=(await api("library",{})).games;
  const s=await api("mp_state");S.room=s.room;S.waits=s.waits||[];
  if(s.notice)toast(s.notice,s.level);(s.wait_events||[]).forEach(e=>toast(e.text,e.level));
@@ -195,21 +503,22 @@ async function viewTogether(m){
  }
 }
 
-async function drawNetCheck(box,run){
- const result=S.netcheck;
- const draw=r=>{
-  box.replaceChildren(h("div",{class:"row"},h("h3",{class:"grow"},whyInline("Is my network ready?","Measures this computer and the server you chose, and tests a pretend room on this computer. It contacts nothing else and sends nothing about you. To test reaching you from outside, someone on another network has to try joining.")),
-    h("button",{class:"btn primary",onclick:async()=>{box.replaceChildren(h("p",{class:"muted"},"Testing… about 3 seconds."));const x=await act(()=>api("network_check"));if(x){S.netcheck=x;draw(x)}else draw(S.netcheck)}},r?"Test again":"Test my network")),
-   !r?h("p",{class:"small muted"},"Not connected to a room. Run a quick test to see if this computer should host, or join someone else."):h("div",{},
+function drawNetCheck(box){
+ const r=S.netcheck&&S.netcheck.at?S.netcheck:null;
+ const kinds={private:"home/office network",public:"public",cgnat:"shared by your provider",loopback:"not on a network",unknown:"unknown"};
+ box.replaceChildren(h("div",{class:"row"},h("h3",{class:"grow"},whyInline("Is my network ready?","Measures this computer and the server you chose, and tests a pretend room on this computer. It contacts nothing else and sends nothing about you. It runs by itself when Legacy Player opens and when you connect to a server (you can turn that off in Settings > Multiplayer). To test reaching you from outside, someone on another network has to try joining.")),
+   S.netBusy?h("span",{class:"small muted"},h("span",{class:"spin"}),"Testing",h("span",{class:"dots"})):(r?h("span",{class:"small muted"},"Last tested "+ago(r.at)):null),
+   h("button",{class:"btn primary",disabled:S.netBusy,onclick:runNetTest},r?"Test again":"Test my network")),
+  S.netBusy?h("div",{class:"bar live",style:"margin:8px 0"},h("i")):null,
+  (!r&&!S.netBusy)?h("p",{class:"small muted"},"Not tested yet. Run a quick test to see if this computer should host, or join someone else."):null,
+  r?h("div",{style:S.netBusy?"opacity:.55":""},
     h("div",{class:"panel",style:"margin:8px 0"},h("b",{class:r.advice.verdict==="join"?"warn":"good"},r.advice.headline),h("ul",{class:"small"},...r.advice.reasons.map(t=>h("li",{},t)))),
     h("table",{},h("tbody",{},
-     h("tr",{},h("td",{},"This computer's network address"),h("td",{},r.address+" · "+({private:"home/office network",public:"public",cgnat:"shared by your provider",loopback:"not on a network",unknown:"unknown"})[r.address_kind])),
+     h("tr",{},h("td",{},"This computer's network address"),h("td",{},ipSpan(r.address)," · "+kinds[r.address_kind])),
      h("tr",{},h("td",{},"Ping to "+r.server_name),h("td",{},r.server.ok?r.server.avg_ms+" ms average ("+r.server.min_ms+"–"+r.server.max_ms+"), jitter "+r.server.jitter_ms+" ms, "+r.server.loss_pct+"% lost":"no answer")),
      h("tr",{},h("td",{},"Pretend room on this computer"),h("td",{},r.room_load.players+" players, "+r.room_load.requests_per_s+" requests per second")),
-     h("tr",{},h("td",{},"This computer's own speed"),h("td",{},r.mock.rtt_ms+" ms round trip, "+Math.round(r.mock.mbps)+" Mbps"))))))};
- draw(result);
- if(!result&&!run){try{const x=await api("network_check");S.netcheck=x;draw(x)}catch(e){}}
-}
+     h("tr",{},h("td",{},"This computer's own speed"),h("td",{},r.mock.rtt_ms+" ms round trip, "+Math.round(r.mock.mbps)+" Mbps")))))
+   :null)}
 async function drawBrowse(box){
  const d=await api("mp_browse").catch(()=>null);if(!d)return;
  box.replaceChildren(h("div",{class:"card",style:"margin-top:14px"},h("div",{class:"row"},h("h3",{class:"grow"},whyInline("Open rooms on this server","Rooms whose host chose to make them public. You see the game and how full it is, never who is inside. Join walks in if there is a seat; Wait in line keeps your place while you play something else and tells you when it is your turn.")),h("button",{class:"btn",onclick:()=>drawBrowse(box)},"Refresh")),
@@ -371,9 +680,9 @@ async function viewServers(m){
  const codeBox=h("div",{});
  const showCode=async()=>{const c=await act(()=>api("server_code",{}));if(!c)return;
   codeBox.replaceChildren(c.code?h("div",{},h("div",{class:"row"},h("span",{class:"code",style:"font-size:1.4em"},c.code),h("button",{class:"btn",onclick:()=>copyText(c.code)},"Copy")),
-    h("p",{class:"small muted"},"Friends paste this into Connect to a server. It carries "+c.address+":"+c.port+" and the first part of your certificate fingerprint."),h("p",{class:"small muted"},c.reach),
+    h("p",{class:"small muted"},"Friends paste this into Connect to a server. It carries ",ipSpan(c.address),":"+c.port+" and the first part of your certificate fingerprint."),h("p",{class:"small muted"},c.reach),
     h("details",{},h("summary",{class:"small"},"Longer details"),h("p",{class:"small"},"Full fingerprint: ",h("span",{class:"code"},c.fingerprint||"-"))))
-   :h("p",{class:"warn small"},c.error+" Share these instead: address "+c.address+", port "+c.port+", fingerprint "+(c.fingerprint||"-")+"."))};
+   :h("p",{class:"warn small"},c.error+" Share these instead: address ",ipSpan(c.address),", port "+c.port+", fingerprint "+(c.fingerprint||"-")+"."))};
  m.append(h("div",{class:"card",style:"margin-top:14px"},h("h3",{},"Invite friends to your server"),
   h("p",{class:"small muted"},"Start the server with Let friends connect on, then make your server code. Room invite codes (made in Server Info) are separate: the server code gets a friend to your server, the invite code lets them into one room."),
   h("div",{class:"row"},h("button",{class:"btn primary",onclick:showCode},"Make my server code")),codeBox));
@@ -381,8 +690,8 @@ async function viewServers(m){
  const code=h("input",{type:"text",placeholder:"LP-XXXX-XXXX-XXXX-XXXX-XX",style:"width:min(300px,100%)","aria-label":"Server code"});
  const mine=V.server_host==="127.0.0.1";
  m.append(h("div",{class:"card",style:"margin-top:14px"},h("h3",{},"Connect to a server"),
-  h("p",{class:"small"},"Connected to: ",h("b",{},mine?"your own server (this computer)":V.server_host+":"+V.server_port),mine?"":h("span",{class:"small muted"}," (encrypted, certificate checked)")),
-  h("div",{class:"row"},code,h("button",{class:"btn good",onclick:async()=>{const r=await act(()=>api("server_connect",{code:code.value}));if(!r)return;toast(r.connected?"Connected to "+r.host:r.message,r.connected?"":"warn");go()}},"Connect"),
+  h("p",{class:"small"},"Connected to: ",h("b",{},mine?"your own server (this computer)":h("span",{},ipSpan(V.server_host),":"+V.server_port)),mine?"":h("span",{class:"small muted"}," (encrypted, certificate checked)")),
+  h("div",{class:"row"},code,h("button",{class:"btn good",onclick:async()=>{const r=await act(()=>api("server_connect",{code:code.value}));if(!r)return;toast(r.connected?"Connected to the server":r.message,r.connected?"":"warn");go();if(r.connected)autoNetTest(0)}},"Connect"),
    mine?null:h("button",{class:"btn",onclick:async()=>{await act(()=>api("server_connect",{local:true}),"Back to your own server");go()}},"Use my own server"))));
  // 4. rooms on the connected server
  const s2=await api("mp_state");S.room=s2.room;S.waits=s2.waits||[];
@@ -547,8 +856,9 @@ async function runScan(){
   await new Promise(r=>setTimeout(r,1000));v=await api("scan_pc",{}).catch(()=>({state:"error",found:{}}))}
  const old=$("#"+tid);if(old)old.remove();
  const done=await act(()=>api("scan_apply",{}));
- const names=Object.keys(v.emulators||{}).map(k=>v.emulators[k].name);
+ const names=Object.keys(v.emulators||{}).map(k=>v.emulators[k].name);const pk=Object.values(v.packages||{}).map(e=>e.name);
  toast(names.length?"Found: "+names.join(", ")+(done&&Object.keys(done.applied).length?". Now using "+Object.keys(done.applied).length+" new one(s).":"."):"Scan finished. No emulator programs found in the usual places; add the folder you keep them in under Emulators.",names.length?"":"warn");
+ if(pk.length)toast("Found downloads that are not unpacked yet: "+pk.join(", ")+". Extract them, then add that folder under Emulators.","warn");
  return v}
 
 async function showSource(e){
@@ -592,6 +902,8 @@ async function viewEngines(m){
        if(!await ask("Fetch every missing engine that has an official GitHub release, one after another, into "+d.install_folder+"?"))return;
        const r=await act(()=>api("engines_install_all",{confirm:true}));if(r){toast("Fetching: "+r.queued.join(", "));draw();poll()}}},"Get all missing engines")),
     h("p",{class:"small muted"},"Looks in Program Files, AppData, your user folders, Downloads, your games and emulator folders and the top levels of every drive. Reads names only; stays on this computer."+(d.last_scan?" Last scan: "+new Date(d.last_scan*1000).toLocaleString():""))),
+   h("div",{class:"card",style:"margin-top:12px"},h("h3",{style:"margin-top:0"},whyInline("Consoles ready","A console is ready when at least one program that can run it has been found. Each console may use any of several emulators; pick them in Console mode or Emulators.")),
+    h("div",{class:"chips"},...d.consoles.map(c=>h("span",{class:"chip"+(c.ready?" on":""),title:c.ready?"Plays with "+c.via:"No emulator found for this console yet"},c.name+(c.ready?" · "+c.via:""))))),
    h("div",{class:"card",style:"margin-top:12px"},h("table",{},h("thead",{},h("tr",{},h("th",{},"Engine"),h("th",{},"Consoles"),h("th",{},"Status"),h("th",{},"Official source"))),h("tbody",{},...d.engines.map(e=>h("tr",{},
      h("td",{},h("b",{},e.name),h("div",{class:"small muted"},e.license)),
      h("td",{class:"small"},e.consoles.map(consoleName).join(", ")),
@@ -604,10 +916,12 @@ async function viewEngines(m){
       h("div",{style:"margin-top:4px"},h("button",{class:"btn",onclick:()=>showSource(e)},"Source details")))))))),
    job.state!=="idle"?h("div",{class:"card",style:"margin-top:12px"},h("div",{class:"small"},(running?"Working: ":job.state==="done"?"Done. ":"Stopped. ")+job.step+(running?" ("+job.percent+"%)":"")),
      job.error?h("div",{class:"bad small"},job.error):null,h("div",{class:"feed",style:"margin-top:6px"},...job.log.slice().reverse().map(t=>h("div",{},t)))):null,
-   h("h3",{},whyInline("BIOS and firmware","Some consoles need a copy of their own system software to run. Those files belong to the console makers, so Legacy Player never downloads them: it finds the copies you dumped from hardware you own and tells you which are missing.")),
-   h("div",{class:"card"},...d.bios.map(b=>h("div",{style:"margin-bottom:10px"},h("div",{class:"row"},h("b",{},b.name),h("span",{class:"small muted"},"for "+b.for),b.found.length?h("span",{class:"badge good"},"found"):h("span",{class:"badge"},"not found")),
-     ...b.found.map(f=>h("div",{class:"small"},f.path+"  ("+Math.round(f.size/1024)+" KB, sha256 "+f.sha256+"…)")),
-     b.found.length?null:h("div",{class:"small muted"},b.how)))),
+   h("details",{class:"fold card",style:"margin-top:12px",open:!!S.biosOpen,ontoggle:e=>{S.biosOpen=e.target.open}},
+    h("summary",{},h("b",{},whyInline("BIOS and firmware","Some consoles need a copy of their own system software to run. Those files belong to the console makers, so Legacy Player never downloads them: it finds the copies you dumped from hardware you own and tells you which are missing.")),
+     h("span",{class:"badge "+(d.bios.some(b=>b.found.length)?"good":"")},d.bios.filter(b=>b.found.length).length+" of "+d.bios.length+" found"),h("span",{class:"small muted"},"click to open")),
+    ...d.bios.map(b=>{const shown=b.found.slice(0,4),rest=b.found.slice(4);const line=f=>h("div",{class:"small"},f.path+"  ("+Math.round(f.size/1024)+" KB)");
+     return h("div",{style:"margin:12px 0"},h("div",{class:"row"},h("b",{},b.name),h("span",{class:"small muted"},"for "+b.for),b.found.length?h("span",{class:"badge good"},b.found.length+" found"):h("span",{class:"badge"},"not found")),
+      ...shown.map(line),rest.length?h("details",{},h("summary",{class:"small muted"},"and "+rest.length+" more…"),...rest.map(line)):null,b.found.length?null:h("div",{class:"small muted"},b.how))})),
    h("p",{class:"small muted"},"Downloads use only api.github.com and GitHub's file hosts over https; most projects publish no checksums, so trust rests on TLS to GitHub. Installs go to "+d.install_folder+"."));
   return job.state};
  const poll=()=>{clearInterval(S.engTimer);S.engTimer=setInterval(async()=>{if(S.tab!=="engines"){clearInterval(S.engTimer);return}const st=await draw().catch(()=>"error");if(st!=="running")clearInterval(S.engTimer)},1500)};
@@ -654,40 +968,6 @@ async function viewConsole(m){
   if(edge(1)){S.tab="library";go()}},50);
  if(!S.P)S.P=await api("pads").catch(()=>null);
  render();
-}
-
-/* ---------- First-run setup wizard ---------- */
-async function viewWelcome(m){
- const roots=await api("roots");const eng=await api("engines");const st=S.settings||{};
- let step=S.wizStep||0;const box=h("div",{});m.append(h("h2",{},"Welcome to Legacy Player"),box);
- const steps=["Your games","Your engines","Privacy and downloads","Your name"];
- const nav=(back,next,nextLabel)=>h("div",{class:"row",style:"margin-top:14px"},back?h("button",{class:"btn",onclick:()=>{S.wizStep=step-1;go()}},"Back"):null,
-   h("button",{class:"btn primary",onclick:next},nextLabel||"Next"),h("button",{class:"btn",onclick:async()=>{await api("settings",{key:"setup_done",value:true});S.wizStep=0;S.tab="library";go()}},"Skip setup"));
- const render=()=>{
-  box.replaceChildren(h("div",{class:"chips"},...steps.map((t,i)=>h("span",{class:"chip"+(i===step?" on":"")},(i+1)+". "+t))));
-  if(step===0){const inp=h("input",{type:"text",placeholder:"P:\\\\Vimm",value:(roots.roots||[])[0]||"",style:"min-width:min(480px,100%)"});
-   box.append(h("div",{class:"card"},h("h3",{},"Where are your games?"),h("p",{class:"small muted"},"Paste the folder that holds your game files, sorted into folders like NES, SNES, PS2. Legacy Player only reads it; nothing is moved or renamed."),
-    h("div",{class:"row"},inp),nav(false,async()=>{const v=inp.value.trim();if(v){const cur=roots.roots||[];const r=await act(()=>api("roots",{roots:cur.includes(v)?cur:cur.concat([v])}));if(!r)return;await act(()=>api("rescan"))}S.wizStep=step+1;go()})))}
-  else if(step===1){
-   const have=eng.engines.filter(e=>e.path),missing=eng.engines.filter(e=>!e.path&&e.can_download);
-   box.append(h("div",{class:"card"},h("h3",{},"Which engines will run your games?"),
-    h("p",{class:"small muted"},"An engine is the emulator for one console family. You can use ones already on this computer, or let Legacy Player fetch its own copies from each project's official releases, kept in its own folder and credited on the Credits page."),
-    h("div",{class:"row"},h("button",{class:"btn",onclick:async()=>{if(await runScan()){S.wizStep=1;go()}}},"Scan this computer for my own emulators")),
-    h("p",{class:"small"},"Found so far: "+(have.length?have.map(e=>e.name).join(", "):"none yet")),
-    missing.length?h("p",{class:"small"},"Could be fetched from official releases: "+missing.map(e=>e.name).join(", ")+" (needs internet downloads on, next step; you can do it later from Engines)"):null,
-    h("p",{class:"small muted"},"Either way, you can point any console at any program later in Emulators."),
-    nav(true,()=>{S.wizStep=step+1;go()})))}
-  else if(step===2){const allow=h("input",{type:"checkbox",checked:!!st.allow_internet});
-   box.append(h("div",{class:"card"},h("h3",{},"Privacy and downloads"),
-    h("p",{class:"small"},"Legacy Player never sends anything about you, your computer or your games anywhere. Multiplayer talks only to the server address you choose; other players see your display name and nothing else."),
-    h("label",{class:"small"},allow," Allow internet downloads (engines from official project releases, RetroArch cores from libretro). Each download still asks you first."),
-    h("p",{class:"small muted"},"BIOS files for PS1/PS2/Xbox/DS are never downloaded: they belong to the console makers. Legacy Player finds the copies you dumped from your own consoles."),
-    nav(true,async()=>{await act(()=>api("settings",{key:"allow_internet",value:allow.checked}));S.wizStep=step+1;go()})))}
-  else {const name=h("input",{type:"text",value:st.display_name||"Player",maxlength:64});
-   box.append(h("div",{class:"card"},h("h3",{},"What should other players call you?"),h("div",{class:"row"},name),
-    h("p",{class:"small muted"},"A short tag (#1234) is added so two people with the same name never clash. It is random and says nothing about you."),
-    nav(true,async()=>{const r=await act(()=>api("settings",{key:"display_name",value:name.value.trim()||"Player"}));if(!r)return;await api("settings",{key:"setup_done",value:true});S.wizStep=0;S.tab="library";toast("You're set. Plug in a controller any time; the Controllers tab finds it.");go()},"Finish")))}
- };render();
 }
 
 /* ---------- Credits ---------- */
@@ -743,7 +1023,8 @@ async function viewEmulators(m){
   scanBox.replaceChildren(...[
    v.state==="running"?h("div",{class:"small"},"Looking… "+v.visited+" folders checked. ",h("span",{class:"muted"},v.where.slice(-70)),h("button",{class:"btn",style:"margin-left:8px",onclick:()=>api("scan_pc",{action:"cancel"})},"Stop")):null,
    v.state==="done"||v.state==="stopped"?h("p",{class:"small muted"},(v.state==="stopped"?"Stopped. ":"Finished. ")+(rows.length?"Found these. Nothing is used until you press Use this one.":"No emulator programs found in the usual places. Add the folder you keep them in above, or paste a program path below.")):null,
-   v.state==="error"?h("p",{class:"bad small"},"The scan stopped: "+v.where):null,...rows].filter(Boolean));
+   v.state==="error"?h("p",{class:"bad small"},"The scan stopped: "+v.where):null,...rows,
+   ...Object.entries(v.packages||{}).map(([id,e])=>h("div",{class:"row small warn"},h("b",{style:"min-width:110px"},e.name),h("span",{class:"grow"},"a download that is not unpacked yet: "+e.paths[0]+". Extract it, then add its folder above.")))].filter(Boolean));
   if(v.state!=="running"&&scanTimer){clearInterval(scanTimer);scanTimer=null}};
  const pollScan=()=>{clearInterval(scanTimer);scanTimer=setInterval(async()=>{if(S.tab!=="emulators"){clearInterval(scanTimer);return}drawScan(await api("scan_pc",{}).catch(()=>({state:"error",where:"lost the app"})))},1000)};
  const cardScan=h("div",{class:"card",style:"margin-top:12px"},h("h3",{},whyInline("Scan this computer","Looks through Program Files, your user folders, Downloads, Desktop, Documents and the top levels of every drive for emulator program names (like Dolphin.exe). It only reads folder and file names; it does not open, change, copy or send anything, and it never connects to the internet. It starts only when you press the button.")),
@@ -762,35 +1043,22 @@ async function viewEmulators(m){
 /* ---------- Settings ---------- */
 async function viewSettings(m){
  const s=await api("settings");S.settings=s.values;const roots=await api("roots");
- const groups={};Object.entries(s.schema).forEach(([k,sp])=>{(groups[sp.group]=groups[sp.group]||[]).push([k,sp])});
+ const groups={};Object.entries(s.schema).forEach(([k,sp])=>{if(sp.hidden)return;(groups[sp.group]=groups[sp.group]||[]).push([k,sp])});
  m.append(h("h2",{},"Settings"));
  const rootIn=h("input",{type:"text",placeholder:"Add a games folder path",style:"min-width:min(420px,100%)"});
  m.append(h("div",{class:"card"},h("h3",{},whyInline("Library folders","These folders are read-only. Saves, emulators and BIOS folders inside them are skipped when listing games.")),
   ...roots.roots.map(r=>h("div",{class:"row"},h("code",{class:"grow"},r),h("button",{class:"btn bad",onclick:async()=>{await act(()=>api("roots",{roots:roots.roots.filter(x=>x!==r)}));go()}},"Remove"))),
   h("div",{class:"row",style:"margin-top:8px"},rootIn,h("button",{class:"btn primary",onclick:async()=>{if(!rootIn.value.trim())return;const r=await act(()=>api("roots",{roots:[...roots.roots,rootIn.value.trim()]}));if(r){await act(()=>api("rescan"),"Library scanned");go()}}},"Add and scan"))));
- for(const[g,items]of Object.entries(groups)){
+ for(const[g,items]of Object.entries(groups).sort((a,b)=>(a[0]==="You"?-1:0)-(b[0]==="You"?-1:0))){
   m.append(h("div",{class:"card",style:"margin-top:14px"},h("h3",{},g),...items.map(([k,sp])=>{
    let ctl;const v=s.values[k];
-   const save=async val=>{const r=await act(()=>api("settings",{key:k,value:val}));if(r){S.settings=r.values;if(k==="theme")document.documentElement.dataset.theme=val;if(k==="view"||k==="show_region")toast("Saved")}};
+   const save=async val=>{const r=await act(()=>api("settings",{key:k,value:val}));if(r){S.settings=r.values;if(k==="theme")document.documentElement.dataset.theme=val;if(k==="view"||k==="show_region")toast("Saved");if(k==="display_name"){S.profile=await api("profile");renderWho()}if(k==="auto_network_test"&&val)autoNetTest(300)}};
    if(sp.type==="bool")ctl=h("input",{type:"checkbox",checked:v,onchange:e=>save(e.target.checked)});
    else if(sp.type==="choice")ctl=h("select",{onchange:e=>save(e.target.value)},...sp.choices.map(c=>h("option",{value:c,selected:c===v},c)));
    else if(sp.type==="int")ctl=h("input",{type:"number",value:v,min:sp.min,max:sp.max,onchange:e=>save(+e.target.value)});
    else ctl=h("input",{type:"text",value:v,onchange:e=>save(e.target.value)});
    return h("div",{style:"margin:10px 0"},h("div",{class:"row"},h("label",{class:"grow"},sp.label),ctl),h("div",{class:"small muted"},sp.help))})));
  }
-}
-
-/* ---------- Help ---------- */
-function viewHelp(m){
- const sec=(t,...p)=>h("div",{class:"card",style:"margin-bottom:12px"},h("h3",{},t),...p.map(x=>h("p",{},x)));
- m.append(h("h2",{},"How it works"),
-  sec("Your games stay yours","Legacy Player scans your games folder by file type and folder name. It lists files; it never opens, copies, moves, or changes them, and it ships no games, BIOS, or firmware."),
-  sec("Playing","Pressing Play starts the emulator you chose for that console with your game. Emulators are separate programs; Legacy Player opens and organizes them."),
-  sec("Playing together (technical)","A coordination server runs on Windows, Linux, or a Raspberry Pi. Each player's emulator sends button presses; the server releases a frame only when every player's input has arrived (lockstep), and players compare state checksums to detect desync. This only works when the emulator is deterministic, so support is tiered per console and per game."),
-  sec("Invite codes and privacy","A code like ABCDE-FGH12 is a secret that lets someone ask to join one room. It expires, has a use limit, can be cancelled, and wrong guesses are rate-limited. The server stores only hashes. Traffic is encrypted when the server runs with TLS, which internet hosting requires."),
-  sec("Notifications","You are told when someone asks to join, joins, leaves, disconnects, is removed by the host, or when the server restarts. A removed player sees the host's reason."),
-  sec("Starting and stopping the server","python -m server.cli start --detach, stop, restart, and status work the same everywhere. Stopping saves rooms; starting resumes them. A match in progress returns to the ready step so everyone re-syncs."),
-  sec("Starting a match","NES, SNES, Game Boy, GBA, Genesis and Atari start through RetroArch netplay. GameCube and Wii open Dolphin and guide you through its NetPlay window with the room address filled in. Other consoles have rooms and invites but no match launcher yet."));
 }
 
 setInterval(()=>{api("ping").catch(()=>{})},5000);
@@ -802,13 +1070,15 @@ async function refreshTitle(){try{const d=await api("status");const bits=["Legac
  bits.push(S.online===true?"Server online":S.online===false?"Server offline":"");
  document.title=bits.filter(Boolean).join(" — ")}catch(e){}}
 setInterval(refreshTitle,4000);setTimeout(refreshTitle,800);
-$("#quitbtn").addEventListener("click",async()=>{const busy=S.room||(S.waits&&S.waits.length)||S.running;
- if(await ask(busy?"Quit Legacy Player? You will leave your room"+(S.running?" and your game keeps running in its own window":"")+". Your server, if you started one, keeps running.":"Quit Legacy Player? A server you started keeps running. To keep the app open, minimize the window instead.","Quit")){
-  try{await api("quit")}catch(e){}document.title="Legacy Player closed";try{window.close()}catch(e){}document.body.replaceChildren(h("p",{style:"padding:40px"},"Legacy Player has closed. You can close this window."))}});
 window.addEventListener("pagehide",()=>{try{fetch("/api/bye",{method:"POST",keepalive:true,headers:{"Content-Type":"application/json","X-LP-Token":TOKEN},body:"{}"})}catch(e){}});
 (async function init(){try{const s=await api("settings");S.settings=s.values;document.documentElement.dataset.theme=s.values.theme}catch(e){}
+ buildMenubar();$("#brand").addEventListener("click",()=>nav("home"));$("#logomartin").append(martin(34));$("#bootmartin").append(martin(96,"hop"));
+ try{S.profile=await api("profile")}catch(e){}renderWho();
  const r=await api("mp_state").catch(()=>({room:null}));S.room=r.room;S.waits=r.waits||[];if(S.room||S.waits.length)poll();pingServer();setInterval(pingServer,15000);
- if(S.settings&&!S.settings.setup_done)S.tab="welcome";go()})();
+ if(S.settings&&!S.settings.setup_done)S.tab="welcome";
+ await go();
+ setTimeout(()=>{const b=$("#boot");if(b){b.classList.add("gone");setTimeout(()=>b.remove(),800)}},350);
+ setTimeout(()=>autoNetTest(300),1200)})();
 </script>
 </body>
 </html>

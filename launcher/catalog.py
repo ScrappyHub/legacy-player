@@ -15,6 +15,27 @@ SETTINGS_SCHEMA: dict[str, dict] = {
         "label": "Display name",
         "help": "The name other players see in a room. It is not an account and is not checked by anyone.",
     },
+    "avatar": {
+        "type": "text", "default": "martin", "group": "You", "hidden": True,
+        "label": "Avatar", "help": "Your little 8-bit picture. Pick it from the Account menu.",
+    },
+    "auto_network_test": {
+        "type": "bool", "default": True, "group": "Multiplayer",
+        "label": "Test my network when Legacy Player opens",
+        "help": "Runs the quick network check in the background at start-up and again once you connect to a server, so Server Info already shows where you stand. It only talks to this computer and the server you chose. Turn off to test only when you press the button.",
+    },
+    "featured_title": {
+        "type": "text", "default": "", "optional": True, "max": 60, "group": "Home page",
+        "label": "Featured: title", "help": "A section on the Home page for something you want to point people at. Leave blank to hide it.",
+    },
+    "featured_text": {
+        "type": "text", "default": "", "optional": True, "max": 240, "group": "Home page",
+        "label": "Featured: text", "help": "One or two sentences shown under the title.",
+    },
+    "featured_link": {
+        "type": "text", "default": "", "optional": True, "max": 300, "group": "Home page",
+        "label": "Featured: link", "help": "An https:// address the card opens. Always labelled Featured so nobody mistakes it for part of the app.",
+    },
     "setup_done": {
         "type": "bool", "default": False, "group": "You",
         "label": "First-run setup finished", "help": "Turn off to see the welcome steps again next time.",
@@ -104,6 +125,8 @@ DEFAULT_DATA = {
     "controller_overrides": {},  # console id -> {button: standard index}
     "save_sources": {},     # console id -> folder where the emulator writes saves
     "emulator_folders": [], # extra folders searched for emulator programs
+    "alias_tag": "",        # the #1234 the server gave this player's name (never shared with another active player)
+    "netcheck_last": None,  # {"at": epoch, "result": {...}} from the last network test
     "install_id": "",       # random tag so two players with the same name never collide
     "bios_found": {},       # bios kind -> list of files found by the last scan
     "last_scan": None,
@@ -136,7 +159,7 @@ class Catalog:
 
     def player_tag(self) -> str:
         """Display name plus a 4-character tag, like a gamertag. Carries nothing about the computer."""
-        return f"{self.settings()['display_name']}#{self.data['install_id']}"
+        return f"{self.settings()['display_name']}#{self.data.get('alias_tag') or self.data['install_id']}"
 
     def save(self) -> None:
         fd, tmp = tempfile.mkstemp(prefix=".ud-", dir=self.dir)
@@ -165,11 +188,16 @@ class Catalog:
             if isinstance(value, bool) or not isinstance(value, int) or not spec["min"] <= value <= spec["max"]:
                 raise CatalogError(f"{key} must be a whole number from {spec['min']} to {spec['max']}")
         if kind == "text":
-            if not isinstance(value, str) or not value.strip() or len(value) > 64:
-                raise CatalogError(f"{key} must be 1-64 characters")
+            limit = spec.get("max", 64)
+            if not isinstance(value, str) or (not value.strip() and not spec.get("optional")) or len(value) > limit:
+                raise CatalogError(f"{key} must be {'0' if spec.get('optional') else '1'}-{limit} characters")
             value = value.strip()
+            if key == "featured_link" and value and not value.startswith("https://"):
+                raise CatalogError("the featured link must start with https://")
         if kind == "choice" and value not in spec["choices"]:
             raise CatalogError(f"{key} must be one of {spec['choices']}")
+        if key == "display_name" and self.data["settings"].get("display_name") != value:
+            self.data["alias_tag"] = ""      # a new name needs a new tag from the server
         self.data["settings"][key] = value
         self.save()
 

@@ -227,3 +227,43 @@ class EngineSourceTests(unittest.TestCase):
             self.assertEqual("pcsx2-v2.0.0-windows-x64-Qt.7z", got["release"]["asset"]["name"])
             self.assertEqual(1, got["release"]["other_assets"])
             self.assertEqual("page", app.api_engines_source({"engine": "dolphin"}).get("kind"))
+
+
+class HomeProfileTests(unittest.TestCase):
+    def test_program_names_and_archives(self):
+        from launcher import emulators
+        for name, eid in [("snes9x.exe", "snes9x"), ("Snes9x-x64.exe", "snes9x"), ("xemu.exe", "xemu"), ("bsnes.exe", "bsnes"), ("PPSSPPWindows64.exe", "ppsspp")]:
+            self.assertEqual(emulators.program_for(name), eid)
+        for name in ("azahar-room.exe", "DolphinTool.exe", "uninst.exe", "unins000.exe"):
+            self.assertIsNone(emulators.program_for(name))
+        self.assertEqual(emulators.archive_for("xemu-win-x86_64-release.zip"), "xemu")
+
+    def test_alias_tags_are_unique_among_active_players(self):
+        from server.lobby.service import LobbyService, LobbyError
+        clock = type("C", (), {"now": 1000.0})()
+        svc = LobbyService(clock=lambda: clock.now)
+        a = svc.claim_alias({"alias": "Al", "install_id": "aaaa"})
+        b = svc.claim_alias({"alias": "al", "install_id": "bbbb"})
+        self.assertNotEqual(a["tag"], b["tag"])
+        self.assertEqual(svc.claim_alias({"alias": "Al", "install_id": "aaaa"})["tag"], a["tag"])   # stable for the same install
+        with self.assertRaises(LobbyError):
+            svc.claim_alias({"alias": "bad<>", "install_id": "aaaa"})
+        clock.now += 2000      # inactive: the tag is free again
+        c = svc.claim_alias({"alias": "Al", "install_id": "cccc", "tag": a["tag"]})
+        self.assertEqual(c["tag"], a["tag"])
+
+    def test_profile_storage_home_and_featured(self):
+        import tempfile
+        from pathlib import Path
+        from launcher.app import LauncherApp
+        app = LauncherApp(Path(tempfile.mkdtemp()))
+        p = app.api_profile({"alias": "Neo", "avatar": "robot"})
+        self.assertEqual(p["alias"], "Neo")
+        self.assertTrue(p["player"].startswith("Neo#"))
+        self.assertEqual(app.api_storage({})["total_games"], 0)
+        app.catalog.set_setting("featured_title", "Game night")
+        self.assertEqual(app.api_home({})["featured"]["title"], "Game night")
+        from launcher.catalog import CatalogError
+        with self.assertRaises(CatalogError):
+            app.catalog.set_setting("featured_link", "http://x")
+        self.assertIn("consoles", app.api_engines({}))
