@@ -368,6 +368,17 @@ textarea{background:var(--panel2);color:var(--text);border:1px solid var(--line)
 .unlist{max-height:180px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:6px 10px;margin-bottom:10px}
 .unrow{display:flex;flex-direction:column;padding:4px 0;border-bottom:1px solid var(--line);word-break:break-all}.unrow:last-child{border:0}
 .unopt{display:flex;gap:10px;align-items:flex-start;margin:8px 0}
+/* the doctor runs a scan on his own computer */
+.docterm{position:absolute;right:14px;bottom:86px;z-index:5;width:min(230px,46%);background:#06120c;color:#3be0a8;font:12px/1.35 ui-monospace,Consolas,monospace;border:3px solid #2a3350;border-radius:8px;padding:6px 9px 8px;box-shadow:0 0 22px #3be0a844,inset 0 0 18px #0a2a1a;animation:termon .45s ease-out}
+.docterm.off{opacity:0;transform:scale(.9);transition:all .6s}
+.docterm .dthead{font-weight:800;letter-spacing:2px;color:#9ff5d6;border-bottom:1px dashed #1f6a4d;margin-bottom:4px;padding-bottom:2px}
+.docterm .dtbody div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.docterm .cur{animation:blinkc 1s steps(1) infinite}
+@keyframes termon{from{opacity:0;transform:translateY(14px) scale(.85)}to{opacity:1;transform:none}}
+.scanline{position:absolute;left:0;right:0;height:4px;z-index:4;pointer-events:none;background:linear-gradient(90deg,transparent,#3be0a8,transparent);box-shadow:0 0 16px #3be0a8;animation:sweep 2.2s ease-in-out infinite}
+@keyframes sweep{0%{top:4%}50%{top:92%}100%{top:4%}}
+.docspot.scanning .px.doctor{animation:typing .28s steps(2) infinite;transform-origin:50% 100%}
+@keyframes typing{0%{transform:translateX(0) rotate(0)}50%{transform:translateX(4px) rotate(2.5deg)}100%{transform:translateX(0) rotate(0)}}
 /* a tired doctor */
 .docspot .px.doctor.sigh{animation:docsag 3.4s ease-in-out infinite}@keyframes docsag{0%,100%{transform:translateY(0)}50%{transform:translateY(7px) scaleY(.97)}}
 .docspot .px.doctor.eyeroll{animation:doclook 2s ease-in-out infinite}@keyframes doclook{0%,100%{transform:rotate(0)}50%{transform:rotate(-4deg) translateY(-2px)}}
@@ -673,7 +684,7 @@ function doctorRows(mood){const r=DOC_BASE.slice();
 async function scanEverything(refresh){
  if(!await ask("Scan everything? I will read your games folders again, make the save folders, and look through this computer for emulators and BIOS files. It reads names only, changes nothing, sends nothing and uses no internet.","Scan everything"))return;
  docWork(true,"scan");try{await act(()=>api("scan_everything"));await runScan(true)}finally{docWork(false)}refresh()}
-function doctorSay(dr){const cheers=["Let's play!","Ready, player one!","Game on!","So many games!","Press start!","Pick something!"];
+function doctorSay(dr){if(!dr.last_scan)return "New here? Come in: I'll scan your computer for you.";const cheers=["Let's play!","Ready, player one!","Game on!","So many games!","Press start!","Pick something!"];
  return{happy:cheers[Math.floor(Date.now()/60000)%cheers.length],worried:"Almost there! A few things to sort.",sad:dr.games?"Let's find you an emulator!":"Show me your games!"}[dr.mood]}
 /* Home shows only the doctor's door; the doctor himself lives in his office on the Setup page */
 function doctorDoor(dr){const n=dr.issues.filter(i=>!i.dismissed).length;
@@ -768,13 +779,13 @@ async function viewProfile(m){
    p.note?h("p",{class:"small muted"},p.note):null))}
 
 /* ---------- First-run: scan everything once, then you are set ---------- */
-function scanPanel(onDone){
+function scanPanel(onDone,opts){opts=opts||{};
  const box=h("div",{});let timer=null;
  const draw=v=>{
   const found=Object.entries(v.emulators||{}),pk=Object.entries(v.packages||{});
   const running=v.state==="running";
   box.replaceChildren(
-   running?h("div",{},h("div",{class:"row"},martin(48,"hop"),h("div",{class:"grow"},h("b",{},"Looking around your computer",h("span",{class:"dots"})),h("div",{class:"small muted"},v.visited+" folders checked"+(v.where?" · "+v.where.slice(-60):""))),h("button",{class:"btn",onclick:()=>api("scan_pc",{action:"cancel"})},"Stop")),h("div",{class:"bar live",style:"margin-top:10px"},h("i"))):null,
+   running?h("div",{},h("div",{class:"row"},pixels(doctorRows("happy"),48,"doctor happy"),h("div",{class:"grow"},h("b",{},"Looking around your computer",h("span",{class:"dots"})),h("div",{class:"small muted"},v.visited+" folders checked"+(v.where?" · "+v.where.slice(-60):""))),h("button",{class:"btn",onclick:()=>api("scan_pc",{action:"cancel"})},"Stop")),h("div",{class:"bar live",style:"margin-top:10px"},h("i"))):null,
    (v.state==="done"||v.state==="stopped")?h("div",{},h("p",{class:"good"},"✓ "+(v.state==="stopped"?"Stopped early. ":"Finished. ")+(found.length?found.length+" emulator program"+(found.length>1?"s":"")+" found: "+found.map(([,e])=>e.name).join(", ")+".":"No emulator programs found yet.")),
     pk.length?h("p",{class:"small warn"},"Found downloads that are not unpacked yet: "+pk.map(([,e])=>e.name+" ("+e.paths[0]+")").join("; ")+". Extract them, then add that folder under Emulators."):null):null,
    v.state==="error"?h("p",{class:"bad small"},"The scan stopped: "+v.where):null);
@@ -782,29 +793,30 @@ function scanPanel(onDone){
  const finish=async v=>{await act(()=>api("scan_apply",{}));onDone&&onDone(v)};
  const start=h("button",{class:"btn primary",onclick:async()=>{
    if(!await ask("Scan this computer? It reads folder and file names only: program names like Dolphin.exe and BIOS files in the usual places. It changes nothing, sends nothing and does not use the internet.","Scan"))return;
-   const v=await act(()=>api("scan_pc",{action:"start",consent:true}));if(!v)return;start.disabled=true;draw(v);timer=setInterval(async()=>{draw(await api("scan_pc",{}).catch(()=>({state:"error",where:"lost the app"})))},900)}},"Scan my computer");
+   if(opts.everything)await act(()=>api("scan_everything")).catch(()=>null);const v=await act(()=>api("scan_pc",{action:"start",consent:true}));if(!v)return;start.disabled=true;draw(v);timer=setInterval(async()=>{draw(await api("scan_pc",{}).catch(()=>({state:"error",where:"lost the app"})))},900)}},"Scan my computer");
  return h("div",{},h("div",{class:"row"},start),box)}
 async function viewWelcome(m){
  const st=S.settings||{};let step=S.wizStep||0;const box=h("div",{});
  S.profile=S.profile||await api("profile");let pick=S.profile.avatar||"martin";
- const steps=["Meet Martin","Your games","Scan my computer","Privacy","All set"];
+ const steps=["Meet the doctor","Your games","Scan my computer","Privacy","All set"];
+ const docFace=(px,mood)=>pixels(doctorRows(mood||"happy"),px,"doctor "+(mood||"happy"));
  const fin=async()=>{await api("settings",{key:"setup_done",value:true});S.wizStep=0;S.tab="home";go()};
- const nav2=(back,next,label)=>h("div",{class:"row",style:"margin-top:16px"},back?h("button",{class:"btn",onclick:()=>{S.wizStep=step-1;go()}},"Back"):null,h("button",{class:"btn primary",onclick:next},label||"Next"),step<4?h("button",{class:"btn",onclick:fin},"Skip setup"):null);
+ const nav2=(back,next,label)=>h("div",{class:"row",style:"margin-top:16px"},back?h("button",{class:"btn",onclick:()=>{S.wizStep=step-1;go()}},"Back"):null,h("button",{class:"btn primary",onclick:next},label||"Next"),step<4?h("button",{class:"btn",title:"Skips only this step. The rest of the setup carries on.",onclick:()=>{S.wizStep=step+1;go()}},"Skip this step"):null);
  m.append(h("h2",{},"Welcome to Legacy Player"),box);
  const render=async()=>{
   box.replaceChildren(h("div",{class:"wizsteps"},...steps.map((t,i)=>h("span",{class:"chip"+(i===step?" on":"")},(i+1)+". "+t))));
   if(step===0){const name=h("input",{type:"text",value:S.profile.alias==="Player"?"":S.profile.alias,placeholder:"Pick a name",maxlength:24,style:"width:240px"});const grid=h("div",{class:"avatars"});
    const draw=()=>grid.replaceChildren(...Object.entries(AVATARS).map(([id,a])=>h("button",{type:"button",class:pick===id?"on":"",title:a.name,onclick:()=>{pick=id;draw()}},avatarEl(id,48))));draw();
-   box.append(h("div",{class:"hero",style:"margin-bottom:14px"},martin(110),h("div",{},h("h1",{},"Hi, I'm Martin."),h("p",{},"I'll get you set up in about a minute: pick who you are, tell me where your games live, and I'll look around for the emulators."))),
+   box.append(h("div",{class:"hero",style:"margin-bottom:14px"},docFace(110),h("div",{},h("h1",{},"Hi, I'm the doctor."),h("p",{},"I'll get you set up in about a minute: pick who you are, tell me where your games live, and I'll look around for the emulators. Any step you don't want, skip it; the rest carries on. Martin the cat is on the desk, keeping an eye on things."))),
     h("div",{class:"card"},h("h3",{},"Who are you?"),h("div",{class:"row"},name),
      h("p",{class:"small muted"},"Other players see your name with a four-character tag, like #4821. The server you connect to gives the tag, and nobody active on it shares your name and tag."),h("h3",{},"Pick a picture"),grid,
      nav2(false,async()=>{const v=name.value.trim();if(!v){toast("Pick a name first","warn");return}const r=await act(()=>api("profile",{alias:v,avatar:pick}));if(!r)return;S.profile=r;renderWho();S.wizStep=1;go()})))}
-  else if(step===1){const roots=await api("roots");const inp=h("input",{type:"text",placeholder:"P:\\Vimm",value:(roots.roots||[])[0]||"",style:"min-width:min(480px,100%)"});
-   box.append(h("div",{class:"card"},h("h3",{},"Where are your games?"),h("p",{class:"small muted"},"Paste the folder that holds your game files, sorted into folders like NES, SNES, PS2. Legacy Player only reads it; nothing is moved or renamed."),
+  else if(step===1){const roots=await api("roots");const inp=h("input",{type:"text",placeholder:"for example D:\\Games",value:(roots.roots||[])[0]||"",style:"min-width:min(480px,100%)"});
+   box.append(h("div",{class:"card"},h("h3",{},"Where are your games?"),h("p",{class:"small muted"},"Paste the folder that holds your game files, sorted into folders like NES, SNES, PS2 (the example is just a placeholder). Legacy Player only reads it; nothing is moved or renamed. Don't have it handy? Skip this step and add it later under Library."),
     h("div",{class:"row"},inp),nav2(true,async()=>{const v=inp.value.trim();if(v){const cur=roots.roots||[];const r=await act(()=>api("roots",{roots:cur.includes(v)?cur:cur.concat([v])}));if(!r)return;const sc=await act(()=>api("rescan"));if(sc)toast("Found "+sc.games+" games")}S.wizStep=2;go()})))}
   else if(step===2){let done=false;
-   box.append(h("div",{class:"card"},h("h3",{},"Let me look around"),h("p",{class:"small muted"},"One scan finds your emulators and the BIOS files you already have, so you don't have to point at each one. It only reads names, stays on this computer and uses no internet."),
-    scanPanel(()=>{done=true;toast("Scan finished. Everything it found is in use.");}),nav2(true,()=>{S.wizStep=3;go()},"Next")))}
+   box.append(h("div",{class:"card"},h("h3",{},"Let me look around"),h("p",{class:"small muted"},"I do one scan that finds your emulators and the BIOS files you already have, so you don't have to point at each one. It only reads names, stays on this computer and uses no internet."),
+    scanPanel(()=>{done=true;toast("Scan finished. Everything it found is in use.");},{everything:true}),nav2(true,()=>{S.wizStep=3;go()},"Next")))}
   else if(step===3){const allow=h("input",{type:"checkbox",checked:!!st.allow_internet}),auto=h("input",{type:"checkbox",checked:st.auto_network_test!==false});
    box.append(h("div",{class:"card"},h("h3",{},"Privacy and downloads"),
     h("p",{class:"small"},"Legacy Player never sends anything about you, your computer or your games anywhere. Multiplayer talks only to the server address you choose; other players see your name and tag and nothing else."),
@@ -813,7 +825,7 @@ async function viewWelcome(m){
     h("p",{class:"small muted"},"BIOS files for PS1/PS2/Xbox/DS are never downloaded: they belong to the console makers. I use the copies you dumped from your own consoles."),
     nav2(true,async()=>{await act(()=>api("settings",{key:"allow_internet",value:allow.checked}));const r=await act(()=>api("settings",{key:"auto_network_test",value:auto.checked}));if(r)S.settings=r.values;S.wizStep=4;go()})))}
   else{const hm=await api("home");const en=await api("engines");const bios=en.bios.reduce((n,b)=>n+(b.found.length?1:0),0);const p=await api("profile",{claim:true});S.profile=p;renderWho();
-   box.append(h("div",{class:"hero"},martin(120,"cheer"),h("div",{},h("h1",{},"You're good to go."),h("p",{},"Everything is locked in. Here is what I found:"))),
+   box.append(h("div",{class:"hero"},docFace(120),h("div",{},h("h1",{},"You're good to go."),h("p",{},"Everything is locked in. Here is what I found:"))),
     h("div",{class:"card",style:"margin-top:14px"},
      h("div",{class:"sumrow"},h("span",{},"You are"),h("b",{},p.player)),
      h("div",{class:"sumrow"},h("span",{},"Games in your library"),h("b",{},String(hm.games_total))),
@@ -931,7 +943,7 @@ function card(g){
   coverEl(g),h("div",{class:"t"},g.title),h("div",{class:"m"},consoleName(g.console)+(showRegion&&g.region?" · "+g.region:"")+" · "+g.size_mb+" MB"+(g.emulator?" · "+g.emulator:"")),
   g.plays?h("div",{class:"m"},"Played "+g.plays+"×"):null,g.is_archive?h("span",{class:"badge"},"archive "+g.extension):null)}
 function consoleName(id){const c=(S.lib&&S.lib.consoles||[]).find(x=>x.id===id);return c?c.name:id}
-function emptyState(){const input=h("input",{type:"text",placeholder:"Paste your games folder path, e.g. C:\\Games\\Vimm",style:"min-width:min(480px,100%)"});
+function emptyState(){const input=h("input",{type:"text",placeholder:"Paste your games folder path, e.g. D:\\Games",style:"min-width:min(480px,100%)"});
  return h("div",{class:"panel"},h("h2",{},"Welcome. Let's find your games."),
   h("p",{},"Point Legacy Player at the folder that holds your game backups. It only ",h("b",{},"looks"),": it never copies or edits your files, and only removes a game if you choose Uninstall."),
   h("div",{class:"row"},input,h("button",{class:"btn primary",onclick:async()=>{const r=await act(()=>api("roots",{roots:[input.value.trim()]}));if(r){await act(()=>api("rescan"),"Library scanned");go()}}},"Scan this folder")))}
@@ -1796,6 +1808,7 @@ const BOOKS=[".RR.BBB.YY.NNN.LL.RR.","RRR.BBB.YY.NNN.LL.RR","RRR.BBB.YY.NNN.LL.R
 const FX_ICONS=[["G","..GG.GG.","..GGGGG.","...GGG..","...GG...","..GG....",".GG.....","GG......","G......."],["G","..G..G..",".GGGGGG.","GGG..GGG",".G....G.",".G....G.","GGG..GGG",".GGGGGG.","..G..G.."],
  ["Y","...YY...","..YY....",".YYYYY..","...YY...","..YY....",".YY.....","Y.......","........"],["R"].concat(AVATARS.heart.rows),["Y"].concat(AVATARS.star.rows),["C","..CC.CC.",".CCCCCCC",".CCCCCCC","..CCCCC.","...CCC..","....C...","........","........"]].map(a=>a.slice(1));
 const WORK_LINES={install:["Tightening your cores…","Percussive maintenance!","Have you tried turning it off and on again?","This will only pinch a little.","Hold still, little emulator!","Applying one (1) bandage to RetroArch.","Scrubbing in… 20 seconds, like always."],
+ autoscan:["Booting up the doctor's computer…","Typing very fast. Very, very fast.","Peeking behind the couch cushions…","Running the scan on my own machine, hold on…","Cross-checking against my big book of emulators…","Dusting off the cartridges…","Counting your ROMs… 1, 2, 3, lots!"],
  scan:["Peeking behind the couch cushions…","Counting your ROMs… 1, 2, 3, lots!","Checking under the sofa for BIOS files.","Stethoscope on the hard drive: ba-dum, ba-dum.","Dusting off the cartridges…","Is that a Game Boy in my pocket? Oh, it's a stethoscope."]};
 let DOCW={on:false,t:null,fx:null,i:0};
 function docWork(on,kind){
@@ -1804,11 +1817,12 @@ function docWork(on,kind){
  if(spot)spot.classList.toggle("working",on);
  if(!on){const d=S.doc;if(say&&d&&!S.visit)say.textContent=doctorSay(d);return}
  const lines=WORK_LINES[kind]||WORK_LINES.scan;DOCW.i=Math.floor(Math.random()*lines.length);
- const talk=()=>{const s=$(".docsay");if(s&&!S.visit){s.textContent=lines[DOCW.i++%lines.length]}};talk();DOCW.t=setInterval(talk,2300);
+ const talk=()=>{const s=$(".docsay");if(s&&(!S.visit||DOCW.force)){s.textContent=lines[DOCW.i++%lines.length]}};talk();DOCW.t=setInterval(talk,2300);
  DOCW.fx=setInterval(()=>{const f=$(".fxlayer");if(!f){clearInterval(DOCW.fx);return}
   const ic=FX_ICONS[Math.floor(Math.random()*FX_ICONS.length)],e=pixels(ic,20+Math.random()*10,"fx");e.style.left=(8+Math.random()*84)+"%";f.append(e);setTimeout(()=>e.remove(),1800)},330)}
-function buildVisit(dr){const act=dr.issues.filter(i=>!i.dismissed),L=[],n=(x,w)=>x+" "+w+(x===1?"":"s");
+function buildVisit(dr,noscan){const act=dr.issues.filter(i=>!i.dismissed),L=[],n=(x,w)=>x+" "+w+(x===1?"":"s");
  L.push(["happy","Well hello there, player! Hop up on the table and let's see how you're doing."]);
+ if(!dr.last_scan&&!noscan){L.push(["worried","Hmm. My chart for you is blank. I have never scanned this computer."],["happy","No problem! I'll run a full scan on my own computer here: your games folders, your save folders, and every emulator and BIOS file I can find. Names only, nothing leaves this machine."],["happy","Let me get my computer started…","autoscan"]);return L}
  if(dr.games){const top=dr.library.slice().sort((a,b)=>b.count-a.count).slice(0,3).map(c=>c.name+" ("+c.count+")");
   L.push(["happy","Let me see... "+n(dr.games,"game")+" across "+n(dr.library.length,"console")+"! Mostly "+(top.length>1?top.slice(0,-1).join(", ")+" and "+top[top.length-1]:top[0])+". Nice collection!"])}
  else L.push(["sad","Hmm, I don't see any games yet. Point me at your games folder in Library and I'll count them!"]);
@@ -1837,6 +1851,31 @@ const TIRED={
  8:["drum","*drums fingers on the desk* Tap. Tap. Tap.","I have other patients. Okay, I don't. But still.","Healthy! Now go play something!"],
  9:["glare","*glares* One. More. Time.","Don't make me hide the stethoscope.","You are healthy. You WILL remain healthy. GO. PLAY."],
  10:["suspicious","Wait a second...","...you're not sick. You're not even a little bit sick.","Are you just messing with me?"]};
+/* The doctor runs the scan himself, on his own computer: a little green terminal on the desk prints what he is doing. */
+function docTerminal(on){const zone=$(".office");if(!zone)return null;let t=$(".docterm");
+ if(!on){if(t){t.classList.add("off");setTimeout(()=>t.remove(),700)}const l=$(".scanline");if(l)l.remove();return null}
+ if(!t){t=h("div",{class:"docterm"},h("div",{class:"dthead"},"DOC-PC"),h("div",{class:"dtbody"}),h("span",{class:"cur"},"_"));zone.append(t,h("div",{class:"scanline"}))}
+ const body=t.querySelector(".dtbody");return line=>{body.append(h("div",{},"> "+line));while(body.children.length>6)body.firstChild.remove()}}
+const folderLabel=w=>{const n=String(w||"").split(/[\\/]/).filter(Boolean).pop();return n?n.slice(0,26):""};
+async function doctorAutoScan(say){
+ if(!await ask("Let the doctor run a full scan? He reads your games folders again, makes the save folders, and looks through this computer for emulators and BIOS files. It reads names only, changes nothing, sends nothing and uses no internet.","Run the scan")){say.textContent="No problem. Say the word whenever you want it done. (Press Scan everything below.)";return null}
+ const log=docTerminal(true),spot=$(".docspot");DOCW.force=true;docWork(true,"autoscan");if(spot)spot.classList.add("scanning");
+ const L=t=>{if(log)log(t)};let v=null;
+ try{
+  L("booting the doctor's computer...");await new Promise(r=>setTimeout(r,600));
+  L("reading your games folders...");const a=await act(()=>api("scan_everything")).catch(()=>null);
+  if(a&&a.rescan&&a.rescan.games!==undefined)L("games found: "+a.rescan.games);else L("no games folder yet (add one under Library)");
+  L(a&&a.saves?"save folders: ready":"save folders: skipped");
+  L("looking for emulators and BIOS files...");
+  let r=await act(()=>api("scan_pc",{action:"start",consent:true}));let last="";
+  while(r&&r.state==="running"){const f=folderLabel(r.where);if(f&&f!==last){last=f;L("checking "+f)}await new Promise(x=>setTimeout(x,700));r=await api("scan_pc",{}).catch(()=>({state:"error"}))}
+  v=r;const done=await act(()=>api("scan_apply",{}));const names=Object.values((v&&v.emulators)||{}).map(e=>e.name);
+  L(names.length?"emulators found: "+names.length:"emulators found: none yet");if(done&&Object.keys(done.applied||{}).length)L("now using "+Object.keys(done.applied).length+" new");
+  L("scan complete.");await new Promise(x=>setTimeout(x,1200));
+  say.textContent=names.length?"Done! I found "+names.join(", ")+". Let me read you the results…":"Done! No emulators in the usual places, but I know where to look next. Here is the rest…";
+ }catch(e){say.textContent="My computer hiccuped. Try Scan everything below."}
+ finally{DOCW.force=false;docWork(false);if(spot)spot.classList.remove("scanning");setTimeout(()=>docTerminal(false),1800)}
+ await new Promise(x=>setTimeout(x,1500));return v}
 function visitLines(dr){
  const now=Date.now();if(!S.docLast||now-S.docLast>10*60000)S.docVisits=0;S.docLast=now;S.docVisits=(S.docVisits||0)+1;const n=S.docVisits;
  if(n<=2)return buildVisit(dr);
@@ -1861,9 +1900,10 @@ async function startVisit(dr){
   while(i<text.length&&!quick){say.textContent=text.slice(0,++i);await new Promise(r=>setTimeout(r,18))}say.textContent=text;
   say.classList.remove("talk");scene.removeEventListener("click",skipType);
   if(tag==="rx"){showRx()}
+  if(tag==="autoscan"){await doctorAutoScan(say);const fresh=await api("doctor").catch(()=>S.doc);S.doc=fresh;lines.splice(k+1,lines.length,...buildVisit(fresh,true).slice(1));continue}
   const more=h("span",{class:"more"},k<lines.length-1?" ▼":" ■");say.append(more);
   if(k<lines.length-1)await next()}
- S.visit=false;scene.classList.remove("visiting");const tired=(S.docVisits||0)>=3;paint(tired?(S.docVisits>=10?"suspicious":"sigh"):dr.mood);say.textContent=tired?(S.docVisits>=10?"...I'm watching you.":"I need a coffee."):doctorSay(dr)}
+ S.visit=false;scene.classList.remove("visiting");dr=S.doc||dr;const tired=(S.docVisits||0)>=3;paint(tired?(S.docVisits>=10?"suspicious":"sigh"):dr.mood);say.textContent=tired?(S.docVisits>=10?"...I'm watching you.":"I need a coffee."):doctorSay(dr)}
 function showRx(){const scene=$(".office");if(!scene||$(".rx"))return;const n=S.docVisits||1;
  const body=n>=10?["Stay home.","Play video games.","(Stop messing with me.)"]:n>=6?["Stay home.","Play games.","Let me sleep."]:n>=3?["Stay home.","Play games."]:["Stay home.","Play video games.","Repeat daily."];
  scene.append(h("div",{class:"rx"},h("div",{class:"rxh"},"℞ PRESCRIPTION"+(n>2?" #"+n:"")),...body.map(x=>h("div",{},x)),h("div",{class:"rxs"},"— Doc")))}
@@ -1912,7 +1952,7 @@ async function viewSetup(m){
  /* he gets busy while an install runs */
  S.officeTimer=setInterval(async()=>{if(S.tab!=="setup"){clearInterval(S.officeTimer);docWork(false);return}
   const st=await api("setup_status").catch(()=>null);if(!st)return;const running=st.job&&st.job.state==="running";
-  if(running&&!DOCW.on)docWork(true,"install");else if(!running&&DOCW.on&&DOCW.kind!=="scan"){docWork(false)}},1800);
+  if(running&&!DOCW.on)docWork(true,"install");else if(!running&&DOCW.on&&DOCW.kind!=="scan"&&DOCW.kind!=="autoscan"){docWork(false)}},1800);
  if(S.autoVisit){S.autoVisit=false;setTimeout(()=>startVisit(S.doc),700)}}
 
 /* ================= online: it is obvious when you are connected ================= */

@@ -163,3 +163,13 @@ list is short and should be extended.
 - `launcher/firewall.py`: after Start with "Let friends connect", the app offers to add a Windows Firewall rule (all network
   types) and asks Windows for the one approval it needs. Untested on Windows (command construction only).
 - "Test my router" opens the server port and closes it again. Untested on a real router.
+
+## Follow-up: the doctor hosts first-run setup and scans on his own
+
+- First-run setup is now led by the doctor (it said Martin before). **Skip this step** skips only the step you are on;
+  the old "Skip setup" that ended the whole introduction is gone.
+- The games-folder box shows a neutral example (`D:\Games`) instead of a personal path; the same example replaced the
+  personal path in `--games` help and `start_launcher.bat` (which no longer passes a folder).
+- If the doctor has never scanned this computer, a visit now changes: he says his chart is blank, asks first, then runs
+  Scan everything himself on a little terminal on his desk (new text, a typing animation and a scan line) and reads out
+  what he found. The wizard's scan step also makes the save folders and re-reads the games folders.

@@ -13,7 +13,7 @@ from .web import serve, wake_existing
 def main() -> int:
     parser = argparse.ArgumentParser(prog="python -m launcher", description="Legacy Player library and launcher")
     parser.add_argument("--games", action="append", default=[], metavar="FOLDER",
-                        help='a folder that holds your games, e.g. --games "P:\\Vimm" (repeatable; optional)')
+                        help='a folder that holds your games, e.g. --games "D:\\Games" (repeatable; optional)')
     parser.add_argument("--data-dir", type=Path, default=Path.home() / ".legacy-player")
     parser.add_argument("--port", type=int, default=8780)
     parser.add_argument("--no-browser", action="store_true")

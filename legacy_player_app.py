@@ -1,7 +1,7 @@
 """Entry point of the downloadable Legacy Player app (built with PyInstaller).
 
     LegacyPlayer.exe                    opens the app window
-    LegacyPlayer.exe --games "P:\\Vimm"  also adds a games folder
+    LegacyPlayer.exe --games "D:\\Games"  also adds a games folder
     LegacyPlayer.exe --server-run ...   (internal) runs the multiplayer server
 """
 from __future__ import annotations

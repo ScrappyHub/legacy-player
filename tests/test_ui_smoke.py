@@ -121,6 +121,41 @@ class UiSmokeTests(unittest.TestCase):
             page.wait_for_timeout(300)
             self.assertEqual(0, page.locator(".modal").count())
             self.assertIs(False, page.evaluate("window.__r"))
+            # first-run setup: the doctor hosts it, the path example is neutral, and Skip only skips that one step
+            page.evaluate('S.wizStep=1;nav("welcome")')
+            page.wait_for_selector("text=Where are your games?")
+            self.assertNotIn("Vimm", page.content())
+            self.assertEqual(0, page.get_by_text("Skip setup").count())
+            page.get_by_role("button", name="Skip this step").click()
+            page.wait_for_selector("text=Let me look around")
+            self.assertIn("3. Scan my computer", page.inner_text("#main"))
+            page.evaluate('S.wizStep=0;nav("welcome")')
+            page.wait_for_selector("text=Hi, I'm the doctor.")
+            self.assertNotIn("Hi, I'm Martin", page.inner_text("#main"))
+            # a doctor who has never scanned offers to scan on his own computer
+            page.evaluate('S.wizStep=0;nav("setup")')
+            page.wait_for_selector(".pressstart")
+            page.evaluate("() => { startVisit(S.doc); }")
+            page.wait_for_selector(".docsay")
+            for _ in range(40):      # click through his lines until the one about the blank chart
+                if "never scanned this computer" in page.inner_text(".docsay"):
+                    break
+                page.locator(".office").click(position={"x": 20, "y": 200})
+                page.wait_for_timeout(350)
+            self.assertIn("never scanned this computer", page.inner_text(".docsay"))
+            page.evaluate("() => { S.visit = false; }")
+            # he really runs it: terminal on the desk, results spoken afterwards (scan answered by a pretend finished scan)
+            page.route("**/api/scan_pc", lambda route: route.fulfill(status=200, content_type="application/json", body='{"state":"done","found":{},"emulators":{},"packages":{},"visited":3,"where":"C:\\\\Program Files\\\\Dolphin"}'))
+            page.evaluate("() => { window.__scan = 'running'; S.visit = true; doctorAutoScan(document.querySelector('.docsay')).then(() => { window.__scan = 'finished' }); }")
+            page.get_by_role("button", name="Run the scan").click()
+            page.wait_for_selector(".docterm")
+            self.assertIn("DOC-PC", page.inner_text(".docterm"))
+            for _ in range(60):
+                if page.evaluate("window.__scan") == "finished":
+                    break
+                page.wait_for_timeout(500)
+            self.assertEqual("finished", page.evaluate("window.__scan"))
+            self.assertIn("Done!", page.inner_text(".docsay"))
             # the problem-report question: shows what it is, shows exactly what would be sent, and "Not now" closes it
             page.route("**/api/report_decide", lambda route: route.fulfill(status=200, content_type="application/json", body='{"ok": true}'))
             page.route("**/api/report_preview", lambda route: route.fulfill(status=200, content_type="application/json", body='{"text": "{\\"schema\\": \\"legacy_player.report.v1\\"}"}'))
