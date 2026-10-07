@@ -95,6 +95,13 @@ class UiSmokeTests(unittest.TestCase):
                 page.wait_for_selector(".ctx", timeout=8000)
             except Exception:
                 self.fail("the game menu did not open")
+            # clicking the doctor (even double-clicking) must not leave selected text, which pops up the browser's own mini menu
+            page.evaluate('nav("home")')
+            page.wait_for_selector(".px.doctor")
+            page.wait_for_timeout(600)
+            page.locator(".px.doctor").first.dblclick(force=True)
+            page.locator(".hero, .doc").first.dblclick(force=True)
+            self.assertEqual("", page.evaluate("getSelection().toString()"))
             # dialogs: Tab stays inside, Esc means Cancel (the link is single-use, so this shares the page above)
             page.evaluate("() => { window.__r = 'unset'; ask('Really?', 'Yes').then(v => { window.__r = v }); }")      # not returned: evaluate would wait for it
             page.wait_for_selector(".modal")

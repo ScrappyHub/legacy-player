@@ -403,7 +403,8 @@ textarea{background:var(--panel2);color:var(--text);border:1px solid var(--line)
 .stamp2.ok{color:#2bd17e}.stamp2.warn{color:#ffd23f}@keyframes stampin{from{transform:rotate(-4deg) scale(2.2);opacity:0}to{transform:rotate(-4deg) scale(1);opacity:1}}
 .byebye{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center}
 .retire .unlist{max-height:none;overflow:visible}.rrow{display:flex!important;flex-direction:row!important;align-items:center}.rrow .rsize{white-space:nowrap}
-.office,.office *,.docspot,.docspot *,.martin,#brand,.byebye,.startip,.keycap{-webkit-user-select:none;user-select:none}
+.office,.office *,.docspot,.docspot *,.martin,#brand,.byebye,.startip,.keycap,.hero,.hero *,.doc,.doc *,.flash,.flash *,.case,.case *,.ecard,.ecard *,.px,.chip,.btn,nav,#menubar{-webkit-user-select:none;user-select:none}
+.hero input,.hero textarea,.doc input,.doc textarea,.case input{-webkit-user-select:text;user-select:text}
 .inpill{display:inline-flex;align-items:center;gap:8px;font:inherit;font-size:.82rem;background:var(--glass,#ffffff14);color:var(--text);border:1px solid var(--line);border-radius:999px;padding:5px 12px;cursor:pointer;margin-right:8px;max-width:300px}
 .inpill #intxt{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.inpill .dot{width:8px;height:8px;border-radius:50%;background:#ffb454;flex:none}.inpill.ok{border-color:#3be0a8}.inpill.ok .dot{background:#3be0a8}
 @media(max-width:900px){.inpill #intxt{display:none}}
@@ -1181,7 +1182,6 @@ async function viewSupplies(m){
    h("div",{class:"card",style:"margin-top:12px"},h("div",{class:"row"},h("h3",{class:"grow"},whyInline("Cores","A core is the part of RetroArch that emulates one console. Everyone in a match needs the same core."))),
     h("div",{class:"chips"},...st.cores.map(c=>h("span",{class:"chip",title:c.wanted},(c.installed?"✓ ":"✗ ")+c.console.toUpperCase()+" · "+c.wanted.replace("_libretro","")+(c.installed&&c.netplay_ready===false?" (info says no netplay)":""))))),
    st.retroarch.installed&&!st.info_installed?h("p",{class:"small bad"},"Core info files are missing. RetroArch refuses netplay without them. Press Install to add them."):null,
-   st.netplay_not_ready.length?h("p",{class:"small bad"},"RetroArch's own info says these cores do not support netplay: "+st.netplay_not_ready.join(", ")+". Try another core or update the info files."):null,
    h("div",{class:"card",style:"margin-top:12px"},h("div",{class:"row"},h("h3",{class:"grow"},"Dolphin (GameCube and Wii)"),ok(st.dolphin.installed)),
     h("p",{class:"small muted"},st.dolphin.installed?st.dolphin.path:"Not found. Download it from the official page, then set its path in Emulators."),
     st.dolphin.installed?null:h("a",{href:st.dolphin.download_page,target:"_blank",rel:"noopener noreferrer"},"Open the Dolphin download page")),
@@ -2120,7 +2120,9 @@ function paintInput(){const el=$("#inpill");if(!el)return;const ps=livePads(),kb
  addEventListener("gamepaddisconnected",e=>{paintInput();toast("Controller disconnected: "+padPrettyName(e.gamepad.id).slice(0,40)+". The keyboard layout takes over.","warn")});
  setInterval(()=>{const n=livePads().length;if(n!==last){last=n;paintInput()}},2500);
  setTimeout(()=>{const el=$("#inpill");if(el)el.onclick=()=>nav("controllers");loadKb()},0)})();
-document.addEventListener("selectstart",e=>{const t=e.target&&e.target.closest?e.target:e.target&&e.target.parentElement;if(t&&t.closest&&t.closest(".office,.docspot,.martin,.pet,#brand,.byebye"))e.preventDefault()});
+document.addEventListener("selectstart",e=>{const t=e.target&&e.target.closest?e.target:e.target&&e.target.parentElement;if(t&&t.closest&&t.closest(".office,.docspot,.martin,.pet,#brand,.byebye,.hero,.doc,.flash,.case,.ecard,.px,.chip,.btn,nav,#menubar")&&!/^(INPUT|TEXTAREA)$/.test(t.tagName))e.preventDefault()});
+/* a click or double-click on these must never leave a selection behind (it pops up the browser's own mini menu) */
+document.addEventListener("pointerup",e=>{const t=e.target&&e.target.closest?e.target:null;if(t&&t.closest(".office,.docspot,.martin,.pet,#brand,.hero,.doc,.flash,.case,.ecard,.px,.chip,.btn")){const sel=getSelection();if(sel&&!sel.isCollapsed)sel.removeAllRanges()}});
 
 function kbSection(){
  const box=h("div",{class:"card kbbox"});
