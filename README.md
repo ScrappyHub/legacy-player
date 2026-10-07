@@ -19,7 +19,7 @@ or, through git, with the small `lp` command that comes with the repository:
 ```powershell
 git clone https://github.com/ScrappyHub/legacy-player
 cd legacy-player
-.\lp install            # newest release; or  .\lp install v0.7.11  for one exact version
+.\lp install            # newest release; or  .\lp install v0.7.12  for one exact version
 .\lp run                # later:  .\lp update   .\lp version   .\lp path   .\lp uninstall   .\lp help
 ```
 

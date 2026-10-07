@@ -33,7 +33,7 @@ from . import overlay as overlaymod
 from . import procs
 from . import controllers, emulators, engines, pads, savefolders, saves
 from .installer import EngineInstaller, InstallError, latest_release, pick_asset
-from . import dolphinpads, dolphinpaths, firewall, gameinfo, portmap, winplace, keyboard, memprobe, netcheck, reports, selfuninstall, sysinfo
+from . import dolphinpads, dolphinpaths, privatelink, firewall, gameinfo, portmap, winplace, keyboard, memprobe, netcheck, reports, selfuninstall, sysinfo
 from .covers import (CONTENT_TYPES, CoverFetcher, SYSTEMS as COVER_SYSTEMS, clear_custom_cover, cover_path,
                      custom_cover, set_custom_cover)
 from .pcscan import PcScan
@@ -486,6 +486,10 @@ class LauncherApp:
 
     def api_probe_cancel(self, body: dict) -> dict:
         return self.memprobe.cancel()
+
+    def api_private_link(self, body: dict) -> dict:
+        """Is Tailscale installed and connected? Read only."""
+        return privatelink.status()
 
     def api_dolphin_folders(self, body: dict) -> dict:
         """Put the folders your GameCube and Wii games are in into Dolphin's game list, so you never open Dolphin's settings."""
@@ -1924,7 +1928,7 @@ class LauncherApp:
         if ok and room["role"] == "guest" and session.get("state") not in {"ready-barrier", "active"}:
             ok, reason = False, "Waiting for the host to check that everyone matches."
         engine = check.get("engine") or ("dolphin" if game["console"] in DOLPHIN_CONSOLES else "retroarch")
-        return {"ready": ok, "reason": reason, "steps": check.get("steps", []), "engine": engine, "suggested_address": self._public_or_lan_address(), "address_is_home_only": ipaddress_is_private(self._public_or_lan_address()),
+        return {"ready": ok, "reason": reason, "steps": check.get("steps", []), "engine": engine, "suggested_address": self._public_or_lan_address(), "address_is_home_only": ipaddress_is_private(self._public_or_lan_address()), "private_link": privatelink.status() if engine == "dolphin" else None,
                 "relay_available": netplay_tunnel.available() and engine == "retroarch",
                 "direct_allowed": self.catalog.settings()["allow_direct_connections"],
                 "endpoint_kind": (room.get("session") or {}).get("endpoint_kind"),
@@ -2168,8 +2172,16 @@ class LauncherApp:
 
     def _launch_dolphin(self, room: dict, game: dict, check: dict, body: dict) -> dict:
         mode = body.get("mode", "traversal")
-        if mode not in {"traversal", "direct"}:
-            raise AppError("mode must be traversal or direct")
+        if mode not in {"traversal", "direct", "private"}:
+            raise AppError("mode must be traversal, direct or private")
+        private_address = None
+        if mode == "private":
+            link = privatelink.status()
+            if not link["installed"]:
+                raise AppError("The private link needs Tailscale, which is not installed. Install it from tailscale.com/download, sign in, and try again.")
+            if not link["address"]:
+                raise AppError("Tailscale is installed but not connected. Open Tailscale and sign in, then try again.")
+            private_address, mode = link["address"], "direct"
         # Dolphin NetPlay connects players to each other (even the traversal server only
         # introduces them), so every player learns the others' addresses. No relay exists for it.
         if not self.catalog.settings()["allow_direct_connections"]:
@@ -2185,15 +2197,17 @@ class LauncherApp:
                     raise AppError("Press 'Check everyone matches' first.")
                 if mode == "direct" and (not isinstance(port, int) or isinstance(port, bool) or not 1 <= port <= 65535):
                     raise AppError("The port must be a number from 1 to 65535.")
-                address = str(body.get("address") or self._public_or_lan_address()).strip()
-                guide = dolphin_steps("host", mode=mode, address=address, port=port, game_folder=str(Path(game["path"]).parent))
+                address = str(private_address or body.get("address") or self._public_or_lan_address()).strip()
+                guide = dolphin_steps("host", mode=mode, address=address, port=port, game_folder=str(Path(game["path"]).parent),
+                                      private=bool(private_address))
             else:
                 endpoint = self._call({"operation": "get_endpoint", **self._auth()})["endpoint"]
                 if not endpoint:
                     raise AppError("The host has not shared a way to connect yet. Wait for the notification.")
                 mode = "traversal" if endpoint["kind"] == "code" else "direct"
                 guide = dolphin_steps("guest", mode=mode, address=endpoint["address"], port=endpoint.get("port"), code=endpoint["address"],
-                                      game_folder=str(Path(game["path"]).parent))
+                                      game_folder=str(Path(game["path"]).parent),
+                                      private=mode == "direct" and privatelink.is_private_link_address(endpoint["address"]))
             running = self._running_now()
             if running and running.get("emulator_id") == "dolphin":
                 pid, reopened = running["pid"], False           # a second press must not start a second Dolphin (NetPlay refuses with a game open)
