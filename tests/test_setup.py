@@ -9,7 +9,8 @@ import zipfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-SEVENZ = shutil.which("7z") or shutil.which("7za")      # found once, at import: another test may change PATH later
+REAL_WHICH = shutil.which                                  # setUp below replaces shutil.which for the whole process
+SEVENZ = REAL_WHICH("7z") or REAL_WHICH("7za")
 
 from launcher.app import LauncherApp
 from launcher.setup import (
@@ -130,7 +131,8 @@ class SetupTests(unittest.TestCase):
         archive = self.root / "a.7z"
         subprocess.run([SEVENZ, "a", str(archive), str(src / "retroarch.exe")], check=True, capture_output=True)
         out = self.root / "out"
-        extract_7z(archive, out)
+        with mock.patch("launcher.setup.shutil.which", side_effect=REAL_WHICH):
+            extract_7z(archive, out)
         self.assertTrue(any(out.rglob("retroarch.exe")))
 
     def test_app_reports_setup_status_without_downloading(self):

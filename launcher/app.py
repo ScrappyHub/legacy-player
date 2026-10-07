@@ -1449,7 +1449,7 @@ class LauncherApp:
                     raise AppError(str(again)) from again
             raise AppError(str(exc)) from exc
 
-    _auto_started_at = 0.0
+    _auto_started_at: float | None = None      # not 0.0: a computer that booted under 30 seconds ago would count as "just tried"
 
     def _own_server_refused(self, exc: Exception) -> bool:
         """Only a refused call to our own server, never while quitting and never right after the player stopped it."""
@@ -1462,7 +1462,7 @@ class LauncherApp:
     def _start_own_server(self) -> bool:
         """Your own server is not running (the app was restarted, or it stopped): start it, so hosting just works.
         At most once every 30 seconds, and only for the server on this computer."""
-        if time.monotonic() - self._auto_started_at < 30:
+        if self._auto_started_at is not None and time.monotonic() - self._auto_started_at < 30:
             return False
         self._auto_started_at = time.monotonic()
         share = bool(self.catalog.data.get("server_share_wanted"))     # shared only if the player last started it that way
