@@ -8,7 +8,9 @@ import io
 import json
 import os
 import random
+import re
 import shlex
+import shutil
 import subprocess
 import sys
 import threading
@@ -28,7 +30,7 @@ from adapters.retroarch import tunnel as netplay_tunnel
 
 from . import controllers, emulators, engines, pads, savefolders, saves
 from .installer import EngineInstaller, InstallError, latest_release, pick_asset
-from . import netcheck
+from . import netcheck, selfuninstall, sysinfo
 from .covers import (CONTENT_TYPES, CoverFetcher, SYSTEMS as COVER_SYSTEMS, clear_custom_cover, cover_path,
                      custom_cover, set_custom_cover)
 from .pcscan import PcScan
@@ -658,7 +660,8 @@ class LauncherApp:
                 how = f"{info['name']}: has no start-up option for this. Set the display inside {info['name']} once; it remembers."
             else:
                 how = "No emulator for this console yet."
-            rows.append({"id": c.id, "name": c.name, "emulator": info["name"] if info else None, "how": how, "own": own,
+            applies = list(VIDEO_FIELDS) if eid == "retroarch" else (["fullscreen"] if eid and emulators.EMULATORS[eid].get("fullscreen") else [])
+            rows.append({"id": c.id, "name": c.name, "emulator": info["name"] if info else None, "how": how, "own": own, "applies": applies,
                          "effective": self._video_for(c.id), "pad_layout_customized": c.id in self.catalog.data["controller_overrides"]})
         return {"fields": VIDEO_FIELDS, "defaults": self.catalog.data.get("video", {}).get("all") or {}, "base": VIDEO_DEFAULTS, "consoles": rows}
 
@@ -742,6 +745,130 @@ class LauncherApp:
         except OSError as exc:
             raise AppError(f"Could not open the file manager: {exc}") from exc
         return {"opened": str(target)}
+
+    # uninstalling a game ----------------------------------------------------------------------------------------
+    COMPANION_EXTS = {".cue", ".bin", ".sub", ".ccd", ".img", ".mds", ".mdf", ".sbi", ".gdi", ".m3u", ".ecm", ".raw"}
+
+    def _within_roots(self, path: Path) -> bool:
+        try:
+            real = path.resolve()
+        except OSError:
+            return False
+        for root in self.catalog.data["roots"]:
+            try:
+                base = Path(root).resolve()
+            except OSError:
+                continue
+            if real != base and base in real.parents:
+                return True
+        return False
+
+    def _game_files(self, game: dict) -> list[Path]:
+        """The game's file plus the files that only make sense with it (cue sheets and their tracks). Never anything else."""
+        main = Path(game["path"])
+        files = [main]
+        folder, stem = main.parent, main.stem.lower()
+        try:
+            siblings = [p for p in folder.iterdir() if p.is_file()]
+        except OSError:
+            siblings = []
+        for p in siblings:
+            if p != main and p.stem.lower() == stem and p.suffix.lower() in self.COMPANION_EXTS:
+                files.append(p)
+        for cue in [p for p in files if p.suffix.lower() == ".cue"]:
+            try:
+                text = cue.read_text(encoding="utf-8", errors="ignore")
+            except OSError:
+                continue
+            for name in re.findall(r'FILE\s+"([^"]+)"', text, flags=re.I):
+                track = folder / Path(name).name
+                if track.is_file() and track not in files:
+                    files.append(track)
+        return [p for p in files if self._within_roots(p) and p.is_file() and not p.is_symlink()]
+
+    def _game_saves(self, game: dict) -> list[Path]:
+        """Save files that belong to this game alone: the name must match exactly up to the first dot (Name.srm, Name.state1)."""
+        save_dir = self._save_dir(game)
+        if not save_dir or not Path(save_dir).is_dir():
+            return []
+        stem = Path(game["path"]).stem.lower()
+        return [p for p in saves.find_save_files(Path(save_dir), Path(game["path"]).stem)
+                if (p.name.lower().startswith(stem + ".") or p.stem.lower() == stem) and p.is_file()]
+
+    @staticmethod
+    def _trash(paths: list[Path]) -> str:
+        """Send files to the Recycle Bin / Trash. Returns where they went; raises OSError if that is not possible here."""
+        if not paths:
+            return "nothing to remove"
+        if sys.platform.startswith("win"):
+            import ctypes
+            from ctypes import wintypes
+
+            class SHFILEOPSTRUCTW(ctypes.Structure):
+                _fields_ = [("hwnd", wintypes.HWND), ("wFunc", wintypes.UINT), ("pFrom", wintypes.LPCWSTR), ("pTo", wintypes.LPCWSTR),
+                            ("fFlags", ctypes.c_ushort), ("fAnyOperationsAborted", wintypes.BOOL), ("hNameMappings", ctypes.c_void_p),
+                            ("lpszProgressTitle", wintypes.LPCWSTR)]
+            op = SHFILEOPSTRUCTW()
+            op.wFunc = 3                                  # FO_DELETE
+            op.pFrom = "\0".join(str(p) for p in paths) + "\0\0"
+            op.fFlags = 0x40 | 0x10 | 0x4 | 0x400          # ALLOWUNDO | NOCONFIRMATION | SILENT | NOERRORUI
+            if ctypes.windll.shell32.SHFileOperationW(ctypes.byref(op)) != 0 or op.fAnyOperationsAborted:
+                raise OSError("Windows could not move the files to the Recycle Bin")
+            return "the Recycle Bin"
+        if sys.platform == "darwin":
+            for p in paths:
+                subprocess.run(["osascript", "-e", f'tell application "Finder" to delete POSIX file "{p}"'], check=True, capture_output=True)
+            return "the Trash"
+        for tool in (["gio", "trash"], ["trash-put"]):
+            try:
+                subprocess.run(tool + [str(p) for p in paths], check=True, capture_output=True)
+                return "the Trash"
+            except (OSError, subprocess.CalledProcessError):
+                continue
+        raise OSError("this computer has no Trash tool Legacy Player can use")
+
+    def api_game_uninstall(self, body: dict) -> dict:
+        """Uninstall one game: its files (to the Recycle Bin), and everything Legacy Player keeps about it. Saves only if asked."""
+        game = self._game(body)
+        files = self._game_files(game)
+        if not files:
+            raise AppError("Legacy Player can only uninstall files that sit inside your games folders, and this one does not.")
+        save_files = self._game_saves(game)
+        console = BY_ID[game["console"]]
+        backup_folder = saves.backup_dir(self.data_dir, console.id, game["compat_id"])
+        backups = sum(1 for f in backup_folder.rglob("*") if f.is_file()) if backup_folder.is_dir() else 0
+        if not body.get("confirm"):
+            return {"title": self._meta(game).get("title") or game["title"],
+                    "files": [{"name": p.name, "folder": str(p.parent), "mb": round(p.stat().st_size / 1048576, 1)} for p in files],
+                    "total_mb": round(sum(p.stat().st_size for p in files) / 1048576, 1),
+                    "saves": [p.name for p in save_files], "backups": backups}
+        delete_saves = bool(body.get("delete_saves"))
+        victims = files + (save_files if delete_saves else [])
+        try:
+            if body.get("permanent"):
+                for p in victims:
+                    p.unlink()
+                where = "removed for good"
+            else:
+                where = "moved to " + self._trash(victims)
+        except OSError as exc:
+            raise AppError(f"The game was not removed: {exc}. Tick 'Delete permanently' if you want to skip the Recycle Bin.") from exc
+        if delete_saves and backup_folder.is_dir():
+            shutil.rmtree(backup_folder, ignore_errors=True)
+        gid = game["id"]
+        self.games.pop(gid, None)
+        data = self.catalog.data
+        data["favorites"] = [i for i in data["favorites"] if i != gid]
+        data["history"].pop(gid, None)
+        data["game_meta"].pop(gid, None)
+        for name in data["collections"]:
+            data["collections"][name] = [i for i in data["collections"][name] if i != gid]
+        self.catalog.save()
+        clear_custom_cover(self.covers.cache, gid)
+        cover_path(self.covers.cache, gid).unlink(missing_ok=True)
+        self._cache_path().write_text(json.dumps({"games": list(self.games.values()), "skipped": self.skipped}), encoding="utf-8")
+        return {"removed": game["title"], "where": where, "files": len(files), "saves_deleted": len(save_files) if delete_saves else 0,
+                "saves_kept": 0 if delete_saves else len(save_files)}
 
     def api_collections(self, body: dict) -> dict:
         action = body.get("action", "list")
@@ -1166,6 +1293,12 @@ class LauncherApp:
                 "bios_needed": bios_needed, "bios_have": bios_have, "issues": issues,
                 "last_rescan": self.catalog.data.get("last_rescan"), "last_scan": self.catalog.data.get("last_scan"),
                 "consoles_ready": sum(1 for c in CONSOLES if self._emulator_for(c.id, found)[0]), "consoles_total": len(CONSOLES)}
+
+    def api_specs(self, body: dict) -> dict:
+        """The computer's CPU, memory, graphics card and system, read locally. Cached; pass refresh to read again."""
+        if body.get("refresh") or getattr(self, "_specs", None) is None:
+            self._specs = sysinfo.collect()
+        return self._specs
 
     def api_doctor_dismiss(self, body: dict) -> dict:
         key = str(body.get("key", ""))[:40]
@@ -1716,6 +1849,17 @@ class LauncherApp:
                            "max": room.get("max_players"), "ping_ms": stats.get("ping_ms"), "state": session.get("state")}
         out["waits"] = [{"game": w["game"], "position": (w.get("queue") or {}).get("position")} for w in self.waits.values()]
         return out
+
+    def api_self_uninstall(self, body: dict) -> dict:
+        """Uninstall Legacy Player itself. Without `confirm` it only lists what would go; with it, the doctor cleans up."""
+        if not body.get("confirm"):
+            return selfuninstall.plan(self.data_dir, self.catalog.data.get("save_root") or "",
+                                      self.catalog.data.get("backup_root") or "")
+        self.shutdown()
+        report = selfuninstall.execute(self.data_dir, keep_saves=bool(body.get("keep_saves", True)),
+                                       remove_program=bool(body.get("remove_program", True)))
+        self.catalog.save = lambda: None      # never write the settings file back after it was removed
+        return report
 
     def api_quit(self, body: dict) -> dict:
         """Full close: leave rooms politely, then stop the app."""

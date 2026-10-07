@@ -387,3 +387,98 @@ class GameMenuTests(unittest.TestCase):
             app.api_game_cover({"id": gid, "data": base64.b64encode(b"<html>").decode()})
         self.assertFalse(app.api_game_cover({"id": gid, "action": "remove"})["custom_cover"])
         self.assertEqual(app._user_args(app.games[gid]), ["--verbose"])
+
+
+class UninstallTests(unittest.TestCase):
+    def test_uninstall_game(self):
+        import tempfile
+        from pathlib import Path
+        from launcher.app import LauncherApp, AppError
+        base = Path(tempfile.mkdtemp())
+        games = base / "games" / "PS1"; games.mkdir(parents=True)
+        (games / "Racer (USA).cue").write_text('FILE "Racer (USA) (Track 1).bin" BINARY\n')
+        (games / "Racer (USA) (Track 1).bin").write_bytes(b"1" * 50)
+        (games / "Racer (USA).sub").write_bytes(b"2")
+        (games / "Other Game (USA).cue").write_text("x")
+        (base / "outside.bin").write_bytes(b"3")
+        app = LauncherApp(base / "data")
+        app.api_roots({"roots": [str(base / "games")]})
+        app.rescan()
+        game = next(g for g in app.games.values() if g["path"].endswith("Racer (USA).cue"))
+        plan = app.api_game_uninstall({"id": game["id"]})
+        names = sorted(f["name"] for f in plan["files"])
+        self.assertEqual(names, ["Racer (USA) (Track 1).bin", "Racer (USA).cue", "Racer (USA).sub"])
+        app.catalog.set_favorite(game["id"], True)
+        removed = []
+        app._trash = lambda paths: (removed.extend(p.name for p in paths), [p.unlink() for p in paths], "the Recycle Bin")[2]
+        out = app.api_game_uninstall({"id": game["id"], "confirm": True})
+        self.assertIn("Recycle Bin", out["where"])
+        self.assertEqual(sorted(removed), names)
+        self.assertNotIn(game["id"], app.games)
+        self.assertNotIn(game["id"], app.catalog.data["favorites"])
+        self.assertTrue((games / "Other Game (USA).cue").exists())      # a different game's file is untouched
+        self.assertTrue((base / "outside.bin").exists())
+        with self.assertRaises(AppError):
+            app.api_game_uninstall({"id": game["id"], "confirm": True})
+
+
+class SpecsTests(unittest.TestCase):
+    def test_windows_parse_and_verdicts(self):
+        from launcher import sysinfo
+        info = sysinfo.parse_windows('{"cpu":{"Name":"AMD Ryzen(TM) 7 5800X 8-Core","NumberOfCores":8,"NumberOfLogicalProcessors":16},'
+                                     '"gpu":[{"Name":"NVIDIA GeForce RTX 3070"}],"ram":34359738368,"os":"Microsoft Windows 11 Pro"}')
+        self.assertEqual((info["cores"], info["threads"], info["ram_gb"]), (8, 16, 32.0))
+        self.assertEqual(info["gpus"][0]["name"], "NVIDIA GeForce RTX 3070")
+        self.assertEqual([v["level"] for v in sysinfo.verdicts(info)], ["great", "great", "great"])
+        weak = {"ram_gb": 4, "threads": 2, "gpus": [{"name": "Intel UHD Graphics"}]}
+        self.assertEqual([v["level"] for v in sysinfo.verdicts(weak)], ["great", "maybe", "tough"])
+        self.assertTrue(sysinfo.collect()["os"])
+
+
+class SelfUninstallTests(unittest.TestCase):
+    def _app(self):
+        import tempfile
+        from pathlib import Path
+        from launcher.app import LauncherApp
+        base = Path(tempfile.mkdtemp())
+        data = base / "data"
+        app = LauncherApp(data)
+        (data / "emulators" / "retroarch").mkdir(parents=True)
+        (data / "emulators" / "retroarch" / "ra.exe").write_bytes(b"1" * 100)
+        (data / "saves" / "NES").mkdir(parents=True)
+        (data / "saves" / "NES" / "a.srm").write_bytes(b"2")
+        (data / "save_backups").mkdir()
+        games = base / "games"; games.mkdir(); (games / "keep.nes").write_bytes(b"3")
+        return app, data, games
+
+    def test_plan_lists_only_our_things(self):
+        app, data, games = self._app()
+        plan = app.api_self_uninstall({})
+        keys = [i["key"] for i in plan["items"]]
+        self.assertIn("emulators", keys); self.assertIn("saves", keys); self.assertIn("program", keys)
+        self.assertTrue(next(i for i in plan["items"] if i["key"] == "saves")["keepable"])
+        self.assertTrue((data / "emulators").exists())      # a plan removes nothing
+
+    def test_keep_saves(self):
+        from launcher import selfuninstall
+        selfuninstall._spawn_cleanup = lambda *a: None
+        app, data, games = self._app()
+        out = app.api_self_uninstall({"confirm": True, "keep_saves": True, "remove_program": False})
+        self.assertFalse((data / "emulators").exists())
+        self.assertTrue((data / "saves" / "NES" / "a.srm").exists())
+        self.assertFalse((data / "user_data.json").exists())
+        self.assertTrue((games / "keep.nes").exists())
+        self.assertEqual(out["problems"], [])
+        self.assertTrue(any(s["key"] == "saves" and s["status"] == "kept" for s in out["steps"]))
+
+    def test_everything(self):
+        from launcher import selfuninstall
+        calls = []
+        selfuninstall._spawn_cleanup = lambda *a: calls.append(a)
+        app, data, games = self._app()
+        out = app.api_self_uninstall({"confirm": True, "keep_saves": False, "remove_program": False})
+        self.assertFalse((data / "saves").exists())
+        self.assertTrue((games / "keep.nes").exists())
+        self.assertEqual(calls[0][2], data)      # the leftover data folder is purged after closing
+        app.catalog.save()                        # must not bring the settings file back
+        self.assertFalse((data / "user_data.json").exists())
