@@ -31,7 +31,7 @@ copy of the script, or make the repository public first.
 ```
 git clone https://github.com/ScrappyHub/legacy-player
 cd legacy-player
-.\lp install      # or: .\lp install v0.7.4     (update / run / version / path / uninstall / source / help)
+.\lp install      # or: .\lp install v0.7.5     (update / run / version / path / uninstall / source / help)
 ```
 `lp.cmd` lets it run from cmd.exe too. `lp source` runs straight from the checkout with Python (for developers).
 

@@ -156,6 +156,19 @@ class Gateway:
         self._soap("DeletePortMapping", {"NewRemoteHost": "", "NewExternalPort": port, "NewProtocol": "TCP"})
 
 
+LEASE_SECONDS = 7200
+RENEW_SECONDS = 3000
+
+
+def renew_port(port: int, location: str, local_ip: str, timeout: float = 4.0) -> bool:
+    """Extend the router mapping before its lease runs out."""
+    try:
+        Gateway(location, timeout).add(port, local_ip, LEASE_SECONDS)
+        return True
+    except (PortMapError, OSError):
+        return False
+
+
 def open_port(port: int, timeout: float = 4.0, locations: list[str] | None = None, local_ip: str | None = None) -> dict:
     """Ask the router to forward `port`. Never raises. state: mapped | not_reachable | no_router | refused."""
     last = "No router answered. UPnP may be switched off in the router's settings."
@@ -165,12 +178,9 @@ def open_port(port: int, timeout: float = 4.0, locations: list[str] | None = Non
             host = urllib.parse.urlparse(location).hostname or ""
             mine = local_ip or _local_address_towards(host)
             try:
-                gw.add(port, mine, 0)
-            except PortMapError as exc:
-                if "725" in str(exc):          # some routers refuse "forever"; take two hours
-                    gw.add(port, mine, 7200)
-                else:
-                    raise
+                gw.add(port, mine, LEASE_SECONDS)      # expires by itself if the app crashes; the app renews it while running
+            except PortMapError:
+                gw.add(port, mine, 0)                  # some routers refuse timed leases; the app closes it itself then
             outside = gw.external_ip()
         except (PortMapError, OSError) as exc:
             last = str(exc)

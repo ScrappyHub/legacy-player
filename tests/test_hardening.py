@@ -102,3 +102,28 @@ class RestoreSafetyTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             saves.restore_all(dest, nomanifest.name, {"nes": folder}, base / "safety")
         self.assertEqual(b"keep me", (folder / "a.srm").read_bytes())
+
+
+class Round3Tests(unittest.TestCase):
+    def test_router_lease_is_timed_and_falls_back(self):
+        from launcher import portmap
+        calls = []
+
+        class GW:
+            def __init__(self, *a, **k): pass
+            def add(self, port, ip, lease=0):
+                calls.append(lease)
+                if lease:
+                    raise portmap.PortMapError("code 725")
+            def external_ip(self): return "8.8.8.8"
+            def delete(self, port): pass
+        with mock.patch.object(portmap, "Gateway", GW):
+            out = portmap.open_port(8765, locations=["http://192.168.1.1:80/x"], local_ip="192.168.1.5")
+        self.assertEqual("mapped", out["state"])
+        self.assertEqual([portmap.LEASE_SECONDS, 0], calls)
+        self.assertLess(portmap.RENEW_SECONDS, portmap.LEASE_SECONDS)
+
+    def test_firewall_rule_names_the_program_when_given(self):
+        from launcher import firewall
+        self.assertIn("program=C:\\x\\LegacyPlayer.exe", firewall.rule_args(8765, "C:\\x\\LegacyPlayer.exe"))
+        self.assertFalse(any(a.startswith("program=") for a in firewall.rule_args(8765)))

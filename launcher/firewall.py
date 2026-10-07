@@ -22,9 +22,16 @@ def _run(args: list[str], timeout: float = 15.0) -> subprocess.CompletedProcess:
     return subprocess.run(args, capture_output=True, text=True, timeout=timeout, creationflags=_FLAGS)
 
 
-def rule_args(port: int) -> list[str]:
-    return ["advfirewall", "firewall", "add", "rule", f"name={RULE}", "dir=in", "action=allow", "protocol=TCP",
+def rule_args(port: int, program: str | None = None) -> list[str]:
+    """Every network profile on purpose (hotspots count as "public"), but when the app is the packaged exe the rule
+    only lets that one program accept connections, not whatever else might listen on the port."""
+    if program is None and getattr(sys, "frozen", False):
+        program = sys.executable
+    args = ["advfirewall", "firewall", "add", "rule", f"name={RULE}", "dir=in", "action=allow", "protocol=TCP",
             f"localport={int(port)}", "profile=any"]
+    if program:
+        args.append(f"program={program}")
+    return args
 
 
 def status(port: int, run=_run) -> dict:

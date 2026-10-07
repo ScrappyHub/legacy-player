@@ -50,6 +50,13 @@ try {
     New-Item -ItemType Directory -Path $dest -Force | Out-Null
     $stage = Join-Path $tmp 'unpacked'
     Expand-Archive -Path $zip -DestinationPath $stage -Force          # unpack aside first, so a bad archive never leaves a half-installed app
+    $sigExe = Join-Path $stage 'LegacyPlayer.exe'
+    if (Test-Path $sigExe) {
+        $sig = Get-AuthenticodeSignature $sigExe
+        if ($sig.Status -eq 'Valid') { Write-Host "Code signature OK: $($sig.SignerCertificate.Subject)" }
+        elseif ($sig.Status -eq 'NotSigned') { Write-Host "Note: this release is not code-signed, so only the download was checked, not who published it." }
+        else { throw "The program's signature is $($sig.Status) (tampered or untrusted). Nothing was installed." }
+    }
     Copy-Item -Path (Join-Path $stage '*') -Destination $dest -Recurse -Force
     Get-ChildItem $dest -Recurse -File | Unblock-File
 

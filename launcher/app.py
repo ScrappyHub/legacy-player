@@ -2336,6 +2336,7 @@ class LauncherApp:
         router cannot be opened, meet friends on the shared server instead, if one is set."""
         old = self.port_map
         if action in {"stop", "restart"} and code == 0:
+            self._renew_stop.set()
             if old.get("state") == "mapped":
                 portmap.close_port(old.get("port", port), old.get("location", ""))
             self._forget_router_mapping()
@@ -2350,6 +2351,7 @@ class LauncherApp:
             if self.port_map["state"] == "mapped":
                 self.catalog.data["router_mapped"] = {"port": self.port_map.get("port", port), "location": self.port_map.get("location", "")}
                 self.catalog.save()
+                self._start_router_renewal(self.port_map)
                 self.fallback_active = False
                 return self.port_map
             self.reports.capture("router-not-opened", None, self.port_map["message"],
@@ -2368,6 +2370,18 @@ class LauncherApp:
                                  if self.fallback_active else self.port_map["message"] + " The shared server did not answer either."}
             return self.port_map
         return self.port_map or None
+
+    _renew_stop = threading.Event()
+
+    def _start_router_renewal(self, mapping: dict) -> None:
+        """Keep the timed router mapping alive while the server runs; if the app dies the router drops it by itself."""
+        self._renew_stop.set()
+        stop = self._renew_stop = threading.Event()
+
+        def loop() -> None:
+            while not stop.wait(portmap.RENEW_SECONDS):
+                portmap.renew_port(int(mapping.get("port", 0)), str(mapping.get("location", "")), str(mapping.get("local_ip", "")))
+        threading.Thread(target=loop, daemon=True, name="router-renew").start()
 
     def _tidy_old_router_mapping(self) -> None:
         """A port opened by an earlier run that crashed: close it, unless the server it was for is still running."""

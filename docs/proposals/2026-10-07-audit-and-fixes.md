@@ -240,3 +240,12 @@ Closed from the "left alone" list above:
 Release: the build now also publishes the bare `LegacyPlayer-<version>-win64.exe` with `.sha256` files and `SHA256SUMS.txt`; `.gitignore` is regrouped and covers build output, `_to_delete/`, damaged-settings copies and data folders; the stale second workflow was removed (a test now fails if one comes back); `lp` (`lp.ps1` / `lp.cmd`) is the simple install command through git (install, update, run, version, path, uninstall, source).
 
 Still true: UPnP maps "forever" until closed; the firewall rule is for any profile; the installer's checksum comes from the same release (signing the exe is the real fix).
+
+## Hardening round 3 (0.7.5)
+
+- Router port: opened with a 2-hour lease and renewed every 50 minutes while the server runs, so a crash or power cut
+  closes it by itself. Routers that refuse timed leases get a permanent mapping, which is still closed on stop, after a crash and on uninstall.
+- Firewall rule: stays on every network profile on purpose (hotspots count as "public"), but in the packaged exe it is now tied to that one program.
+- Installer: `install.ps1` checks the exe's Authenticode signature when one exists and refuses a broken one. Releases are still
+  unsigned (needs a certificate; `build_exe.bat` signs when `LP_SIGN_PFX`/`LP_SIGN_PASS` are set). Until then the checksum only catches a damaged download.
+- Not verified on real Windows: renewal against a real router, `program=` rule, the signature check.
