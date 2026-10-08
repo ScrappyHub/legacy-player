@@ -93,6 +93,12 @@ async def handle_client(
                             connection_limit = None
                         await relay.handle(request, reader, writer)
                         return
+                    if relay is not None and request.get("operation") == "punch" and request_count == 1:
+                        if connection_limit is not None:
+                            connection_limit.release()
+                            connection_limit = None
+                        await relay.handle_punch(request, reader, writer)
+                        return
                     if control is not None and control.is_admin_operation(request.get("operation")):
                         peer = writer.get_extra_info("peername")
                         host = peer[0] if peer else ""

@@ -33,7 +33,7 @@ from . import overlay as overlaymod
 from . import procs
 from . import controllers, emulators, engines, pads, savefolders, saves
 from .installer import EngineInstaller, InstallError, latest_release, pick_asset
-from . import dolphinpads, dolphinpaths, privatelink, firewall, gamefinder, gameinfo, portmap, pcgames, reach, winplace, keyboard, memprobe, netcheck, reports, selfuninstall, sysinfo
+from . import dolphinpads, dolphinpaths, privatelink, firewall, gamefinder, gameinfo, portmap, pcgames, punch, reach, winplace, keyboard, memprobe, netcheck, reports, selfuninstall, sysinfo
 from .covers import (CONTENT_TYPES, CoverFetcher, SYSTEMS as COVER_SYSTEMS, clear_custom_cover, cover_path,
                      custom_cover, set_custom_cover)
 from .pcscan import PcScan
@@ -2032,6 +2032,7 @@ class LauncherApp:
             "pending": self._pending_requests(r),
             "launch": self._room_launch_state(r, session),
             "relay_errors": list(getattr(self.tunnel, "errors", []) or [])[-3:],
+            "path": self._match_path(),
             "running": self._running_now(),
         }, "waits": self._waits_view()}
 
@@ -2216,6 +2217,12 @@ class LauncherApp:
                         self.tunnel = netplay_tunnel.RelayHost(
                             key, lambda track: client.open_relay("host", auth, wait_paired=True, on_socket=track), "127.0.0.1", ra_port,
                             slots=max(1, (room.get("max_players") or 4) - 1)).start()
+                        if settings["allow_direct_connections"]:
+                            # Friends may also connect straight to this computer when both routers allow it.
+                            # The relay above stays ready, so a blocked route never costs the match.
+                            self.tunnel_direct = netplay_tunnel.RelayHost(
+                                key, lambda track: punch.dial(client, "host", auth, on_socket=track), "127.0.0.1", ra_port,
+                                slots=max(1, min(3, (room.get("max_players") or 4) - 1))).start()
                     else:
                         ra_port = port + 1 if port < 65535 else port - 1
                         self.tunnel = netplay_tunnel.Tunnel("host", key, "0.0.0.0", port, "127.0.0.1", ra_port).start()
@@ -2229,9 +2236,12 @@ class LauncherApp:
                     if not endpoint.get("psk"):
                         raise AppError("The host's relay has no key; ask them to relaunch.")
                     client, auth = self._client(), self._auth()
+                    try_direct = bool(self.catalog.settings()["allow_direct_connections"])
+                    self.dialer = punch.GuestDialer(
+                        (lambda: punch.dial(client, "guest", auth)) if try_direct else None,
+                        lambda: client.open_relay("guest", auth, wait_paired=True))
                     self.tunnel = netplay_tunnel.Tunnel(
-                        "guest", endpoint["psk"], "127.0.0.1", 0, "", 0,
-                        dial=lambda: client.open_relay("guest", auth, wait_paired=True)).start()
+                        "guest", endpoint["psk"], "127.0.0.1", 0, "", 0, dial=self.dialer).start()
                     connect_address, connect_port = "127.0.0.1", self.tunnel.port
                     encrypted = True
                     relay = True
@@ -2288,6 +2298,20 @@ class LauncherApp:
         if self.tunnel is not None:
             self.tunnel.stop()
             self.tunnel = None
+        if getattr(self, "tunnel_direct", None) is not None:
+            self.tunnel_direct.stop()
+            self.tunnel_direct = None
+        self.dialer = None
+
+    def _match_path(self) -> str:
+        """How this match's traffic travels: 'direct' (computer to computer), 'relay' (through the server) or ''."""
+        dialer = getattr(self, "dialer", None)
+        if dialer is not None:
+            return dialer.path
+        direct = getattr(self, "tunnel_direct", None)
+        if direct is not None and direct.served:
+            return "direct"
+        return "relay" if getattr(self.tunnel, "served", 0) else ""
 
     def _public_or_lan_address(self) -> str:
         """The address a friend in another town could use if there is one, otherwise this computer's address on the home network."""

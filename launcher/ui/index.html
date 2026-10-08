@@ -1400,6 +1400,7 @@ function launchBox(rm,host){
  return h("div",{class:"card",style:"margin:8px 0"},
   dolphin&&host?h("div",{class:"row"},h("label",{class:"small"},"Connection ",mode)):null,
   host?relayRow:null,relayNote,host?addrRow:null,guestDirectRow,(rm.relay_errors||[]).length?h("p",{class:"bad small"},"Relay problem: "+rm.relay_errors[rm.relay_errors.length-1]):null,
+  rm.path?h("p",{class:"small "+(rm.path==="direct"?"good":"muted")},rm.path==="direct"?"Connected computer to computer. The server is not carrying your game.":"Connected through the server relay (a direct route was not available)."):null,
   allowRow,
   (dolphin&&host&&L.address_is_home_only)?h("p",{class:"small muted"},"The address above is your home-network one. A friend in another town can't use 'Direct connection' with it; leave Connection on the traversal server (the default)."):null,
   h("div",{class:"row",style:"margin-top:6px"},go,L.ready?null:h("span",{class:"small muted"},L.reason||""),waitingForCode&&L.ready?h("span",{class:"small muted"},"Waiting for the host to share a Dolphin host code…"):null,(dolphin&&!host&&L.endpoint_kind)?h("span",{class:"small good"},"The host shared a way to connect. Press Open Dolphin."):null),

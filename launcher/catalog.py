@@ -94,7 +94,7 @@ SETTINGS_SCHEMA: dict[str, dict] = {
     "allow_direct_connections": {
         "type": "bool", "default": False, "group": "Privacy",
         "label": "Allow direct connections (reveals your address)",
-        "help": "Off (recommended): matches always go through the server relay, so other players never learn your IP address. On: lets a host choose a direct connection, which hands the host's address to every guest. Only turn on for a home network or a VPN such as Tailscale.",
+        "help": "Off (recommended): matches always go through the server relay, so other players never learn your IP address. On: Legacy Player first tries to connect computer to computer (the server only introduces you, and carries no game traffic), which is faster and gives the other player your address. If your routers do not allow it, the relay is used automatically.",
     },
     "show_pc_games": {
         "type": "bool", "default": True, "group": "Library",

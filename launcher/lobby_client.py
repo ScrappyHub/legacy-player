@@ -32,8 +32,33 @@ class LobbyClient:
         # A pinned SHA-256 of the server certificate (what the in-app server shows its owner).
         self.fingerprint = re.sub(r"[^0-9a-f]", "", fingerprint.lower())
 
-    def _connect(self) -> socket.socket:
-        sock = socket.create_connection((self.host, self.port), timeout=self.timeout)
+    def _connect(self, source_port: int | None = None) -> socket.socket:
+        if source_port is None:
+            sock = socket.create_connection((self.host, self.port), timeout=self.timeout)
+        else:
+            sock = self._bound_connection(source_port)
+        return self._secure(sock)
+
+    def _bound_connection(self, source_port: int) -> socket.socket:
+        """Connect from a chosen local port (0 = any) that other sockets may share. The direct
+        connection to a friend is made from this same port, so it is the port the router maps."""
+        last: Exception | None = None
+        for family, kind, proto, _, addr in socket.getaddrinfo(self.host, self.port, 0, socket.SOCK_STREAM):
+            sock = socket.socket(family, kind, proto)
+            try:
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                if hasattr(socket, "SO_REUSEPORT"):
+                    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+                sock.bind(("::" if family == socket.AF_INET6 else "", source_port))
+                sock.settimeout(self.timeout)
+                sock.connect(addr)
+                return sock
+            except OSError as exc:
+                last = exc
+                sock.close()
+        raise last or OSError("no address to connect to")
+
+    def _secure(self, sock: socket.socket) -> socket.socket:
         if self.tls:
             context = ssl.create_default_context()
             if self.fingerprint or not self.verify:
@@ -48,6 +73,32 @@ class LobbyClient:
                         "The server's certificate does not match the fingerprint you entered. "
                         "Ask the host for the fingerprint shown in their app, or someone may be in the middle.")
         return sock
+
+    def open_punch(self, role: str, auth: dict, *, wait: float = 125.0, on_socket=None) -> tuple[int, list]:
+        """Ask the server to introduce this player to the other side. Returns (local port the
+        server saw us on, [peer address, peer port]). The host waits here until a guest asks."""
+        try:
+            sock = self._connect(source_port=0)
+            if on_socket is not None:
+                on_socket(sock)
+            port = sock.getsockname()[1]
+            sock.sendall(json.dumps({"operation": "punch", "role": role, "consent": True, **auth}).encode() + b"\n")
+            first = json.loads(_read_line(sock) or b"{}")
+            if not first.get("ok"):
+                sock.close()
+                raise LobbyClientError(first.get("error", "direct connection refused"))
+            reply = first
+            if first["result"].get("parked"):
+                sock.settimeout(wait)
+                reply = json.loads(_read_line(sock) or b"{}")
+                if not reply.get("ok"):
+                    sock.close()
+                    raise LobbyClientError(reply.get("error", "nobody tried to connect directly"))
+            sock.close()
+            peer = reply["result"]["peer"]
+            return port, [str(peer[0]), int(peer[1])]
+        except (OSError, ssl.SSLError, ValueError, KeyError) as exc:
+            raise LobbyClientError(f"Could not set up a direct connection through {self.host}:{self.port} ({exc}).") from exc
 
     def open_relay(self, role: str, auth: dict, *, wait_paired: bool, on_socket=None) -> socket.socket:
         """Open a relay connection through the lobby server. Returns the raw socket once the

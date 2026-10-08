@@ -133,7 +133,7 @@ See `docs/proposals/0003_OWNED_EMULATOR_SHELL.md`. In short: the **Engines** tab
 
 ### Server operations (wire protocol, newline JSON)
 
-create, join (invite code, join code, or open room by session id), validate, ready, input, poll, checkpoint, complete, status, join_status, decide_join, invite (priority flag), revoke_invites, kick, leave, heartbeat, set_priority, list_waiting, cancel_wait, browse, set_open, set_capacity, set_endpoint (kind direct/code/relay, optional psk), get_endpoint, relay (first line of a connection that becomes a byte pipe), events; admin (loopback + token): admin_status, admin_shutdown.
+create, join (invite code, join code, or open room by session id), validate, ready, input, poll, checkpoint, complete, status, join_status, decide_join, invite (priority flag), revoke_invites, kick, leave, heartbeat, set_priority, list_waiting, cancel_wait, browse, set_open, set_capacity, set_endpoint (kind direct/code/relay, optional psk), get_endpoint, punch (first line of a connection that introduces the host and one guest for a direct TCP hole-punched link; both must send consent; no game data touches the server), relay (first line of a connection that becomes a byte pipe), events; admin (loopback + token): admin_status, admin_shutdown.
 
 ## Your turn: switching from what you were playing
 
@@ -142,3 +142,8 @@ says so; *It's my turn: switch* asks whether to close the game you are in (the e
 normal close request, the same as clicking its X, so it writes saves as usual), leaves any
 room you were in, takes the seat, and joins the match at once if the host has launched.
 
+
+
+## Direct connections (hole punching)
+
+With Allow direct connections on, RetroArch matches first try a computer-to-computer link: both players connect to the lobby server from a local port (`punch` operation), the server tells each the address it saw for the other, then both connect to each other from that same port at once (`launcher/punch.py`). The result is a plain TCP socket that carries the usual TLS-PSK tunnel. The relay stays parked as a fallback; one failed direct attempt switches the guest to the relay for the rest of the match. The room shows which path is in use. Not covered: symmetric NATs and carrier-grade NAT usually refuse hole punching (the relay is used), and Dolphin/PSP keep their own traversal.

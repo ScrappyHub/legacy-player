@@ -192,6 +192,7 @@ class RelayHost:
         self.stopped = threading.Event()
         self.threads: list[threading.Thread] = []
         self.errors: list[str] = []
+        self.served = 0
         self.open_sockets: set[socket.socket] = set()
         self._lock = threading.Lock()
 
@@ -247,6 +248,7 @@ class RelayHost:
                 except OSError:
                     pass
                 continue
+            self.served += 1
             threading.Thread(target=_pipe, args=(conn, upstream, "rx"), daemon=True).start()
             _pipe(upstream, conn, "tx")
             for s in (conn, upstream):

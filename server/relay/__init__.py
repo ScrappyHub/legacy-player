@@ -8,6 +8,7 @@ Only authenticated room members can use a room's relay.
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import json
 from collections import deque
 
@@ -23,6 +24,8 @@ class Relay:
         self.parked: dict[str, deque] = {}          # session id -> idle host (reader, writer, paired future)
         self.active = 0
         self.member_streams: dict[tuple[str, str], int] = {}
+        self.punch_parked: dict[str, deque] = {}    # session id -> waiting host (endpoint, paired future)
+        self.punch_wait_seconds = 120.0
 
     @staticmethod
     def _reply(writer: asyncio.StreamWriter, ok: bool, **payload) -> None:
@@ -93,6 +96,89 @@ class Relay:
         self._reply(writer, False, error="role must be host or guest")
         await writer.drain()
 
+    @staticmethod
+    def _endpoint(writer: asyncio.StreamWriter):
+        peer = writer.get_extra_info("peername")
+        if not peer:
+            return None
+        host = peer[0]
+        try:
+            ip = ipaddress.ip_address(host)
+            if getattr(ip, "ipv4_mapped", None):
+                host = str(ip.ipv4_mapped)
+        except ValueError:
+            return None
+        return [host, int(peer[1])]
+
+    async def handle_punch(self, request: dict, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        """Introduce a room's host and one guest to each other so their computers can connect directly.
+
+        Each side connects here from the local port it will use for the direct connection, so the
+        address this server sees is the one the player's router hands out for that port. The server
+        tells each side the other's address and then steps out; no game data touches it. Both
+        players must have said yes (consent), because the other side learns their address."""
+        try:
+            session, participant_id = self.service.relay_authorize(request)
+        except Exception as exc:
+            self._reply(writer, False, error=str(exc))
+            await writer.drain()
+            return
+        if not request.get("consent"):
+            self._reply(writer, False, error="direct connections need both players to agree")
+            await writer.drain()
+            return
+        mine = self._endpoint(writer)
+        sid = session.session_id
+        role = request.get("role")
+        if mine is None or role not in {"host", "guest"}:
+            self._reply(writer, False, error="could not work out a direct route")
+            await writer.drain()
+            return
+        if role == "host":
+            if participant_id != session.host_id:
+                self._reply(writer, False, error="only the host waits for direct connections")
+                await writer.drain()
+                return
+            queue = self.punch_parked.setdefault(sid, deque())
+            while len(queue) >= self.max_parked:
+                old = queue.popleft()
+                if not old[1].done():
+                    old[1].set_result(None)
+            paired: asyncio.Future = asyncio.get_running_loop().create_future()
+            queue.append((mine, paired))
+            self._reply(writer, True, parked=True)
+            await writer.drain()
+            watcher = asyncio.ensure_future(self._watch_parked(reader, paired))
+            try:
+                other = await asyncio.wait_for(asyncio.shield(paired), self.punch_wait_seconds)
+            except (asyncio.TimeoutError, TimeoutError):
+                other = None
+            finally:
+                watcher.cancel()
+                if not paired.done():
+                    paired.set_result(None)
+            if other is None:
+                self._reply(writer, False, error="nobody tried to connect directly")
+            else:
+                self._reply(writer, True, peer=other)
+            try:
+                await writer.drain()
+            except OSError:
+                pass
+            return
+        queue = self.punch_parked.get(sid) or deque()
+        while queue:
+            host_endpoint, paired = queue.popleft()
+            if not paired.done():
+                break
+        else:
+            self._reply(writer, False, error="the host is not waiting for a direct connection")
+            await writer.drain()
+            return
+        paired.set_result(mine)
+        self._reply(writer, True, peer=host_endpoint)
+        await writer.drain()
+
     async def _watch_parked(self, reader: asyncio.StreamReader, paired: asyncio.Future) -> None:
         """A parked host connection that hangs up (host crashed or relaunched) is dropped at once."""
         try:
@@ -115,6 +201,9 @@ class Relay:
                     pass
 
     def drop_session(self, sid: str) -> None:
+        for _, paired in self.punch_parked.pop(sid, ()):
+            if not paired.done():
+                paired.set_result(None)
         for _, w, paired in self.parked.pop(sid, ()):
             if not paired.done():
                 paired.set_result(None)
