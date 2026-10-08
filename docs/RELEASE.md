@@ -10,8 +10,8 @@
 ## Build and publish (on GitHub)
 1. Merge the work into `main` (the installer one-liner below reads `install.ps1` from `main`), then:
    ```
-   git tag v0.7.32
-   git push origin v0.7.32
+   git tag v0.7.33
+   git push origin v0.7.33
    ```
 2. The `release` workflow (GitHub > Actions) builds `LegacyPlayer.exe` on a Windows runner, starts it once as a smoke
    check, and publishes the release files: `LegacyPlayer-0.7.0-win64.zip` (what the installer downloads), the bare `LegacyPlayer-0.7.0-win64.exe`, a `.sha256` for each and `SHA256SUMS.txt`. The tag should match `VERSION`
@@ -23,7 +23,7 @@
 irm https://raw.githubusercontent.com/ScrappyHub/legacy-player/main/install.ps1 | iex
 ```
 It downloads the latest release, checks its SHA-256, installs to `%LOCALAPPDATA%\Programs\LegacyPlayer`, adds a Start
-menu shortcut and starts the app. Pin a version: save the script and run `.\install.ps1 -Tag v0.7.32`.
+menu shortcut and starts the app. Pin a version: save the script and run `.\install.ps1 -Tag v0.7.33`.
 If the repository is private, the one-liner cannot download it: use `-Token <GitHub token with repo read access>` on a saved
 copy of the script, or make the repository public first.
 
@@ -31,7 +31,7 @@ copy of the script, or make the repository public first.
 ```
 git clone https://github.com/ScrappyHub/legacy-player
 cd legacy-player
-.\lp install      # or: .\lp install v0.7.32     (update / run / version / path / uninstall / source / help)
+.\lp install      # or: .\lp install v0.7.33     (update / run / version / path / uninstall / source / help)
 ```
 `lp.cmd` lets it run from cmd.exe too. `lp source` runs straight from the checkout with Python (for developers).
 

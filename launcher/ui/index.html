@@ -66,6 +66,10 @@ option{background:#141a33;color:#eef1ff}
 [data-bg=plain] .bg svg,[data-bg=plain] .orb{display:none}
 [data-bg=plain] .bg{background:var(--bg)!important}
 @media(prefers-reduced-motion:reduce){.bg *,.bg::before,.bg::after{animation:none!important}}
+.bgpick{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:10px}
+.bgpick button{display:flex;flex-direction:column;gap:6px;align-items:stretch;padding:6px;border-radius:12px;border:2px solid var(--line);background:var(--panel2);cursor:pointer;text-align:center;font-size:.8rem}
+.bgpick button .tile{height:54px;border-radius:8px;border:1px solid var(--line);background-color:var(--bg)}
+.bgpick button.on{outline:3px solid var(--accent);outline-offset:1px}.bgpick button:focus-visible{outline:3px solid var(--text);outline-offset:1px}
 .themes{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .themes .sw{width:34px;height:34px;border-radius:50%;border:2px solid var(--line);padding:0;cursor:pointer}
 .themes .sw.on{outline:3px solid var(--accent);outline-offset:2px}.themes .sw:focus-visible{outline:3px solid var(--text);outline-offset:2px}
@@ -727,6 +731,23 @@ function sittingMartin(size){const u=size/16,r=Math.round;
  const el=h("div",{class:"sitcat",role:"button",tabindex:"0",title:"Pet Martin",style:`width:${r(21*u)}px;height:${r(21*u)}px`,onkeydown:e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();el.click()}}},
   part(CAT_TAIL,"cattail",12,11),part(CAT_BODY,"catbody",0,12),part(MARTIN,"cathead",0,0));
  return el}
+const BACKGROUNDS=[["waves","Waves","linear-gradient(170deg,transparent 55%,color-mix(in srgb,var(--accent) 55%,transparent) 56%),linear-gradient(160deg,var(--panel),transparent)"],
+ ["aurora","Aurora","radial-gradient(circle at 25% 30%,color-mix(in srgb,var(--accent) 60%,transparent),transparent 55%),radial-gradient(circle at 75% 70%,color-mix(in srgb,var(--accent2) 55%,transparent),transparent 55%)"],
+ ["grid","Grid","linear-gradient(color-mix(in srgb,var(--accent) 60%,transparent) 1px,transparent 1px) 0 0/100% 9px,linear-gradient(90deg,color-mix(in srgb,var(--accent) 60%,transparent) 1px,transparent 1px) 0 0/12px 100%"],
+ ["stars","Stars","radial-gradient(1.5px 1.5px at 20% 30%,#fff,transparent),radial-gradient(1px 1px at 60% 20%,#fff,transparent),radial-gradient(1.5px 1.5px at 80% 70%,#fff,transparent),radial-gradient(1px 1px at 35% 75%,#fff,transparent)"],
+ ["dots","Dots","radial-gradient(color-mix(in srgb,var(--text) 40%,transparent) 1.2px,transparent 1.4px) 0 0/9px 9px"],
+ ["crt","Old TV","repeating-linear-gradient(0deg,rgba(0,0,0,.45) 0 1px,transparent 1px 3px),radial-gradient(ellipse,transparent 40%,rgba(0,0,0,.6))"],
+ ["bokeh","Soft lights","radial-gradient(circle at 25% 35%,color-mix(in srgb,var(--accent) 70%,transparent) 0 14%,transparent 15%),radial-gradient(circle at 70% 60%,color-mix(in srgb,var(--accent2) 65%,transparent) 0 20%,transparent 21%),radial-gradient(circle at 50% 20%,color-mix(in srgb,var(--accent) 50%,transparent) 0 9%,transparent 10%)"],
+ ["bitworld","1-bit World","repeating-conic-gradient(var(--accent) 0 25%,transparent 0 50%) 0 100%/6px 6px,linear-gradient(transparent 50%,var(--bg) 50%)"],
+ ["plain","Plain","none"]];
+/* the background picker, next to the colour themes (account page, name menu) and Preferences */
+function backgroundPicker(compact){
+ const box=h("div",{class:compact?"":"bgpick",role:"group","aria-label":"Background"});
+ const cur=()=>document.documentElement.dataset.bg||"waves";
+ const pick=async id=>{applyBg(id);const r=await api("settings",{key:"background",value:id}).catch(()=>null);if(r){S.settings=r.values;draw()}else toast("Could not save the background.","warn")};
+ const draw=()=>{if(compact){const sel=h("select",{"aria-label":"Background",style:"width:100%",onclick:e=>e.stopPropagation(),onchange:e=>pick(e.target.value)},...BACKGROUNDS.map(([id,name])=>h("option",{value:id,selected:cur()===id},name)));box.replaceChildren(sel);return}
+  box.replaceChildren(...BACKGROUNDS.map(([id,name,pic])=>h("button",{type:"button",class:cur()===id?"on":"","aria-pressed":cur()===id?"true":"false",title:name,onclick:e=>{e.stopPropagation();pick(id)}},h("div",{class:"tile",style:"background-image:"+pic}),name)))};
+ draw();return box}
 const THEMES=[["dark","Midnight","#4f8cff","#3be0a8","#050816"],["light","Light","#2f62e0","#066f53","#eef2fb"],["ocean","Ocean","#38bdf8","#34d399","#031a24"],["forest","Forest","#4ade80","#bef264","#04150c"],["sunset","Sunset","#fb923c","#f472b6","#1a0a10"],["rose","Rose","#f472b6","#c084fc","#1c0b16"],["violet","Violet","#a78bfa","#60a5fa","#0d0820"],["crimson","Crimson","#f87171","#fbbf24","#170507"],["graphite","Graphite","#93c5fd","#86efac","#0c0d10"]];
 /* the colour-theme picker used on the profile page, in the profile menu and in Settings: one tap changes and saves it */
 function themePicker(){
@@ -752,10 +773,10 @@ function nav(tab,anchor){S.tab=tab;S.anchor=anchor||null;go()}
 
 /* ---------- menu bar ---------- */
 function menuDefs(){return[
- ["Account",[["Account: profile, avatar and colours",()=>nav("profile")],["Network",()=>nav("together")],["Settings",()=>nav("settings")],["Preferences",()=>nav("preferences")],["Update everything",updateEverything],["Check for updates",checkUpdates],"-",["Exit Legacy Player",quitApp]]],
- ["Games",[["Library",()=>nav("library")],["Console mode",()=>nav("console")],["Storage by console",()=>nav("storage")],["Display and video",()=>nav("display")],["Controllers",()=>nav("controllers")],["Saves and backups",()=>nav("saves")],"-",["Rescan my games",()=>rescan()]]],
- ["Online",[...liveMenu(),["Server Info",()=>nav("together")],["Servers",()=>nav("servers")]]],
- ["Tools",[["Update everything",updateEverything],["Doctor's office (Setup)",()=>nav("setup")],["Engines",()=>nav("engines")],["Dolphin memory probe",()=>nav("probe")],["Emulators",()=>nav("emulators")],["Scan this computer",()=>{nav("engines");setTimeout(()=>runScan().then(v=>{if(v)go()}),250)}],["Credits",()=>nav("credits")]]],
+ ["Account",[["Your account: name, picture, theme and background",()=>nav("profile")],["Preferences (look, home, overlay, controller)",()=>nav("preferences")],["Settings (library, privacy, server)",()=>nav("settings")],"-",["Update everything",updateEverything],["Check for updates",checkUpdates],"-",["Exit Legacy Player",quitApp]]],
+ ["Games",[["Library",()=>nav("library")],["Console mode",()=>nav("console")],["Storage by console",()=>nav("storage")],["Display and video",()=>nav("display")],["Controllers",()=>nav("controllers")],["Saves and backups",()=>nav("saves")],"-",["Steam and PC games",()=>pcManager()],["Rescan my games",()=>rescan()]]],
+ ["Online",[...liveMenu(),["Server Info and network test",()=>nav("together")],["Servers: start, share, connect",()=>nav("servers")]]],
+ ["Tools",[["Update everything",updateEverything],["Doctor's office (Setup)",()=>nav("setup")],["Engines",()=>nav("engines")],["Preview the overlay",()=>act(()=>api("overlay_open",{preview:true}))],["Dolphin memory probe",()=>nav("probe")],["Emulators",()=>nav("emulators")],["Scan this computer",()=>{nav("engines");setTimeout(()=>runScan().then(v=>{if(v)go()}),250)}],["Credits",()=>nav("credits")]]],
  ["Help",[["How it works",()=>nav("help")],["How save files work",()=>nav("help","saves")],["Privacy",()=>nav("help","privacy")],["Uninstall Legacy Player...",()=>retireClinic()]]]]}
 function closeMenus(){document.querySelectorAll(".menu.open").forEach(x=>x.classList.remove("open"))}
 function buildMenubar(){const bar=$("#menubar");
@@ -774,7 +795,7 @@ function whoMenu(){
   h("div",{class:"dd",role:"menu",onclick:e=>e.stopPropagation()},
    h("button",{type:"button",role:"menuitem",onclick:()=>{closeMenus();nav("profile")}},"Edit profile"),
    h("button",{type:"button",role:"menuitem",onclick:fast},"Fast start server"),codeRow,h("hr"),
-   h("div",{class:"small muted",style:"padding:4px 12px"},"Theme"),h("div",{style:"padding:2px 12px 8px"},themePicker()),h("hr"),
+   h("div",{class:"small muted",style:"padding:4px 12px"},"Theme"),h("div",{style:"padding:2px 12px 8px"},themePicker()),h("div",{class:"small muted",style:"padding:4px 12px"},"Background"),h("div",{style:"padding:2px 12px 8px"},backgroundPicker(true)),h("hr"),
    h("button",{type:"button",role:"menuitem",onclick:()=>{closeMenus();quitApp()}},"Exit Legacy Player")));
  return box}
 document.addEventListener("click",closeMenus);document.addEventListener("keydown",e=>{if(e.key==="Escape")closeMenus()});
@@ -1100,7 +1121,9 @@ async function viewProfile(m){
    h("div",{class:"row",style:"margin-top:8px"},h("button",{class:"btn primary",onclick:async()=>{const r=await act(()=>api("profile",{alias:name.value.trim(),avatar:pick}),"Saved");if(r){S.profile=r;renderWho();go()}}},"Save"),
     h("button",{class:"btn",onclick:async()=>{const r=await act(()=>api("profile",{claim:true}));if(r){S.profile=r;toast(r.claimed?"Your tag is "+r.player:r.note,r.claimed?"":"warn");renderWho();go()}}},"Ask my server for my tag")),
    p.note?h("p",{class:"small muted"},p.note):null),
-  h("div",{class:"card",style:"margin-top:14px"},h("h3",{},"Theme"),h("div",{class:"small muted",style:"margin-bottom:8px"},"The colours of the background and buttons. Tap one to change it; it is saved right away."),themePicker()))}
+  h("div",{class:"card",style:"margin-top:14px"},h("h3",{},"Theme"),h("div",{class:"small muted",style:"margin-bottom:8px"},"The colours of the background and buttons. Tap one to change it; it is saved right away."),themePicker()),
+  h("div",{class:"card",style:"margin-top:14px"},h("h3",{},"Background"),h("div",{class:"small muted",style:"margin-bottom:8px"},"The picture behind the app, in your theme's colours. Tap one to change it; it is saved right away."),backgroundPicker()),
+  h("div",{class:"card",style:"margin-top:14px"},h("h3",{},"Quick links"),h("div",{class:"row"},h("button",{class:"btn",onclick:()=>nav("preferences")},"Preferences"),h("button",{class:"btn",onclick:()=>pcManager()},"Steam and PC games"),h("button",{class:"btn",onclick:()=>act(()=>api("overlay_open",{preview:true}))},"Preview the overlay"),h("button",{class:"btn primary",onclick:updateEverything},"Update everything"))))}
 
 /* ---------- First-run: scan everything once, then you are set ---------- */
 function scanPanel(onDone,opts){opts=opts||{};
