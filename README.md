@@ -14,6 +14,14 @@ PowerShell, no administrator needed. Either one line:
 irm https://raw.githubusercontent.com/ScrappyHub/legacy-player/main/install.ps1 | iex
 ```
 
+From **Command Prompt (cmd)**, **Windows Terminal**, **Git Bash** or **WSL** (anything that can run `powershell.exe`), the same install in one line:
+
+```
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/ScrappyHub/legacy-player/main/install.ps1 | iex"
+```
+
+(In Git Bash or WSL write `powershell.exe` instead of `powershell`.) Legacy Player is a Windows app, so there is no macOS or Linux install.
+
 or, through git, with the small `lp` command that comes with the repository:
 
 ```powershell

@@ -70,3 +70,13 @@ class FirewallExactPortTests(unittest.TestCase):
         out = mock.Mock(returncode=0, stdout="LocalPort:                           8765\n")
         with mock.patch.object(firewall, "supported", return_value=True):
             self.assertFalse(firewall.status(87, run=lambda *a, **k: out)["allowed"])
+
+
+class InstallCommandsTests(unittest.TestCase):
+    def test_readme_has_a_command_for_every_shell(self):
+        from pathlib import Path
+        text = (Path(__file__).resolve().parents[1] / "README.md").read_text(encoding="utf-8")
+        raw = "https://raw.githubusercontent.com/ScrappyHub/legacy-player/main/install.ps1"
+        self.assertIn(f"irm {raw} | iex", text)
+        self.assertIn(f'powershell -NoProfile -ExecutionPolicy Bypass -Command "irm {raw} | iex"', text)
+        self.assertIn("powershell.exe", text)
