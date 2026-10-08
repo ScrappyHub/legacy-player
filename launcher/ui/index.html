@@ -1510,7 +1510,7 @@ async function viewServers(m){
   h("div",{class:"row"},h("h3",{class:"grow"},"Your server"),st.online?h("b",{class:"good"},"running"):h("b",{class:"bad"},"stopped")),
   h("p",{class:"small muted"},whyInline("What is it?","A small program that keeps rooms and invite codes. It keeps your rooms when you stop it and brings them back when you start it again. It runs on this computer while Legacy Player is open."),st.message?" "+st.message:""),
   st.online?h("div",{class:"inbanner ok"},"Your server is running. Closing this window with X keeps Legacy Player in the tray (notification area) so it stays managed; right-click the tray icon to stop it, copy a fresh server code or exit."):"",
-  h("div",{class:"row"},h("button",{class:"btn primary",onclick:()=>srvAct("start")},"Start"),h("button",{class:"btn",onclick:()=>srvAct("restart")},"Restart"),h("button",{class:"btn",onclick:()=>srvAct("stop")},"Stop"),
+  h("div",{class:"row"},...(st.online?[h("button",{class:"btn",onclick:()=>srvAct("restart")},"Restart"),h("button",{class:"btn bad",onclick:()=>srvAct("stop")},"Stop")]:[h("button",{class:"btn primary",onclick:()=>srvAct("start")},"Start")]),
    h("label",{class:"small"},share," Let friends connect (encrypted with this app's own certificate)"),
    h("button",{class:"btn",title:"Opens the server port on your router and closes it again, to see if friends can reach you.",onclick:routerTest},"Test my router"),h("button",{class:"btn",onclick:fwAsk},"Check Windows Firewall"),
    h("button",{class:"btn primary",title:"Shows the ways a friend can connect to you, and which of them work on this computer.",onclick:reachDialog},"How friends reach me"),
@@ -2221,14 +2221,24 @@ async function startVisit(dr){
  if(S.visit)return;const spot=$(".docspot"),say=$(".docsay"),scene=$(".office");if(!say)return;S.visit=true;const rx=$(".rx");if(rx)rx.remove();
  const lines=visitLines(dr);let skip=false;
  const paint=m=>{spot.replaceChildren(pixels(doctorRows(m),176,"doctor "+m))};
- const next=()=>new Promise(res=>{const done=()=>{scene.removeEventListener("click",done);document.removeEventListener("keydown",key);res()};
+ let refreshed=false;const startFin=((await api("scan_pc",{}).catch(()=>({})))||{}).finished_at||0;
+ const fin=async()=>{const v=await api("scan_pc",{}).catch(()=>null);return !!v&&v.state!=="running"&&(v.finished_at||0)>startFin};
+ const refreshLines=async k=>{refreshed=true;const fresh=await api("doctor").catch(()=>S.doc);S.doc=fresh;dr=fresh;
+  lines.splice(k,lines.length-k,["happy","Oh! You just scanned this computer. Let me read you the new results."],...buildVisit(fresh,true).slice(1))};
+ const next=()=>new Promise(res=>{let iv=null;const done=()=>{clearInterval(iv);scene.removeEventListener("click",done);document.removeEventListener("keydown",key);res()};
   const key=e=>{if(e.key==="Enter"||e.key===" "||e.key==="a"){e.preventDefault();done()}if(e.key==="Escape"){skip=true;done()}};
-  scene.addEventListener("click",done);document.addEventListener("keydown",key)});
+  scene.addEventListener("click",done);document.addEventListener("keydown",key);
+  iv=setInterval(async()=>{if(!refreshed&&await fin())done()},1500)});
  scene.classList.add("visiting");
- for(let k=0;k<lines.length&&!skip;k++){const[m,text,tag]=lines[k];paint(m);
-  say.classList.add("talk");say.textContent="";let i=0,quick=false;
+ for(let k=0;k<lines.length&&!skip;k++){
+  if(!refreshed&&k>0&&await fin())await refreshLines(k);
+  const[m,text,tag]=lines[k];paint(m);
+  say.classList.add("talk");say.textContent="";let i=0,quick=false,stale=false;
   const skipType=()=>{quick=true};scene.addEventListener("click",skipType,{once:true});
-  while(i<text.length&&!quick){say.textContent=text.slice(0,++i);await new Promise(r=>setTimeout(r,18))}say.textContent=text;
+  while(i<text.length&&!quick){say.textContent=text.slice(0,++i);await new Promise(r=>setTimeout(r,18));
+   if(!refreshed&&i%30===0&&await fin()){stale=true;break}}
+  if(stale){say.classList.remove("talk");scene.removeEventListener("click",skipType);await refreshLines(k);k--;continue}
+  say.textContent=text;
   say.classList.remove("talk");scene.removeEventListener("click",skipType);
   if(tag==="rx"){showRx()}
   if(tag==="autoscan"){await doctorAutoScan(say);const fresh=await api("doctor").catch(()=>S.doc);S.doc=fresh;lines.splice(k+1,lines.length,...buildVisit(fresh,true).slice(1));continue}

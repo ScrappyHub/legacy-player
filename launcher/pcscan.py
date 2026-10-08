@@ -168,4 +168,5 @@ class PcScan:
         return self.view()
 
     def view(self) -> dict:
-        return {"state": self.state, "where": self.where, "visited": self.visited, "found": self.found, "archives": self.archives, **self.extra}
+        return {"state": self.state, "where": self.where, "visited": self.visited, "found": self.found, "archives": self.archives,
+                "finished_at": self.finished_at, **self.extra}

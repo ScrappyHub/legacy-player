@@ -243,6 +243,11 @@ class UiSmokeTests(unittest.TestCase):
             page.wait_for_selector("#srvlive")
             self.assertIn("Right now", page.inner_text("#srvlive"))
             self.assertNotIn("Make my server code", page.inner_text("#main"))
+            # stopped server: only Start is offered; Restart and Stop appear once it runs
+            btns = [t.strip() for t in page.locator("#main .card .row .btn").all_inner_texts()]
+            self.assertEqual(1, btns.count("Start"))
+            self.assertNotIn("Stop", btns)
+            self.assertNotIn("Restart", btns)
             page.click("#who")
             page.wait_for_selector("text=Fast start server")
             self.assertIn("Edit profile", page.inner_text("#menubar"))
