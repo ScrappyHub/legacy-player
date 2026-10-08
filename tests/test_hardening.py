@@ -138,13 +138,35 @@ class Round4Tests(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.app = LauncherApp(Path(self.tmp.name) / "data", roots=[])
 
-    def test_firewall_approval_command_keeps_quotes_single_level(self):
-        seen = []
-        firewall._elevated(firewall.rule_args(8765, "C:\\Program Files\\LP\\LegacyPlayer.exe"), lambda a, timeout=0: seen.append(a))
-        text = seen[0][-1]
-        self.assertIn('"name=Legacy Player server"', text)
-        self.assertNotIn('""', text)
-        self.assertIn('"program=C:\\Program Files\\LP\\LegacyPlayer.exe"', text)
+    def test_firewall_approval_runs_a_script_file_and_reports_netsh_words(self):
+        import tempfile
+        from pathlib import Path as P
+        seen = {}
+
+        def run(cmd, timeout=0):
+            seen["cmd"] = cmd
+            folder = P(tempfile.gettempdir())
+            seen["script"] = (folder / "lp-firewall.cmd").read_text(encoding="ascii")
+            (folder / "lp-firewall.log").write_text("The requested operation requires elevation.", encoding="utf-8")
+            return mock.Mock(stderr="")
+        out = firewall._elevated(firewall.rule_args(8765, "C:\\Program Files\\LP\\LegacyPlayer.exe"), run)
+        self.assertIn("RunAs", seen["cmd"][-1])
+        self.assertIn('"name=Legacy Player server"', seen["script"])
+        self.assertIn('"program=C:\\Program Files\\LP\\LegacyPlayer.exe"', seen["script"])
+        self.assertEqual(out["log"], "The requested operation requires elevation.")
+        self.assertFalse(out["cancelled"])
+
+    def test_firewall_cancel_is_told_apart_and_a_manual_command_is_given(self):
+        def run(cmd, timeout=15.0):
+            if cmd[0] == "powershell":
+                return mock.Mock(stderr="The operation was canceled by the user.")
+            return mock.Mock(returncode=1, stdout="")
+        with mock.patch("launcher.firewall.supported", return_value=True):
+            r = firewall.allow(8765, run)
+        self.assertFalse(r["allowed"])
+        self.assertIn("closed or refused", r["message"])
+        self.assertIn("localport=8765", r["manual"])
+        self.assertIn("profile=any", r["manual"])
 
     def test_hosting_starts_a_stopped_own_server_once(self):
         from launcher.lobby_client import LobbyClientError
@@ -283,3 +305,13 @@ class GameOverlayTests(unittest.TestCase):
         self.assertEqual("under a minute", duration(20))
         self.assertEqual("25 min", duration(1500))
         self.assertEqual("1 h 05 min", duration(3900))
+
+
+class FirewallProgramMatchTests(unittest.TestCase):
+    def test_a_rule_added_by_hand_for_any_program_counts_and_another_program_does_not(self):
+        exe = "C:\\Users\\a\\AppData\\Local\\Programs\\LegacyPlayer\\LegacyPlayer.exe"
+        base = "Rule Name: Legacy Player server\nLocalPort: 8765\n"
+        self.assertTrue(firewall._program_matches(exe, base + "Program: Any\n"))
+        self.assertTrue(firewall._program_matches(exe, base + "Program:   Alle\n"))
+        self.assertTrue(firewall._program_matches(exe, base + "Program: c:\\users\\A\\appdata\\local\\programs\\legacyplayer\\LEGACYPLAYER.EXE\n"))
+        self.assertFalse(firewall._program_matches(exe, base + "Program: C:\\Other\\thing.exe\n"))

@@ -1415,7 +1415,8 @@ async function viewServers(m){
  const share=h("input",{type:"checkbox",id:"srvshare"});
  share.checked=V.server_host!=="127.0.0.1"?false:(V.server_tls||!st.online);
  const fwAsk=async()=>{const f=await api("firewall_status");if(!f.supported||f.allowed)return;
-  if(await ask("Windows Firewall has no rule for your server yet, so friends on other networks may be blocked. Legacy Player can add it now. Windows will show one approval box; press Yes there.","Add the rule")){const r=await act(()=>api("firewall_allow",{consent:true}));if(r)toast(r.message,r.allowed?"":"warn")}};
+  if(await ask("Windows Firewall has no rule for your server yet, so friends on other networks may be blocked. Legacy Player can add it now. Windows will show one approval box; press Yes there.","Add the rule")){const r=await act(()=>api("firewall_allow",{consent:true}));if(!r)return;toast(r.message,r.allowed?"":"warn");
+   if(!r.allowed&&r.manual&&await ask(r.message+" You can add it yourself: open Windows PowerShell as administrator (right-click Start, 'Terminal (Admin)'), paste the command I copy for you, and press Enter. It should say Ok.","Copy the command"))copyText(r.manual,"Command copied")}};
  const routerTest=async()=>{const r=await act(()=>api("router_test"));if(!r)return;
   toast(r.state==="mapped"?"Your router opens ports for Legacy Player. Friends can use your server code.":r.message+(r.fallback_available?" A shared server will be used instead.":""),r.state==="mapped"?"":"warn")};
  const srvAct=async action=>{const r=await act(()=>api("server_control",{action,share:share.checked}));if(r){if(action!=="stop"&&share.checked)setTimeout(fwAsk,400);toast(r.message+(r.reach&&r.reach.message&&action!=="stop"?" "+r.reach.message:""),r.reach&&r.reach.state&&r.reach.state!=="mapped"&&action!=="stop"?"warn":"");go()}};

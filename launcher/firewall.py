@@ -10,6 +10,8 @@ from __future__ import annotations
 import re
 import subprocess
 import sys
+import tempfile
+from pathlib import Path
 
 RULE = "Legacy Player server"
 _FLAGS = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -35,12 +37,48 @@ def rule_args(port: int, program: str | None = None) -> list[str]:
     return args
 
 
-def _elevated(args: list[str], run) -> None:
-    """Run netsh as administrator through the Windows approval box. The arguments become one command line in which
-    anything with a space is wrapped in double quotes (inside a single-quoted PowerShell string those stay as they are)."""
-    line = " ".join(f'"{a}"' if (" " in a or "\\" in a) else a for a in args).replace("'", "''")
-    run(["powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command",
-         f"Start-Process netsh -ArgumentList '{line}' -Verb RunAs -Wait -WindowStyle Hidden"], timeout=120)
+def _elevated(args: list[str], run) -> dict:
+    """Run netsh as administrator through the Windows approval box and report what happened.
+    The command goes into a small script file so there is no quoting to get wrong, and netsh's own words are written to a log
+    file so a failure can say why. Returns {"cancelled": bool, "log": netsh's output, "error": PowerShell's message}."""
+    folder = Path(tempfile.gettempdir())
+    script, log = folder / "lp-firewall.cmd", folder / "lp-firewall.log"
+    line = " ".join(f'"{a}"' if (" " in a or "\\" in a) else a for a in args)
+    try:
+        log.unlink(missing_ok=True)
+        script.write_text(f'@echo off\r\nnetsh {line} > "{log}" 2>&1\r\nexit /b %errorlevel%\r\n', encoding="ascii", errors="replace")
+    except OSError as exc:
+        return {"cancelled": False, "log": "", "error": f"Could not prepare the command: {exc}"}
+    quoted = str(script).replace("'", "''")
+    result = run(["powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command",
+                  f"Start-Process -FilePath '{quoted}' -Verb RunAs -Wait -WindowStyle Hidden"], timeout=120)
+    err = str(getattr(result, "stderr", "") or "").strip()
+    text = ""
+    try:
+        text = log.read_text(encoding="utf-8", errors="replace").strip()
+    except OSError:
+        pass
+    for f in (script, log):
+        try:
+            f.unlink(missing_ok=True)
+        except OSError:
+            pass
+    return {"cancelled": ("cancel" in err.lower()) and not text, "log": text[:400], "error": err[:300]}
+
+
+def manual_command(port: int) -> str:
+    """What to paste into an administrator PowerShell if the approval box does not work."""
+    return (f'netsh advfirewall firewall delete rule name="{RULE}"; '
+            f'netsh advfirewall firewall add rule name="{RULE}" dir=in action=allow protocol=TCP localport={int(port)} profile=any')
+
+
+def _program_matches(program: str, text: str) -> bool:
+    """The rule is fine when it names this program (by file name, so path spelling cannot matter) or names no program at all
+    ("Any", in any language), as a rule added by hand does. A rule for a different program does not count."""
+    m = re.search(r"^\s*Program:\s*(.+?)\s*$", text, re.M)
+    if m and not re.search(r"[\\/]|\.exe", m.group(1), re.I):
+        return True
+    return Path(program).name.lower() in text.lower()
 
 
 def status(port: int, run=_run) -> dict:
@@ -54,7 +92,7 @@ def status(port: int, run=_run) -> dict:
     ports = re.findall(r"^\s*LocalPort:\s*(\S+)", text, re.M)          # exact port, not a substring (87 must not match 8765); other Windows languages: bare number
     port_ok = str(int(port)) in [x.strip() for x in ports] or (not ports and re.search(rf"(?<!\d){int(port)}(?!\d)", text) is not None)
     program = rule_args(port)[-1][len("program="):] if rule_args(port)[-1].startswith("program=") else ""
-    program_ok = (not program) or (program.lower() in text.lower())      # a rule left by an older install location does not count
+    program_ok = (not program) or _program_matches(program, text)
     allowed = out.returncode == 0 and port_ok and program_ok
     return {"supported": True, "allowed": allowed,
             "message": "Windows Firewall already lets friends in." if allowed else "Windows Firewall has no rule for your server yet."}
@@ -67,19 +105,29 @@ def allow(port: int, run=_run) -> dict:
     already = status(port, run)
     if already["allowed"]:
         return already
+    detail: dict = {}
     try:
         if exists(run):          # an old rule for another port or program would never match: replace it, do not pile up copies
             remove(run)
         direct = run(["netsh"] + rule_args(port))
         if direct.returncode != 0:
-            _elevated(rule_args(port), run)
+            detail = _elevated(rule_args(port), run) or {}
     except (OSError, subprocess.SubprocessError) as exc:
-        return {"supported": True, "allowed": False, "message": f"Windows did not allow the change ({exc})."}
+        return {"supported": True, "allowed": False, "message": f"Windows did not allow the change ({exc}).", "manual": manual_command(port)}
     now = status(port, run)
     if now["allowed"]:
         now["message"] = "Done. Windows Firewall now lets friends connect to your server."
+        return now
+    if detail.get("cancelled"):
+        why = "You closed or refused the Windows approval box."
+    elif detail.get("log"):
+        why = f"Windows said: {detail['log']}"
+    elif detail.get("error"):
+        why = f"Windows said: {detail['error']}"
     else:
-        now["message"] = "The rule was not added (the approval box was closed or refused). Friends on other networks may be blocked."
+        why = "Windows did not report a reason."
+    now["message"] = f"The rule was not added. {why} Friends on other networks may be blocked."
+    now["manual"] = manual_command(port)
     return now
 
 
