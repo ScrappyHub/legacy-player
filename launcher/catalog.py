@@ -220,6 +220,19 @@ DEFAULT_DATA = {
 }
 
 
+def dedupe_paths(paths) -> list[str]:
+    """The same folder written twice (different capitals, a trailing slash) is one folder, in the order first given."""
+    seen, out = set(), []
+    for p in paths:
+        if not isinstance(p, str):
+            continue
+        key = p.strip().replace("/", "\\").rstrip("\\").lower()
+        if key and key not in seen:
+            seen.add(key)
+            out.append(p)
+    return out
+
+
 class CatalogError(ValueError):
     pass
 
@@ -244,6 +257,9 @@ class Catalog:
                     self.path.replace(self.path.with_name("user_data." + time.strftime("%Y%m%d-%H%M%S") + ".corrupt"))
                 except OSError:
                     pass
+        for key in ("roots", "emulator_folders"):
+            if isinstance(self.data.get(key), list):
+                self.data[key] = dedupe_paths(self.data[key])
         if not self.data.get("install_id"):
             import secrets
             self.data["install_id"] = secrets.token_hex(2)
@@ -372,7 +388,7 @@ class Catalog:
             if not isinstance(root, str) or not Path(root).is_dir():
                 raise CatalogError(f"not a folder: {root}")
             cleaned.append(str(Path(root)))
-        self.data["roots"] = cleaned
+        self.data["roots"] = dedupe_paths(cleaned)
         self.save()
 
     def set_emulator_folders(self, folders: list[str]) -> None:

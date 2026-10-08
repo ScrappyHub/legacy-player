@@ -17,7 +17,8 @@ MIN_GAMES = 3
 NOT_GAMES_HERE = {".md", ".pkg", ".wad", ".img", ".rom", ".fig", ".lnx"}      # also documents, packages and other programs' files, so not evidence of a library
 WIDE = {"downloads", "documents", "desktop", "users", "program files", "program files (x86)", "onedrive"}
 SKIP = {"windows", "$recycle.bin", "system volume information", "node_modules", ".git", "__pycache__", "winsxs", "appdata",
-        "recovery", "config.msi", "steamapps", "programdata", "proc", "sys", "dev", "run", "snap", "boot"}
+        "recovery", "config.msi", "steamapps", "steam", "steamlibrary", "epic games", "gog galaxy", "ea games", "origin games",
+        "ubisoft", "riot games", "windowsapps", "program files", "program files (x86)", "common files", "programdata", "wii staging apps", "proc", "sys", "dev", "run", "snap", "boot"}
 
 
 def _console_of(name: str, parts: tuple[str, ...]) -> str | None:

@@ -1,6 +1,6 @@
 name: release
 
-# Push a tag like v0.7.23 (git tag v0.7.23 && git push origin v0.7.23) to build the Windows app and publish it as a release.
+# Push a tag like v0.7.24 (git tag v0.7.24 && git push origin v0.7.24) to build the Windows app and publish it as a release.
 on:
   push:
     tags: ['v*']

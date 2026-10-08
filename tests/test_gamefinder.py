@@ -85,3 +85,26 @@ class AutoAddTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TidyTests(unittest.TestCase):
+    def test_the_same_folder_is_listed_once(self):
+        from launcher.catalog import dedupe_paths
+        self.assertEqual(["P:\\Vimm", "C:\\Steam"], dedupe_paths(["P:\\Vimm", "p:\\vimm\\", "C:\\Steam", "C:/Steam"]))
+
+    def test_set_roots_keeps_one_of_each(self):
+        app, _ = make_app()
+        d = Path(tempfile.mkdtemp())
+        app.catalog.set_roots([str(d), str(d), str(d)])
+        self.assertEqual([str(d)], app.catalog.data["roots"])
+
+    def test_game_stores_and_program_folders_are_not_libraries(self):
+        d = Path(tempfile.mkdtemp())
+        touch(d, *[f"Steam/Stuff/n{i}.nes" for i in range(5)], *[f"Program Files/X/n{i}.nes" for i in range(5)])
+        with mock.patch("launcher.gamefinder._is_wide", side_effect=lambda p: p == d):
+            self.assertEqual([], gamefinder.find([(d, 5)], EXES))
+
+    def test_settings_and_preferences_are_separate_pages(self):
+        html = (Path(__file__).resolve().parent.parent / "launcher" / "ui" / "index.html").read_text(encoding="utf-8")
+        for needle in ("preferences:viewPreferences", 'nav("preferences")', "async function viewPreferences", "PREF_GROUPS"):
+            self.assertIn(needle, html)

@@ -680,12 +680,12 @@ function renderNav(){const n=$("#nav");n.replaceChildren(...PRIMARY.map(([id,l])
 function renderWho(){const w=$("#who");if(!w)return;const p=S.profile||{alias:"Player",avatar:"martin",player:"Player"};
  w.replaceChildren(avatarEl(p.avatar,26),h("span",{class:"nm"},p.player||p.alias))}
 async function go(){closeMenus();renderNav();const old=$("#main"),m=old.cloneNode(false);old.replaceWith(m);window.scrollTo(0,0);
- Promise.resolve(({home:viewHome,library:viewLibrary,together:viewTogether,servers:viewServers,console:viewConsole,setup:viewSetup,engines:viewEngines,controllers:viewControllers,saves:viewSaves,emulators:viewEmulators,settings:viewSettings,credits:viewCredits,welcome:viewWelcome,help:viewHelp,storage:viewStorage,probe:viewProbe,profile:viewProfile,display:viewDisplay})[S.tab](m)).then(()=>{if(S.tab==="home")homeArtTip()}).catch(e=>{console.error("page error",e);reportClientError(e&&e.message||e,"draw:"+S.tab,e&&e.stack);toast("Something went wrong drawing this page: "+(e&&e.message||e),"err")})}
+ Promise.resolve(({home:viewHome,library:viewLibrary,together:viewTogether,servers:viewServers,console:viewConsole,setup:viewSetup,engines:viewEngines,controllers:viewControllers,saves:viewSaves,emulators:viewEmulators,settings:viewSettings,preferences:viewPreferences,credits:viewCredits,welcome:viewWelcome,help:viewHelp,storage:viewStorage,probe:viewProbe,profile:viewProfile,display:viewDisplay})[S.tab](m)).then(()=>{if(S.tab==="home")homeArtTip()}).catch(e=>{console.error("page error",e);reportClientError(e&&e.message||e,"draw:"+S.tab,e&&e.stack);toast("Something went wrong drawing this page: "+(e&&e.message||e),"err")})}
 function nav(tab,anchor){S.tab=tab;S.anchor=anchor||null;go()}
 
 /* ---------- menu bar ---------- */
 function menuDefs(){return[
- ["Account",[["Profile and avatar",()=>nav("profile")],["Network",()=>nav("together")],["Settings",()=>nav("settings")],["Check for updates",checkUpdates],"-",["Exit Legacy Player",quitApp]]],
+ ["Account",[["Account: profile, avatar and colours",()=>nav("profile")],["Network",()=>nav("together")],["Settings",()=>nav("settings")],["Preferences",()=>nav("preferences")],["Check for updates",checkUpdates],"-",["Exit Legacy Player",quitApp]]],
  ["Games",[["Library",()=>nav("library")],["Console mode",()=>nav("console")],["Storage by console",()=>nav("storage")],["Display and video",()=>nav("display")],["Controllers",()=>nav("controllers")],["Saves and backups",()=>nav("saves")],"-",["Rescan my games",()=>rescan()]]],
  ["Online",[...liveMenu(),["Server Info",()=>nav("together")],["Servers",()=>nav("servers")]]],
  ["Tools",[["Doctor's office (Setup)",()=>nav("setup")],["Engines",()=>nav("engines")],["Dolphin memory probe",()=>nav("probe")],["Emulators",()=>nav("emulators")],["Scan this computer",()=>{nav("engines");setTimeout(()=>runScan().then(v=>{if(v)go()}),250)}],["Credits",()=>nav("credits")]]],
@@ -948,7 +948,7 @@ async function viewProfile(m){
  const name=h("input",{type:"text",value:p.alias,maxlength:24,"aria-label":"Your name",style:"width:240px"});
  const grid=h("div",{class:"avatars"});
  const draw=()=>grid.replaceChildren(...Object.entries(AVATARS).map(([id,a])=>h("button",{type:"button",class:pick===id?"on":"",title:a.name,onclick:()=>{pick=id;draw()}},avatarEl(id,56))));draw();
- m.append(h("h2",{},"Your profile"),
+ m.append(h("h2",{},"Your account"),
   h("div",{class:"why"},"This is how other players see you in a room: your name and a four-character tag, like an old console gamertag. The tag is given by the server you connect to, so nobody who is active there shares your name and tag. It says nothing about you or your computer."),
   h("div",{class:"card"},h("div",{class:"row"},avatarEl(pick,72),h("div",{},h("div",{class:"small muted"},"You appear as"),h("b",{style:"font-size:1.3rem"},p.player))),
    h("h3",{},"Name"),h("div",{class:"row"},name),h("h3",{},"Picture"),grid,
@@ -1844,10 +1844,25 @@ async function viewEmulators(m){
 }
 
 /* ---------- Settings ---------- */
+const PREF_GROUPS=new Set(["You","Look","Home page","Playing","Window","Library","Controllers"]);
+function settingGroups(m,s,groups,wanted){
+ for(const[g,items]of Object.entries(groups).filter(([g])=>wanted(g)).sort((a,b)=>(a[0]==="You"?-1:0)-(b[0]==="You"?-1:0))){
+  m.append(h("div",{class:"card",style:"margin-top:14px"},h("h3",{},g),...items.map(([k,sp])=>{
+   let ctl;const v=s.values[k];
+   const save=async val=>{const r=await act(()=>api("settings",{key:k,value:val}));if(r){S.settings=r.values;if(k==="theme")document.documentElement.dataset.theme=val;if(k==="view"||k==="show_region")toast("Saved");if(k==="display_name"){S.profile=await api("profile");renderWho()}if(k==="auto_network_test"&&val)autoNetTest(300)}};
+   if(sp.type==="bool")ctl=h("input",{type:"checkbox",checked:v,onchange:e=>save(e.target.checked)});
+   else if(k==="theme")ctl=themePicker();
+   else if(sp.type==="choice")ctl=h("select",{onchange:e=>save(e.target.value)},...sp.choices.map(c=>h("option",{value:c,selected:c===v},(sp.labels&&sp.labels[c])||c)));
+   else if(sp.type==="int")ctl=h("input",{type:"number",value:v,min:sp.min,max:sp.max,onchange:e=>save(+e.target.value)});
+   else ctl=h("input",{type:"text",value:v,onchange:e=>save(e.target.value)});
+   return h("div",{style:"margin:10px 0"},h("div",{class:"row"},h("label",{class:"grow"},sp.label),ctl),h("div",{class:"small muted"},sp.help))})));
+ }
+}
+
 async function viewSettings(m){
  const s=await api("settings");S.settings=s.values;const roots=await api("roots");
  const groups={};Object.entries(s.schema).forEach(([k,sp])=>{if(sp.hidden)return;(groups[sp.group]=groups[sp.group]||[]).push([k,sp])});
- m.append(h("h2",{},"Settings"));
+ m.append(h("h2",{},"Settings"),h("div",{class:"why"},"How the app, your library, privacy, multiplayer and your server work. Your look, home page, overlay and play style are under Preferences.",h("button",{class:"btn",style:"margin-left:10px",onclick:()=>nav("preferences")},"Open Preferences")));
  const rootIn=h("input",{type:"text",placeholder:"Add a games folder path",style:"min-width:min(420px,100%)"});
  m.append(h("div",{class:"card"},h("h3",{},whyInline("Library folders","These folders are read-only. Saves, emulators and BIOS folders inside them are skipped when listing games.")),
   ...roots.roots.map(r=>h("div",{class:"row"},h("code",{class:"grow"},r),h("button",{class:"btn bad",onclick:async()=>{await act(()=>api("roots",{roots:roots.roots.filter(x=>x!==r)}));go()}},"Remove"))),
@@ -1862,6 +1877,13 @@ async function viewSettings(m){
    h("button",{class:"btn",disabled:!rep.pending,onclick:async()=>{const l=await api("report_list");if(!l.reports.length)return;const r=await api("report_preview",{id:l.reports[0].id});copyText(r.text);toast("Copied the newest report")}},"Copy the newest report"),
    h("button",{class:"btn bad",disabled:!rep.pending,onclick:async()=>{if(await ask("Delete the reports waiting on this computer?","Delete")){await act(()=>api("report_clear"));go()}}},"Delete waiting reports"))));
 
+ settingGroups(m,s,groups,g=>!PREF_GROUPS.has(g));
+}
+
+async function viewPreferences(m){
+ const s=await api("settings");S.settings=s.values;
+ const groups={};Object.entries(s.schema).forEach(([k,sp])=>{if(sp.hidden)return;(groups[sp.group]=groups[sp.group]||[]).push([k,sp])});
+ m.append(h("h2",{},"Preferences"),h("div",{class:"why"},"Make it yours: colours, home page, how games open, the overlay and your controller. The rest (folders, privacy, servers) is under Settings.",h("button",{class:"btn",style:"margin-left:10px",onclick:()=>nav("settings")},"Open Settings")));
  const ov=await api("overlay",{});
  const padText=a=>a.length?a.map(n=>(ov.pad_buttons.find(b=>b.id===n)||{label:n}).label).join(" + "):"not set";
  const keyIn=h("input",{type:"text",value:ov.hotkey,placeholder:"ctrl+shift+l","aria-label":"Overlay keyboard shortcut",style:"width:180px"});
@@ -1882,17 +1904,7 @@ async function viewSettings(m){
    h("button",{class:"btn",onclick:e=>capture(e.target)},"Set by holding buttons"),h("button",{class:"btn",onclick:()=>saveOv({pad:["back","start"]})},"Back + Start"),h("button",{class:"btn",onclick:()=>saveOv({pad:[]})},"Turn off")),
   h("div",{class:"small muted",style:"margin-top:6px"},"Hold the combo for about a second. Works with Xbox-style controllers (including most PlayStation and other pads run through Steam Input or DS4Windows)."),
   ovNote,h("div",{class:"row",style:"margin-top:8px"},h("button",{class:"btn primary",onclick:()=>act(()=>api("overlay_open"))},"Try the overlay now"))));
- for(const[g,items]of Object.entries(groups).sort((a,b)=>(a[0]==="You"?-1:0)-(b[0]==="You"?-1:0))){
-  m.append(h("div",{class:"card",style:"margin-top:14px"},h("h3",{},g),...items.map(([k,sp])=>{
-   let ctl;const v=s.values[k];
-   const save=async val=>{const r=await act(()=>api("settings",{key:k,value:val}));if(r){S.settings=r.values;if(k==="theme")document.documentElement.dataset.theme=val;if(k==="view"||k==="show_region")toast("Saved");if(k==="display_name"){S.profile=await api("profile");renderWho()}if(k==="auto_network_test"&&val)autoNetTest(300)}};
-   if(sp.type==="bool")ctl=h("input",{type:"checkbox",checked:v,onchange:e=>save(e.target.checked)});
-   else if(k==="theme")ctl=themePicker();
-   else if(sp.type==="choice")ctl=h("select",{onchange:e=>save(e.target.value)},...sp.choices.map(c=>h("option",{value:c,selected:c===v},(sp.labels&&sp.labels[c])||c)));
-   else if(sp.type==="int")ctl=h("input",{type:"number",value:v,min:sp.min,max:sp.max,onchange:e=>save(+e.target.value)});
-   else ctl=h("input",{type:"text",value:v,onchange:e=>save(e.target.value)});
-   return h("div",{style:"margin:10px 0"},h("div",{class:"row"},h("label",{class:"grow"},sp.label),ctl),h("div",{class:"small muted"},sp.help))})));
- }
+ settingGroups(m,s,groups,g=>PREF_GROUPS.has(g));
 }
 
 /* ---------- problem reports: ask first, always show exactly what would be sent ---------- */

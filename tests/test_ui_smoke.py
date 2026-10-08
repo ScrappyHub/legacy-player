@@ -18,7 +18,7 @@ except ImportError:      # pragma: no cover
     sync_playwright = None
 
 ROOT = Path(__file__).resolve().parent.parent
-PAGES = ["home", "library", "console", "setup", "together", "servers", "engines", "controllers", "saves",
+PAGES = ["home", "library", "console", "setup", "together", "servers", "engines", "controllers", "saves", "preferences",
          "emulators", "settings", "credits", "help", "storage", "profile", "display", "probe"]
 
 
@@ -228,6 +228,7 @@ class UiSmokeTests(unittest.TestCase):
             self.assertEqual(0, page.locator(".modal").count())
             page.evaluate('nav("settings")')
             page.wait_for_selector("text=Problem reports")
+            page.evaluate('nav("preferences")')
             page.wait_for_selector("text=In-game overlay")
             self.assertIn("touch grass", page.evaluate('prescription().textContent').lower())
             # the doctor's uninstall dialog asks about the folders he made, and Esc is "Never mind"
