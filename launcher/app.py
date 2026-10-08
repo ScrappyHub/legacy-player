@@ -33,7 +33,7 @@ from . import overlay as overlaymod
 from . import procs
 from . import controllers, emulators, engines, pads, savefolders, saves
 from .installer import EngineInstaller, InstallError, latest_release, pick_asset
-from . import dolphinpads, dolphinpaths, privatelink, firewall, gameinfo, portmap, pcgames, reach, winplace, keyboard, memprobe, netcheck, reports, selfuninstall, sysinfo
+from . import dolphinpads, dolphinpaths, privatelink, firewall, gamefinder, gameinfo, portmap, pcgames, reach, winplace, keyboard, memprobe, netcheck, reports, selfuninstall, sysinfo
 from .covers import (CONTENT_TYPES, CoverFetcher, SYSTEMS as COVER_SYSTEMS, clear_custom_cover, cover_path,
                      custom_cover, set_custom_cover)
 from .pcscan import PcScan
@@ -182,7 +182,7 @@ class LauncherApp:
         self.installer = EngineInstaller(self.data_dir / "emulators")
         self.pcscan = PcScan({k: v["exes"] for k, v in emulators.EMULATORS.items()},
                              lambda: [Path(r) for r in self.catalog.data["roots"]] + [Path(f) for f in self.catalog.data.get("emulator_folders", [])],
-                             matcher=emulators.program_for, archive_matcher=emulators.archive_for)
+                             matcher=emulators.program_for, archive_matcher=emulators.archive_for, after=self._find_games_after_scan)
         self._prepare_certificate()
         self._load_cache()
         if not self.games and self.catalog.data["roots"]:
@@ -228,6 +228,38 @@ class LauncherApp:
             return pcgames.library_entries()
         except Exception:                     # a launcher with odd files must never stop the scan
             return []
+
+    def _find_games_after_scan(self, roots, stop, progress) -> dict:
+        """Part of the full scan: find the folders that hold the player's games and add them to the library by itself, so nobody
+        has to type a path. Only adds; a folder the player already has, or one inside it, is left alone."""
+        exes = {n.lower() for v in emulators.EMULATORS.values() for n in v["exes"]}
+        wide = [(p, max(d, 6) if p.parent == p else d) for p, d in roots]
+        found = gamefinder.find(wide, exes, stop=stop, progress=progress)
+        existing = [Path(r) for r in self.catalog.data["roots"]]
+
+        def inside(a: Path, b: Path) -> bool:
+            try:
+                a.resolve().relative_to(b.resolve())
+                return True
+            except (OSError, ValueError):
+                return False
+        fresh = [f for f in found if not any(inside(Path(f["path"]), e) for e in existing)]
+        if not fresh:
+            return {"game_folders": found, "games_added": [], "games_total": len(self.games)}
+        keep = [e for e in existing if not any(inside(e, Path(f["path"])) for f in fresh)]
+        added = [f["path"] for f in fresh]
+        try:
+            self.catalog.set_roots([str(e) for e in keep] + added)
+            self.rescan()
+        except (CatalogError, AppError) as exc:
+            return {"game_folders": found, "games_added": [], "games_error": str(exc)[:200]}
+        return {"game_folders": found, "games_added": added, "games_total": len(self.games)}
+
+    def api_find_games(self, body: dict) -> dict:
+        """What the last full scan found, in the same plain shape the page shows."""
+        view = self.pcscan.view()
+        return {"state": view["state"], "folders": view.get("game_folders", []), "added": view.get("games_added", []),
+                "total": view.get("games_total", len(self.games))}
 
     def api_roots(self, body: dict) -> dict:
         self._forget_emulators()

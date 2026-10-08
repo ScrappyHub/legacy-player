@@ -965,13 +965,13 @@ function scanPanel(onDone,opts){opts=opts||{};
   const running=v.state==="running";
   box.replaceChildren(
    running?h("div",{},h("div",{class:"row"},pixels(doctorRows("happy"),48,"doctor happy"),h("div",{class:"grow"},h("b",{},"Looking around your computer",h("span",{class:"dots"})),h("div",{class:"small muted"},v.visited+" folders checked"+(v.where?" · "+(String(v.where).split(/[\\/]/).filter(Boolean).pop()||"").slice(0,40):""))),h("button",{class:"btn",onclick:()=>api("scan_pc",{action:"cancel"})},"Stop")),h("div",{class:"bar live",style:"margin-top:10px"},h("i"))):null,
-   (v.state==="done"||v.state==="stopped")?h("div",{},h("p",{class:"good"},"✓ "+(v.state==="stopped"?"Stopped early. ":"Finished. ")+(found.length?found.length+" emulator program"+(found.length>1?"s":"")+" found: "+found.map(([,e])=>e.name).join(", ")+".":"No emulator programs found yet.")),
+   (v.state==="done"||v.state==="stopped")?h("div",{},h("p",{class:"good"},"✓ "+(v.state==="stopped"?"Stopped early. ":"Finished. ")+(found.length?found.length+" emulator program"+(found.length>1?"s":"")+" found: "+found.map(([,e])=>e.name).join(", ")+".":"No emulator programs found yet.")+((v.games_added||[]).length?" Added "+v.games_added.length+" game folder"+(v.games_added.length>1?"s":"")+" to your library ("+(v.games_total||0)+" games): "+v.games_added.join(", ")+".":(v.game_folders||[]).length?" Your game folders were already in the library.":" No game folders found.")),
     pk.length?h("p",{class:"small warn"},"Found downloads that are not unpacked yet: "+pk.map(([,e])=>e.name+" ("+e.paths[0]+")").join("; ")+". Extract them, then add that folder under Emulators."):null):null,
    v.state==="error"?h("p",{class:"bad small"},"The scan stopped: "+v.where):null);
   if(!running&&timer){clearInterval(timer);timer=null;finish(v)}};
  const finish=async v=>{await act(()=>api("scan_apply",{}));onDone&&onDone(v)};
  const start=h("button",{class:"btn primary",onclick:async()=>{
-   if(!await ask("Scan this computer? It reads folder and file names only: program names like Dolphin.exe and BIOS files in the usual places. It changes nothing, sends nothing and does not use the internet.","Scan"))return;
+   if(!await ask("Scan this computer? It reads folder and file names only: emulator programs like Dolphin.exe, BIOS files and the folders that hold your games, which it adds to your library for you. It changes nothing, sends nothing and does not use the internet.","Scan"))return;
    if(opts.everything)await act(()=>api("scan_everything")).catch(()=>null);const v=await act(()=>api("scan_pc",{action:"start",consent:true}));if(!v)return;start.disabled=true;draw(v);timer=setInterval(async()=>{draw(await api("scan_pc",{}).catch(()=>({state:"error",where:"lost the app"})))},900)}},"Scan my computer");
  return h("div",{},h("div",{class:"row"},start),box)}
 async function viewWelcome(m){
@@ -1141,7 +1141,9 @@ function consoleName(id){const c=(S.lib&&S.lib.consoles||[]).find(x=>x.id===id);
 function emptyState(){const input=h("input",{type:"text",placeholder:"Paste your games folder path, e.g. D:\\Games",style:"min-width:min(480px,100%)"});
  return h("div",{class:"panel"},h("h2",{},"Welcome. Let's find your games."),
   h("p",{},"Point Legacy Player at the folder that holds your game backups. It only ",h("b",{},"looks"),": it never copies or edits your files, and only removes a game if you choose Uninstall."),
-  h("div",{class:"row"},input,h("button",{class:"btn primary",onclick:async()=>{const r=await act(()=>api("roots",{roots:[input.value.trim()]}));if(r){await act(()=>api("rescan"),"Library scanned");go()}}},"Scan this folder")))}
+  h("div",{class:"row"},input,h("button",{class:"btn primary",onclick:async()=>{const r=await act(()=>api("roots",{roots:[input.value.trim()]}));if(r){await act(()=>api("rescan"),"Library scanned");go()}}},"Scan this folder")),
+  h("p",{class:"small muted",style:"margin-top:14px"},"Or skip typing: Legacy Player can look through this computer, find the folders that hold your games and add them all."),
+  scanPanel(()=>go(),{}))}
 async function rescan(){const r=await act(()=>api("rescan"));if(r){toast("Found "+r.games+" games in "+r.seconds+"s");go()}}
 
 async function openGame(id){
@@ -1829,7 +1831,7 @@ async function viewEmulators(m){
   if(v.state!=="running"&&scanTimer){clearInterval(scanTimer);scanTimer=null}};
  const pollScan=()=>{clearInterval(scanTimer);scanTimer=setInterval(async()=>{if(S.tab!=="emulators"){clearInterval(scanTimer);return}drawScan(await api("scan_pc",{}).catch(()=>({state:"error",where:"lost the app"})))},1000)};
  const cardScan=h("div",{class:"card",style:"margin-top:12px"},h("h3",{},whyInline("Scan this computer","Looks through Program Files, your user folders, Downloads, Desktop, Documents and the top levels of every drive for emulator program names (like Dolphin.exe). It only reads folder and file names; it does not open, change, copy or send anything, and it never connects to the internet. It starts only when you press the button.")),
-  h("div",{class:"row"},h("button",{class:"btn primary",onclick:async()=>{if(!await ask("Scan this computer for emulator programs? It reads folder and file names only, changes nothing and sends nothing.","Scan"))return;const v=await act(()=>api("scan_pc",{action:"start",consent:true}));if(v){drawScan(v);pollScan()}}},"Scan this computer")),scanBox);
+  h("div",{class:"row"},h("button",{class:"btn primary",onclick:async()=>{if(!await ask("Scan this computer for emulator programs and your game folders? It reads folder and file names only, adds the game folders it finds to your library, changes none of your files and sends nothing.","Scan"))return;const v=await act(()=>api("scan_pc",{action:"start",consent:true}));if(v){drawScan(v);pollScan()}}},"Scan this computer")),scanBox);
  m.append(h("h2",{},"Emulators"),h("div",{class:"why"},"Legacy Player does not replace emulators: it opens the right one for each console. It looks inside your games and emulator folders and on your PATH automatically, and Scan this computer searches everywhere else when you ask it to."),cardScan,
   h("div",{class:"card"},h("h3",{},whyInline("Emulator folders","Folders where you keep emulator programs. Legacy Player looks inside them (a few levels deep) and never changes anything there. Installers such as PCSX2 or PPSSPP setup files must be run first; then add the folder they installed to.")),
    ...(d.folders||[]).map(f=>h("div",{class:"row"},h("code",{class:"grow"},f),h("button",{class:"btn",onclick:async()=>{const r=await act(()=>api("emulators",{folder:f,remove:true}));if(r)go()}},"Remove"))),

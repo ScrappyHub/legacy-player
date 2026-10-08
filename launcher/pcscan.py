@@ -123,8 +123,10 @@ def scan(roots: list[tuple[Path, int]], wanted: dict[str, list[str]], *, seconds
 class PcScan:
     """Runs one scan at a time in the background so the page stays responsive."""
 
-    def __init__(self, wanted: dict[str, list[str]], extra_roots=lambda: [], matcher=None, archive_matcher=None) -> None:
+    def __init__(self, wanted: dict[str, list[str]], extra_roots=lambda: [], matcher=None, archive_matcher=None, after=None) -> None:
         self.wanted, self.extra_roots = wanted, extra_roots
+        self.after = after                  # called with (roots, stop, progress) once the program search is done; returns a dict
+        self.extra: dict = {}
         self.matcher, self.archive_matcher = matcher, archive_matcher
         self.archives: dict[str, list[str]] = {}
         self.state, self.where, self.visited, self.found = "idle", "", 0, {}
@@ -137,13 +139,18 @@ class PcScan:
             return self.view()
         self._stop.clear()
         self.state, self.found, self.visited, self.where = "running", {}, 0, ""
-        self.archives = {}
+        self.archives, self.extra = {}, {}
 
         def work() -> None:
             try:
                 roots = [(p, 3) for p in self.extra_roots()] + standard_roots() + [(p, 2) for p in registry_locations()]
                 self.found = scan(roots, self.wanted, stop=self._stop, progress=self._progress, matcher=self.matcher,
                                   archive_matcher=self.archive_matcher, archives=self.archives)
+                if self.after is not None and not self._stop.is_set():
+                    try:
+                        self.extra = self.after(roots, self._stop, self._progress) or {}
+                    except Exception as exc:          # looking for games must never spoil the program search
+                        self.extra = {"games_error": str(exc)[:200]}
                 self.state = "stopped" if self._stop.is_set() else "done"
             except Exception as exc:     # never leave the page waiting forever
                 self.state, self.where = "error", str(exc)[:200]
@@ -161,4 +168,4 @@ class PcScan:
         return self.view()
 
     def view(self) -> dict:
-        return {"state": self.state, "where": self.where, "visited": self.visited, "found": self.found, "archives": self.archives}
+        return {"state": self.state, "where": self.where, "visited": self.visited, "found": self.found, "archives": self.archives, **self.extra}
