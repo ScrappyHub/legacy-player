@@ -80,3 +80,11 @@ class InstallCommandsTests(unittest.TestCase):
         self.assertIn(f"irm {raw} | iex", text)
         self.assertIn(f'powershell -NoProfile -ExecutionPolicy Bypass -Command "irm {raw} | iex"', text)
         self.assertIn("powershell.exe", text)
+
+
+class UpdaterTargetsRunningCopyTests(unittest.TestCase):
+    def test_installer_can_target_a_folder_and_stays_open_on_failure(self):
+        text = (ROOT / "install.ps1").read_text(encoding="utf-8")
+        self.assertIn("[string]$Dest", text)
+        self.assertIn("-Pause", (ROOT / "launcher" / "app.py").read_text(encoding="utf-8"))
+        self.assertIn("did not finish", text)

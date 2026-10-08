@@ -5,15 +5,18 @@
 
  (or, with the repository cloned:  .\lp install)
 
- Options (run the file instead of piping):  .\install.ps1 -Tag v0.7.33  -NoLaunch  -Token <github token, for a private repo>
+ Options (run the file instead of piping):  .\install.ps1 -Tag v0.7.34  -NoLaunch  -Token <github token, for a private repo>
 #>
 param(
     [string]$Repo = 'ScrappyHub/legacy-player',
     [string]$Tag = '',
     [string]$Token = "",
-    [switch]$NoLaunch
+    [switch]$NoLaunch,
+    [string]$Dest = '',
+    [switch]$Pause
 )
 $ErrorActionPreference = 'Stop'
+trap { Write-Host ''; Write-Host "The update did not finish: $($_.Exception.Message)" -ForegroundColor Red; if ($Pause) { Read-Host 'Press Enter to close this window' }; exit 1 }
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 $headers = @{ 'User-Agent' = 'LegacyPlayer-installer'; 'Accept' = 'application/vnd.github+json' }
 if ($Token) { $headers['Authorization'] = "Bearer $Token" }
@@ -45,7 +48,7 @@ try {
         Write-Host "Checksum OK."
     } else { throw "This release has no checksum file, so I can not check the download. Nothing was installed." }
 
-    $dest = Join-Path $env:LOCALAPPDATA 'Programs\LegacyPlayer'
+    $dest = if ($Dest) { $Dest } else { Join-Path $env:LOCALAPPDATA 'Programs\LegacyPlayer' }   # the app passes the folder it is running from, so the copy you launch is the copy that gets updated
     Get-Process -Name LegacyPlayer -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "Closing the running Legacy Player..."; $_.CloseMainWindow() | Out-Null; Start-Sleep 2; if (-not $_.HasExited) { $_.Kill() } }
     New-Item -ItemType Directory -Path $dest -Force | Out-Null
     $stage = Join-Path $tmp 'unpacked'
@@ -67,6 +70,7 @@ try {
     $shortcut = $shell.CreateShortcut($lnk); $shortcut.TargetPath = $exe; $shortcut.WorkingDirectory = $dest; $shortcut.Save()
     Write-Host "Installed Legacy Player $($release.tag_name) to $dest (Start menu: Legacy Player)."
     Write-Host "Windows may warn that the app is from an unknown publisher: choose More info > Run anyway."
+    if ($Pause) { Write-Host "Now running $($release.tag_name). Starting it..."; Start-Sleep 2 }
     if (-not $NoLaunch) { Start-Process $exe }
 } finally {
     Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue

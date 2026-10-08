@@ -1891,7 +1891,11 @@ class LauncherApp:
             raise AppError("Please confirm the update.")
         if not self.catalog.settings()["allow_internet"]:
             raise AppError("Internet downloads are off. Turn on 'Allow internet downloads' in Settings first.")
-        command = f"irm https://raw.githubusercontent.com/{REPO}/main/install.ps1 | iex"
+        # update the copy that is actually running (not always the default install folder), and keep the window open if it fails
+        where = ""
+        if getattr(sys, "frozen", False):
+            where = " -Dest '" + str(Path(sys.executable).resolve().parent).replace("'", "''") + "'"
+        command = (f"& ([scriptblock]::Create((irm https://raw.githubusercontent.com/{REPO}/main/install.ps1))) -Pause{where}")
         subprocess.Popen(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", command],
                          creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0))
         return {"message": "The installer opened in its own window. Legacy Player restarts when it finishes."}
