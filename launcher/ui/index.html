@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Legacy Player</title>
+<meta name="theme-color" content="#050816">
 <style>
 :root{--bg:#050816;--panel:rgba(22,30,64,.58);--panel2:rgba(255,255,255,.07);--line:rgba(255,255,255,.13);--text:#eef1ff;--mute:#b9c5ea;--link:#8fb2ff;--grad-btn:linear-gradient(135deg,#2f62e0,#6a48f0 55%,#07805e);--accent:#4f8cff;--accent2:#3be0a8;--warn:#ffb454;--bad:#ff8c98;--r:16px;--grad:linear-gradient(135deg,#4f8cff,#7a5cff 55%,#3be0a8);--glow:0 0 22px rgba(79,140,255,.45);--chrome:rgba(8,12,30,.72)}
 [data-theme=light]{--orb1:#4f8cff;--orb2:#3be0a8;--bg:#eef2fb;--panel:rgba(255,255,255,.78);--panel2:rgba(30,50,120,.07);--line:rgba(30,50,120,.16);--text:#141a36;--mute:#2b3566;--accent:#2f62e0;--link:#2f62e0;--accent2:#066f53;--warn:#a85a00;--bad:#c92a3b;--glow:0 0 18px rgba(47,98,224,.28);--chrome:rgba(255,255,255,.82)}
@@ -61,8 +62,8 @@ option{background:#141a33;color:#eef1ff}
 [data-bg=bokeh] .bg::after{background-image:radial-gradient(circle,color-mix(in srgb,var(--accent2) 30%,transparent) 0 40%,transparent 41%),radial-gradient(circle,color-mix(in srgb,var(--accent) 30%,transparent) 0 40%,transparent 41%),radial-gradient(circle,color-mix(in srgb,var(--accent2) 24%,transparent) 0 40%,transparent 41%);background-size:170px 170px,110px 110px,260px 260px;background-position:40% 8%,92% 62%,6% 52%;filter:blur(12px);animation:bokehB 36s ease-in-out infinite alternate}
 @keyframes bokehA{from{transform:translate(0,0)}to{transform:translate(-3%,4%)}}@keyframes bokehB{from{transform:translate(0,0)}to{transform:translate(4%,-3%)}}
 #bitworld{display:none}
-[data-bg=bitworld] .bg svg,[data-bg=bitworld] .orb{display:none}
-[data-bg=bitworld] #bitworld{display:block;position:absolute;inset:0;width:100%;height:100%;image-rendering:pixelated;opacity:.8}
+[data-bg=bitworld] .bg svg,[data-bg=bitworld] .orb,[data-bg=bitcity] .bg svg,[data-bg=bitcity] .orb,[data-bg=bitforest] .bg svg,[data-bg=bitforest] .orb{display:none}
+[data-bg=bitworld] #bitworld,[data-bg=bitcity] #bitworld,[data-bg=bitforest] #bitworld{display:block;position:absolute;inset:0;width:100%;height:100%;image-rendering:pixelated;opacity:.8}
 [data-bg=plain] .bg svg,[data-bg=plain] .orb{display:none}
 [data-bg=plain] .bg{background:var(--bg)!important}
 @media(prefers-reduced-motion:reduce){.bg *,.bg::before,.bg::after{animation:none!important}}
@@ -739,6 +740,8 @@ const BACKGROUNDS=[["waves","Waves","linear-gradient(170deg,transparent 55%,colo
  ["crt","Old TV","repeating-linear-gradient(0deg,rgba(0,0,0,.45) 0 1px,transparent 1px 3px),radial-gradient(ellipse,transparent 40%,rgba(0,0,0,.6))"],
  ["bokeh","Soft lights","radial-gradient(circle at 25% 35%,color-mix(in srgb,var(--accent) 70%,transparent) 0 14%,transparent 15%),radial-gradient(circle at 70% 60%,color-mix(in srgb,var(--accent2) 65%,transparent) 0 20%,transparent 21%),radial-gradient(circle at 50% 20%,color-mix(in srgb,var(--accent) 50%,transparent) 0 9%,transparent 10%)"],
  ["bitworld","1-bit World","repeating-conic-gradient(var(--accent) 0 25%,transparent 0 50%) 0 100%/6px 6px,linear-gradient(transparent 50%,var(--bg) 50%)"],
+ ["bitcity","1-bit City","repeating-linear-gradient(90deg,var(--accent) 0 5px,transparent 5px 7px) 0 100%/100% 55% no-repeat,linear-gradient(transparent 50%,var(--bg) 50%)"],
+ ["bitforest","1-bit Forest","conic-gradient(from 150deg at 50% 100%,transparent 0 120deg,var(--accent) 120deg 150deg,transparent 150deg) 0 100%/14px 70% repeat-x,linear-gradient(transparent 60%,var(--bg) 60%)"],
  ["plain","Plain","none"]];
 /* the background picker, next to the colour themes (account page, name menu) and Preferences */
 function backgroundPicker(compact){
@@ -827,7 +830,7 @@ async function pcManager(){
    h("div",{class:"row",style:"justify-content:flex-end;margin-top:12px"},h("button",{class:"btn primary",onclick:close},"Done")))};
  draw()}
 /* ---------- 1-bit World: a tiny pixel world in the theme's two colours (Martin, the clinic, a controller, the moon) ---------- */
-const BitWorld=(()=>{let cv,ctx,raf=0,W=0,H=120,t0=0,ink="#fff",paper="#000",stars=[],still=false;
+const BitWorld=(()=>{let scene="bitworld",cv,ctx,raf=0,W=0,H=120,t0=0,ink="#fff",paper="#000",stars=[],still=false;
  const CAT=["..#......#..",".###....###.",".##########.",".#o######o#.",".####oo####.","..########..","..########..",".##########.",".##########.",".###....###."];
  const PAD=[".###########.","#############","##o##...#o###".slice(0,13),"#ooo#...##o##".slice(0,13),"##o##...#o###".slice(0,13),"#############",".###.....###."];
  const spr=(rows,x,y,eyes)=>{rows.forEach((row,j)=>{for(let i=0;i<row.length;i++){const c=row[i];if(c==="#"||(c==="o"&&eyes)){ctx.fillStyle=ink;ctx.fillRect(x+i,y+j,1,1)}else if(c==="o"){ctx.fillStyle=paper;ctx.fillRect(x+i,y+j,1,1)}}})};
@@ -836,6 +839,7 @@ const BitWorld=(()=>{let cv,ctx,raf=0,W=0,H=120,t0=0,ink="#fff",paper="#000",sta
  function size(){H=120;W=Math.max(96,Math.round(H*innerWidth/Math.max(innerHeight,1)));cv.width=W;cv.height=H;stars=[];let r=7;for(let i=0;i<46;i++){r=(r*9301+49297)%233280;const x=r%W;r=(r*9301+49297)%233280;stars.push([x,r%(H-45),i])}}
  function draw(t){const cs=getComputedStyle(document.documentElement);paper=(cs.getPropertyValue("--bg")||"#050816").trim();ink=(cs.getPropertyValue("--accent")||"#4f8cff").trim();
   ctx.imageSmoothingEnabled=false;ctx.fillStyle=paper;ctx.fillRect(0,0,W,H);ctx.fillStyle=ink;
+   if(scene==="bitcity")return cityScene(t);if(scene==="bitforest")return forestScene(t);
   for(const[x,y,i]of stars){if(((Math.floor(t*1.3)+i)%7)!==0)ctx.fillRect(x,y,1,1)}
   const mx=Math.round(W*.82),my=18;for(let y=-7;y<=7;y++)for(let x=-7;x<=7;x++)if(x*x+y*y<=45&&((x+3)*(x+3)+(y-1)*(y-1)>38))ctx.fillRect(mx+x,my+y,1,1);
   for(let c=0;c<3;c++){const cx=Math.round(((c*W*.45-t*3)%(W+40)+W+40)%(W+40))-20,cy=14+c*11;for(let x=-9;x<=9;x++)for(let y=-3;y<=2;y++){const lim=y<0?(9-Math.abs(x)*0.8):(8-Math.abs(x)*.5);if(Math.abs(y)*3<lim&&((x+y+cx)&1)===0)ctx.fillRect(cx+x,cy+y,1,1)}}
@@ -847,10 +851,74 @@ const BitWorld=(()=>{let cv,ctx,raf=0,W=0,H=120,t0=0,ink="#fff",paper="#000",sta
   const cx=Math.round(W*.28),cg=ground(cx),blink=(t%4.2)<.15;spr(CAT,cx,cg-10,!blink);
   const tail=Math.sin(t*2.2)>0;ctx.fillStyle=ink;ctx.fillRect(cx+12,cg-1,2,1);ctx.fillRect(cx+13,cg-2-(tail?1:0),1,2);ctx.fillRect(cx+14,cg-3-(tail?2:0),1,2);
   const px=Math.round(W*.47),py=Math.round(30+Math.sin(t*1.4)*3);spr(PAD,px,py,false)}
+
+  /* ---- busy city at night: lit windows, cars, people, a blimp ---- */
+  const hs=n=>{n=Math.imul(n^61^(n>>>16),9);n^=n>>>4;n=Math.imul(n,0x27d4eb2d);n^=n>>>15;return(n>>>0)/4294967296};
+  const dith=(x,y,w,h,ph)=>{for(let j=0;j<h;j++)for(let i=0;i<w;i++)if(((x+i+y+j+(ph||0))&1)===0)ctx.fillRect(x+i,y+j,1,1)};
+  let blds=null;
+  function makeCity(){blds={far:[],near:[]};let x=-4,k=0;while(x<W+10){const w=9+Math.floor(hs(k*3+1)*9);blds.far.push({x,w,h:Math.round(H*.16+hs(k*3+2)*H*.2),k});x+=w+Math.floor(hs(k*3+3)*3);k++}
+   x=-6;k=100;while(x<W+10){const w=12+Math.floor(hs(k*5+1)*14);blds.near.push({x,w,h:Math.round(H*.2+hs(k*5+2)*H*.26),k,top:Math.floor(hs(k*5+3)*4),sign:hs(k*5+4)>.82});x+=w+2+Math.floor(hs(k*5+5)*4);k++}}
+  function car(x,y,dir,k){ctx.fillStyle=ink;ctx.fillRect(x,y-3,10,3);ctx.fillRect(x+2,y-5,6,2);ctx.fillStyle=paper;ctx.fillRect(x+3,y-4,2,1);ctx.fillRect(x+6,y-4,2,1);ctx.fillRect(x+(dir>0?9:0),y-2,1,1);ctx.fillStyle=ink;ctx.fillRect(x+2,y,2,1);ctx.fillRect(x+7,y,2,1);
+   if(k%3===0){ctx.fillStyle=paper;ctx.fillRect(x+4,y-6,3,1);ctx.fillStyle=ink;ctx.fillRect(x+5,y-6,1,1)}}
+  function walker(x,y,t,k){ctx.fillStyle=ink;ctx.fillRect(x,y-6,2,2);ctx.fillRect(x,y-4,2,3);const st=(Math.floor(t*4+k)&1)===0;ctx.fillRect(x+(st?0:1),y-1,1,1);ctx.fillRect(x+(st?1:0),y,1,1);if(k%2)ctx.fillRect(x+2,y-4,1,3)}
+  function cityScene(t){
+   if(!blds||blds.W!==W){makeCity();blds.W=W}
+   const street=Math.round(H*.8);
+   for(const[x,y,i]of stars){if(y<H*.35&&((Math.floor(t*1.1)+i)%6)!==0)ctx.fillRect(x,y,1,1)}
+   const mx=Math.round(W*.14),my=16;for(let y=-6;y<=6;y++)for(let x=-6;x<=6;x++)if(x*x+y*y<=34&&((x+2)*(x+2)+(y-1)*(y-1)>28))ctx.fillRect(mx+x,my+y,1,1);
+   const bx=Math.round(((t*4)%(W+80))-40),by=22+Math.round(Math.sin(t*.6)*2);
+   for(let y=-3;y<=3;y++)for(let x=-12;x<=12;x++)if((x*x)/144+(y*y)/10<=1)ctx.fillRect(bx+x,by+y,1,1);ctx.fillStyle=paper;ctx.fillRect(bx-6,by-1,13,1);ctx.fillRect(bx-4,by+1,9,1);ctx.fillStyle=ink;ctx.fillRect(bx-2,by+4,5,2);ctx.fillRect(bx-12,by-3,2,2);ctx.fillRect(bx-12,by+2,2,2);if((Math.floor(t*2)&1)===0)ctx.fillRect(bx+13,by-4,1,1);
+   for(const b of blds.far){const top=street-6-b.h;dith(b.x,top,b.w,b.h,0);ctx.fillRect(b.x,top,b.w,1);if(b.k%4===0)ctx.fillRect(b.x+(b.w>>1),top-4,1,4)}
+   for(const b of blds.near){const top=street-b.h;ctx.fillStyle=ink;ctx.fillRect(b.x,top,b.w,b.h);
+    if(b.top===1){ctx.fillRect(b.x+2,top-3,b.w-4,3)}else if(b.top===2){ctx.fillRect(b.x+(b.w>>1),top-7,1,7);if((Math.floor(t*1.5+b.k)&1)===0){ctx.fillRect(b.x+(b.w>>1)-1,top-8,3,1)}}else if(b.top===3){ctx.fillRect(b.x+1,top-2,3,2);ctx.fillRect(b.x+b.w-5,top-2,3,2)}
+    ctx.fillStyle=paper;
+    for(let wy=top+3;wy<street-5;wy+=5)for(let wx=b.x+2;wx<b.x+b.w-2;wx+=4){const on=hs(b.k*1000+wx*7+wy*13+Math.floor(t/7+hs(wx+wy)*9))<.42;if(on)ctx.fillRect(wx,wy,2,3)}
+    if(b.sign){ctx.fillStyle=paper;ctx.fillRect(b.x+2,top+2,b.w-4,5);ctx.fillStyle=ink;if((Math.floor(t*2)%3)!==0){for(let i=0;i<b.w-6;i+=2)ctx.fillRect(b.x+3+i,top+4,1,1)}}}
+   ctx.fillStyle=ink;ctx.fillRect(0,street,W,1);dith(0,street+1,W,5,0);
+   for(let x=-((t*8)%12);x<W;x+=12)ctx.fillRect(Math.round(x),Math.round(H*.93),6,1);
+   ctx.fillRect(0,H-3,W,3);
+   for(let x=10;x<W;x+=46){ctx.fillRect(x,street-14,1,14);ctx.fillRect(x-2,street-15,5,1);ctx.fillStyle=paper;ctx.fillRect(x-1,street-14,3,1);ctx.fillStyle=ink;for(let r=2;r<8;r++){if(((r+Math.floor(t*2))&1)===0){ctx.fillRect(x-r,street-14+r,1,1);ctx.fillRect(x+r,street-14+r,1,1)}}}
+   for(let i=0;i<4;i++){const sp=14+i*4,x=Math.round((((t*sp+i*W*.31)%(W+30))+W+30)%(W+30))-20;car(x,Math.round(H*.9),1,i)}
+   for(let i=0;i<3;i++){const sp=11+i*5,x=Math.round(W+10-((((t*sp+i*W*.4)%(W+30))+W+30)%(W+30)));car(x,Math.round(H*.97)-1,-1,i+1)}
+   for(let i=0;i<7;i++){const dir=i%2?1:-1,sp=2.5+(i%3),x=Math.round(((t*sp*dir+i*W*.19)%(W+20)+W+20)%(W+20))-10;walker(x,street+4+(i%2),t,i)}
+   ctx.fillStyle=ink}
+  /* ---- forest at night with a campfire, a tent, a camper and Martin ---- */
+  const pine=(x,gy,h,solid,w0)=>{const tiers=4,th=Math.max(3,Math.floor(h*.8/tiers));ctx.fillStyle=ink;
+   for(let t=0;t<tiers;t++){for(let j=0;j<th+1;j++){const hw=Math.round((j/th)*(w0*(.55+t*.2))+1);const yy=gy-h+Math.round(t*th*.8)+j;if(solid){ctx.fillRect(x-hw,yy,hw*2+1,1)}else{for(let i=-hw;i<=hw;i++)if(((x+i+yy)&1)===0)ctx.fillRect(x+i,yy,1,1)}}}
+   const tr=Math.floor(h*.15);ctx.fillRect(x,gy-tr,1,tr+1);if(solid)ctx.fillRect(x-1,gy-tr,3,tr+1)};
+  const OWL=[".#.#.","#####","#o#o#","#####",".###.","..#.."];
+  function forestScene(t){
+   const gy=Math.round(H*.8);
+   for(const[x,y,i]of stars){if(((Math.floor(t*1.2)+i)%6)!==0)ctx.fillRect(x,y,1,1)}
+   const mx=Math.round(W*.8),my=17;for(let y=-7;y<=7;y++)for(let x=-7;x<=7;x++)if(x*x+y*y<=45&&((x+3)*(x+3)+(y-1)*(y-1)>38))ctx.fillRect(mx+x,my+y,1,1);
+   const ph=(t*.35)%6;if(ph<1.2){const sx=Math.round(W*.1+ph*W*.5),sy=Math.round(8+ph*24);for(let k=0;k<6;k++)ctx.fillRect(sx-k,sy-Math.round(k*.4),1,1)}
+   for(let x=0;x<W;x++){const f=Math.round(H*.58+Math.sin(x/21+2)*5+Math.sin(x/8)*1.5);for(let y=f;y<f+5;y++)if(((x+y)&1)===0)ctx.fillRect(x,y,1,1);ctx.fillRect(x,f,1,1)}
+   for(let k=0;k<Math.ceil(W/13);k++){const x=k*13+4+Math.round(hs(k+9)*4);pine(x,gy-14+Math.round(hs(k)*3),22+Math.round(hs(k+3)*8),false,6)}
+   ctx.fillStyle=ink;for(let x=0;x<W;x++){ctx.fillRect(x,gy+Math.round(Math.sin(x/11)),1,1)}dith(0,gy+2,W,H-gy-2,0);
+   const campc=Math.round(W*.5)-8,campR=64,camp0=campc-campR,camp1=campc+campR;ctx.fillStyle=paper;for(let x=camp0;x<=camp1;x++){const u=(x-campc)/campR,dep=Math.round(Math.sqrt(Math.max(0,1-u*u))*(H-3-gy-2));if(dep>0)ctx.fillRect(x,gy+2,1,dep)}ctx.fillStyle=ink;ctx.fillRect(0,H-3,W,3);
+   for(let x=3;x<W;x+=7){if(x>camp0&&x<camp1)continue;const g=gy+3+Math.round(hs(x)*6);ctx.fillRect(x,g,1,2);ctx.fillRect(x+1,g+1,1,1)}
+   for(let k=0;k<Math.ceil(W/38);k++){const x=k*38+14+Math.round(hs(k+30)*10);if(Math.abs(x-W*.5)<34)continue;pine(x,gy+1,34+Math.round(hs(k+50)*10),true,9)}
+   pine(7,gy+6,64,true,13);pine(W-9,gy+6,60,true,12);
+   const blink=(t%3.6)<.18;ctx.fillStyle=ink;ctx.fillRect(14,gy-34,9,1);spr(OWL,15,gy-40,!blink);
+   const cx=Math.round(W*.5),tx=cx-46;ctx.fillStyle=ink;for(let j=0;j<14;j++){const hw=Math.round(j*.7);ctx.fillRect(tx-hw,gy-14+j+1,hw*2+1,1)}ctx.fillStyle=paper;for(let j=0;j<8;j++){const hw=Math.round(j*.25);ctx.fillRect(tx-hw,gy-8+j,hw*2+1,1)}ctx.fillStyle=ink;ctx.fillRect(tx,gy-17,1,4);ctx.fillRect(tx+1,gy-17,3,1);
+   const fy=gy+5,flick=Math.floor(t*9),glow=18+(flick%3),r2=glow*glow;
+   ctx.fillStyle=ink;const BAY=[0,8,2,10,12,4,14,6,3,11,1,9,15,7,13,5];for(let y=-glow;y<=glow;y++)for(let x=-glow*2;x<=glow*2;x++){const d=(x*x)/4+y*y;if(d>r2)continue;const lvl=(1-d/r2)*.5;if(BAY[((fy-8+y)&3)*4+((cx+x)&3)]/16<lvl)ctx.fillRect(cx+x,fy-8+y,1,1)}
+   
+   ctx.fillRect(cx-8,fy-1,17,3);ctx.fillRect(cx-7,fy-3,4,2);ctx.fillRect(cx+4,fy-3,4,2);ctx.fillStyle=paper;ctx.fillRect(cx-5,fy,1,1);ctx.fillRect(cx+3,fy,1,1);ctx.fillRect(cx-1,fy+1,1,1);
+   ctx.fillStyle=ink;for(let r=0;r<16;r++){const hw=Math.max(0,Math.round(6.2-r*.4+((hs(flick*7+r)-.5)*2)));const off=Math.round((hs(flick*3+r*5)-.5)*(r/4));ctx.fillRect(cx-hw+off,fy-4-r,hw*2+1,1)}
+   ctx.fillStyle=paper;for(let r=1;r<9;r++){const hw=Math.max(0,Math.round(2.8-r*.3));ctx.fillRect(cx-hw,fy-4-r,hw*2+1,1)}
+   ctx.fillStyle=ink;for(let i=0;i<7;i++){const life=((t*13+i*7)%36),sx=cx+Math.round(Math.sin(t*2.3+i*2)*3+life*(i%2?.12:-.12)),sy=Math.round(fy-20-life);if(((Math.floor(life)+i)%5)!==0)ctx.fillRect(sx,sy,1,1)}
+   for(let i=0;i<9;i++){const life=((t*5+i*9)%50),sx=cx+Math.round(Math.sin(t*.9+i*1.7)*(2+life*.12)+life*.1),sy=Math.round(fy-28-life);if(((i+Math.floor(life/3))&1)===0)ctx.fillRect(sx,sy,1,1)}
+   ctx.fillRect(cx-30,fy-1,14,3);ctx.fillRect(cx+18,fy-1,14,3);
+   const bl=(t%4.2)<.15;spr(CAT,cx-27,fy-11,!bl);const tail=Math.sin(t*2.2)>0;ctx.fillStyle=ink;ctx.fillRect(cx-15,fy-2,2,1);ctx.fillRect(cx-14,fy-3-(tail?1:0),1,2);
+   ctx.fillRect(cx+25,fy-11,3,3);ctx.fillRect(cx+24,fy-8,5,6);ctx.fillRect(cx+23,fy-3,3,3);ctx.fillStyle=paper;ctx.fillRect(cx+26,fy-10,1,1);ctx.fillStyle=ink;const sw=Math.round(Math.sin(t*1.6));for(let i=0;i<18;i++)ctx.fillRect(cx+23-i,fy-7+Math.round(i*.28)+(i>12?sw:0),1,1);ctx.fillRect(cx+4,fy-4+sw,2,2);
+   const bt=(t*9)%(W+120)-60;if(bt>0&&bt<W){const bx=Math.round(bt),bY=Math.round(30+Math.sin(t*3)*6),up=(Math.floor(t*8)&1)===0;ctx.fillRect(bx,bY,1,1);ctx.fillRect(bx-1,bY+(up?-1:1),1,1);ctx.fillRect(bx+1,bY+(up?-1:1),1,1);ctx.fillRect(bx-2,bY+(up?-2:2),1,1);ctx.fillRect(bx+2,bY+(up?-2:2),1,1)}
+   for(let i=0;i<10;i++){const x=Math.round(W*(.12+hs(i*3)*.76)+Math.sin(t*.5+i*3)*8),y=Math.round(gy-8-hs(i*3+1)*30+Math.cos(t*.7+i)*5);if(((Math.floor(t*1.3)+i*3)%4)<2)ctx.fillRect(x,y,1,1)}
+   ctx.fillStyle=ink}
  function loop(ts){const t=(ts-t0)/1000;draw(t);if(!still)raf=setTimeout(()=>requestAnimationFrame(loop),90)}
- return{start(){cv=$("#bitworld");if(!cv)return;ctx=cv.getContext("2d");still=!!(window.matchMedia&&matchMedia("(prefers-reduced-motion: reduce)").matches);size();t0=performance.now();this.stop();requestAnimationFrame(loop);addEventListener("resize",this.onResize=()=>{if(cv){size()}});},
+ return{start(name){scene=name||"bitworld";cv=$("#bitworld");if(!cv)return;ctx=cv.getContext("2d");still=!!(window.matchMedia&&matchMedia("(prefers-reduced-motion: reduce)").matches);size();t0=performance.now();this.stop();requestAnimationFrame(loop);addEventListener("resize",this.onResize=()=>{if(cv){size()}});},
   stop(){clearTimeout(raf);if(this.onResize)removeEventListener("resize",this.onResize)}}})();
-function applyBg(v){v=v||"waves";document.documentElement.dataset.bg=v;if(v==="bitworld")BitWorld.start();else BitWorld.stop()}
+function applyBg(v){v=v||"waves";document.documentElement.dataset.bg=v;if(v==="bitworld"||v==="bitcity"||v==="bitforest")BitWorld.start(v);else BitWorld.stop()}
 /* ---------- one button: update everything, then list what is still needed ---------- */
 async function updateEverything(){
  if(S.updating)return;
@@ -2112,7 +2180,7 @@ async function refreshTitle(){try{const d=await api("status");const bits=["Legac
  document.title=bits.filter(Boolean).join(" — ")}catch(e){}}
 /* Windows 11: tint the title bar to the theme so it blends into the app (like Steam or Discord). Quietly does nothing elsewhere. */
 function tintWindow(force){try{const cs=getComputedStyle(document.documentElement),bg=cs.getPropertyValue("--bg").trim(),fg=cs.getPropertyValue("--text").trim(),key=bg+fg,now=Date.now();
- if(!force&&key===S.tintKey&&now-(S.tintAt||0)<20000)return;S.tintKey=key;S.tintAt=now;api("window_style",{bg,fg}).catch(()=>{})}catch(e){}}
+ if(!force&&key===S.tintKey&&now-(S.tintAt||0)<20000)return;S.tintKey=key;S.tintAt=now;const tc=document.querySelector('meta[name="theme-color"]');if(tc&&/^#[0-9a-f]{6}$/i.test(bg))tc.content=bg;api("window_style",{bg,fg}).catch(()=>{})}catch(e){}}
 if(!OVERLAY){setInterval(refreshTitle,4000);setTimeout(refreshTitle,800);setInterval(()=>tintWindow(false),2500);[600,1800,4000].forEach(t=>setTimeout(()=>tintWindow(true),t));
  new MutationObserver(()=>tintWindow(true)).observe(document.documentElement,{attributes:true,attributeFilter:["data-theme"]})}
 if(!OVERLAY)window.addEventListener("pagehide",()=>{try{fetch("/api/bye",{method:"POST",keepalive:true,headers:{"Content-Type":"application/json","X-LP-Token":TOKEN},body:"{}"})}catch(e){}});

@@ -15,7 +15,7 @@ $usage = @'
    git clone https://github.com/ScrappyHub/legacy-player
    cd legacy-player
    .\lp install                 download the newest release, check its SHA-256, install it for you (no administrator)
-   .\lp install v0.7.36          the same, for one exact version
+   .\lp install v0.7.37          the same, for one exact version
    .\lp update                  install the newest release over the current one (your saves and settings stay)
    .\lp run                     start the installed app
    .\lp version                 what is installed, and what is the newest

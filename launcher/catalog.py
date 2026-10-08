@@ -70,7 +70,7 @@ SETTINGS_SCHEMA: dict[str, dict] = {
         "label": "Theme", "help": "The colours of the background and buttons. Dark and the coloured themes are easier on the eyes in a dim room.",
     },
     "background": {
-        "type": "choice", "choices": ["waves", "aurora", "grid", "stars", "dots", "crt", "bokeh", "bitworld", "plain"], "default": "waves", "group": "Look",
+        "type": "choice", "choices": ["waves", "aurora", "grid", "stars", "dots", "crt", "bokeh", "bitworld", "bitcity", "bitforest", "plain"], "default": "waves", "group": "Look",
         "label": "Background", "help": "The picture behind the app. Waves drift slowly, Aurora glows, Grid is the retro one, Stars twinkle, Dots is calm, CRT is an old television, Bokeh is soft drifting lights, 1-bit World is a tiny pixel world with Martin and the clinic, Plain is flat (the easiest on a slow computer). It uses your theme's colours.",
     },
     "view": {

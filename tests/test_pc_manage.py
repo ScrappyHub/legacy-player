@@ -77,7 +77,7 @@ class BackgroundTests(unittest.TestCase):
         choices = SETTINGS_SCHEMA["background"]["choices"]
         self.assertGreaterEqual(len(choices), 8)
         ui = (Path(__file__).resolve().parent.parent / "launcher" / "ui" / "index.html").read_text(encoding="utf-8")
-        for name in ("crt", "bokeh", "bitworld"):
+        for name in ("crt", "bokeh", "bitworld", "bitcity", "bitforest"):
             self.assertIn(name, choices)
             self.assertIn(f"[data-bg={name}]", ui)
         self.assertIn("const BitWorld", ui)
