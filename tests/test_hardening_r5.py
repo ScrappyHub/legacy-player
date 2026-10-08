@@ -227,3 +227,12 @@ class AzureSigningWiringTests(unittest.TestCase):
         self.assertNotIn("secrets.AZURE", wf)                                       # nothing secret is needed
         self.assertIn("[switch]$BuildOnly", ps)
         self.assertIn("[switch]$SkipBuild", ps)
+
+
+class PackageScriptSkipBuildTests(unittest.TestCase):
+    def test_skipbuild_does_not_trust_a_stale_exit_code(self):
+        ps = (ROOT / "tools/package_release.ps1").read_text(encoding="utf-8")
+        build_block = ps[ps.index("if (-not $SkipBuild)"):ps.index("if ($BuildOnly)")]
+        self.assertIn("$LASTEXITCODE", build_block.split("if (-not (Test-Path")[0])        # checked inside the build branch only
+        after = ps[ps.index("if (-not (Test-Path 'dist"):]
+        self.assertNotIn("$LASTEXITCODE", after.split("\n")[0])

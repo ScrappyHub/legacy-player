@@ -2708,6 +2708,33 @@ class LauncherApp:
                 "reach": self.port_map.get("message") or "Friends on your home network or VPN can use this code. Start the server with 'Let friends connect' and the app will try to open your router for friends on the internet.",
                 "reach_state": self.port_map.get("state", "")}
 
+    def api_tailscale(self, body: dict) -> dict:
+        """Set up Tailscale from inside the app: see where it is, install it (Windows' package manager, after a yes), or open its sign-in."""
+        action = str(body.get("action") or "status")
+        if action == "install":
+            if not self.catalog.settings()["allow_internet"]:
+                raise AppError("Downloads are off. Turn on 'Allow internet downloads' in Settings > Privacy, or download Tailscale yourself from tailscale.com/download.")
+            if not body.get("confirm"):
+                raise AppError("Confirm that you want Legacy Player to install Tailscale.")
+            privatelink.start_install()
+        elif action == "login":
+            if not privatelink.start_login():
+                raise AppError("Tailscale is not installed yet.")
+        elif action != "status":
+            raise AppError("action must be status, install or login")
+        return {**privatelink.status(), "install": privatelink.install_state(), "admin_page": privatelink.ADMIN_PAGE}
+
+    def api_server_use_tailscale(self, body: dict) -> dict:
+        """Make the server code carry this computer's Tailscale address, so a friend who is on your Tailscale network can connect
+        even when your provider shares your public address or your router will not open a port."""
+        link = privatelink.status()
+        if not link["installed"]:
+            raise AppError("Tailscale is not installed. Install it from tailscale.com/download on both computers, sign in, and share this computer with your friend.")
+        if not link["address"]:
+            raise AppError("Tailscale is installed but not signed in. Open it and sign in first.")
+        self.catalog.set_setting("server_public_address", link["address"])
+        return {"address": link["address"], "message": "Your server code now uses your Tailscale address. Make a new code and send it. Your friend needs Tailscale too, with this computer shared to them."}
+
     def api_server_connect(self, body: dict) -> dict:
         """Point this app at a friend's server using their short code (or leave it at this computer)."""
         from . import servercode

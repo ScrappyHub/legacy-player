@@ -12,6 +12,7 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
 import time
 
 DOWNLOAD_PAGE = "https://tailscale.com/download"
@@ -77,3 +78,61 @@ def status() -> dict:
     except (OSError, subprocess.SubprocessError):
         pass
     return out
+
+
+ADMIN_PAGE = "https://login.tailscale.com/admin/machines"
+INSTALL = {"state": "idle", "message": ""}        # idle | installing | done | error
+
+
+def winget_path() -> str | None:
+    return shutil.which("winget") if sys.platform == "win32" else None
+
+
+def install_state() -> dict:
+    return dict(INSTALL)
+
+
+def start_install() -> dict:
+    """Install Tailscale with Windows' own package manager (the official Tailscale.Tailscale package). Windows shows its own
+    approval box. Runs in the background; poll install_state(). Only called after the person agreed."""
+    if INSTALL["state"] == "installing":
+        return install_state()
+    if find_tailscale():
+        INSTALL.update(state="done", message="Tailscale is already installed.")
+        return install_state()
+    winget = winget_path()
+    if not winget:
+        INSTALL.update(state="error", message="Windows' package manager (winget) is not available here. Download Tailscale from tailscale.com/download instead.")
+        return install_state()
+    INSTALL.update(state="installing", message="Installing Tailscale. Approve the Windows prompt if one appears.")
+
+    def work() -> None:
+        try:
+            flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+            r = subprocess.run([winget, "install", "--id", "Tailscale.Tailscale", "-e", "--silent",
+                                "--accept-package-agreements", "--accept-source-agreements"],
+                               capture_output=True, text=True, timeout=600, creationflags=flags)
+            _cache["value"] = None
+            if r.returncode == 0 or find_tailscale():
+                INSTALL.update(state="done", message="Tailscale is installed. Now sign in.")
+            else:
+                INSTALL.update(state="error", message="The install did not finish. Download Tailscale from tailscale.com/download instead.")
+        except (OSError, subprocess.SubprocessError):
+            INSTALL.update(state="error", message="The install did not finish. Download Tailscale from tailscale.com/download instead.")
+
+    threading.Thread(target=work, daemon=True).start()
+    return install_state()
+
+
+def start_login() -> bool:
+    """Open Tailscale's sign-in page in the browser (`tailscale login`). Returns whether it could be started."""
+    exe = find_tailscale()
+    if not exe:
+        return False
+    try:
+        flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        subprocess.Popen([exe, "login"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=flags)
+        _cache["value"] = None
+        return True
+    except OSError:
+        return False

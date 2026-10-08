@@ -94,5 +94,75 @@ class AutomaticChoiceTests(unittest.TestCase):
             svc.report_stats({"private_address": "8.8.8.8"})
 
 
-if __name__ == "__main__":
-    unittest.main()
+
+class ServerTailscaleTests(unittest.TestCase):
+    def test_sets_public_address_only_when_tailscale_is_up(self):
+        from tests.test_app_actions import make_app
+        app, _ = make_app()
+        with mock.patch("launcher.privatelink.status", return_value={"installed": False, "running": False, "address": None}):
+            with self.assertRaises(AppError):
+                app.api_server_use_tailscale({})
+        with mock.patch("launcher.privatelink.status", return_value={"installed": True, "running": False, "address": None}):
+            with self.assertRaises(AppError):
+                app.api_server_use_tailscale({})
+        with mock.patch("launcher.privatelink.status", return_value={"installed": True, "running": True, "address": "100.64.5.6"}):
+            out = app.api_server_use_tailscale({})
+        self.assertEqual(out["address"], "100.64.5.6")
+        self.assertEqual(app.catalog.settings()["server_public_address"], "100.64.5.6")
+
+    def test_a_tailscale_address_makes_a_short_code(self):
+        from launcher import servercode
+        code = servercode.encode("100.64.5.6", 8765, "ab" * 32, "cd" * 5)
+        self.assertTrue(code.startswith("LP-"))
+        self.assertEqual(servercode.decode(code)["host"], "100.64.5.6")
+
+
+class TailscaleSetupTests(unittest.TestCase):
+    def setUp(self):
+        from tests.test_app_actions import make_app
+        self.app, _ = make_app()
+
+    def test_install_needs_downloads_on_and_a_yes(self):
+        with self.assertRaises(AppError):
+            self.app.api_tailscale({"action": "install", "confirm": True})            # downloads are off by default
+        self.app.catalog.set_setting("allow_internet", True)
+        with self.assertRaises(AppError):
+            self.app.api_tailscale({"action": "install"})                            # no confirmation
+        with mock.patch("launcher.privatelink.start_install", return_value={"state": "installing", "message": ""}) as start, \
+             mock.patch("launcher.privatelink.status", return_value={"installed": False, "running": False, "address": None, "download_page": "x"}):
+            out = self.app.api_tailscale({"action": "install", "confirm": True})
+        start.assert_called_once()
+        self.assertIn("install", out)
+
+    def test_login_needs_it_installed(self):
+        with mock.patch("launcher.privatelink.find_tailscale", return_value=None):
+            with self.assertRaises(AppError):
+                self.app.api_tailscale({"action": "login"})
+        with self.assertRaises(AppError):
+            self.app.api_tailscale({"action": "rm -rf"})
+
+    def test_install_without_winget_explains(self):
+        privatelink.INSTALL.update(state="idle", message="")
+        with mock.patch("launcher.privatelink.find_tailscale", return_value=None), mock.patch("launcher.privatelink.winget_path", return_value=None):
+            out = privatelink.start_install()
+        self.assertEqual(out["state"], "error")
+        self.assertIn("tailscale.com/download", out["message"])
+        privatelink.INSTALL.update(state="idle", message="")
+
+    def test_install_runs_only_the_official_package(self):
+        privatelink.INSTALL.update(state="idle", message="")
+        seen = {}
+        done = subprocess.CompletedProcess([], 0, stdout="", stderr="")
+
+        def fake_run(cmd, **kw):
+            seen["cmd"] = cmd
+            return done
+        calls = iter([None, "ts"])
+        with mock.patch("launcher.privatelink.find_tailscale", side_effect=lambda: next(calls, "ts")), \
+             mock.patch("launcher.privatelink.winget_path", return_value="winget"), mock.patch("subprocess.run", side_effect=fake_run), \
+             mock.patch("threading.Thread") as thread:
+            privatelink.start_install()
+            thread.call_args.kwargs["target"]()
+        self.assertIn("Tailscale.Tailscale", seen["cmd"])
+        self.assertEqual(privatelink.INSTALL["state"], "done")
+        privatelink.INSTALL.update(state="idle", message="")

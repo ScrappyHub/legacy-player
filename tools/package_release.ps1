@@ -15,8 +15,9 @@ Write-Host "Packaging Legacy Player $version"
 if (-not $SkipBuild) {
     $env:LP_LOGGED = '1'
     cmd /c "build_exe.bat"
+    if ($LASTEXITCODE -ne 0) { throw 'The build failed; see the output above.' }       # only meaningful right after the build ran
 }
-if ($LASTEXITCODE -ne 0 -or -not (Test-Path 'dist\LegacyPlayer.exe')) { throw 'The build failed; see the output above.' }
+if (-not (Test-Path 'dist\LegacyPlayer.exe')) { throw 'The build failed or was skipped without an exe; see the output above.' }
 if ($BuildOnly) { Write-Host 'Built dist\LegacyPlayer.exe (not packaged yet).'; exit 0 }
 
 # Code signing: when a certificate is supplied (LP_SIGN_PFX_BASE64 = the .pfx file as base64, LP_SIGN_PFX_PASSWORD), the exe is

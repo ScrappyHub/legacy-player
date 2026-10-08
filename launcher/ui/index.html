@@ -1402,6 +1402,22 @@ async function viewServers(m){
  const routerTest=async()=>{const r=await act(()=>api("router_test"));if(!r)return;
   toast(r.state==="mapped"?"Your router opens ports for Legacy Player. Friends can use your server code.":r.message+(r.fallback_available?" A shared server will be used instead.":""),r.state==="mapped"?"":"warn")};
  const srvAct=async action=>{const r=await act(()=>api("server_control",{action,share:share.checked}));if(r){if(action!=="stop"&&share.checked)setTimeout(fwAsk,400);toast(r.message+(r.reach&&r.reach.message&&action!=="stop"?" "+r.reach.message:""),r.reach&&r.reach.state&&r.reach.state!=="mapped"&&action!=="stop"?"warn":"");go()}};
+ const tsSetup=async()=>{const read=()=>api("tailscale",{action:"status"});let t=await act(read);if(!t)return;
+  const say=(text)=>toast(text);
+  if(!t.installed){
+   if(!await ask("Tailscale is a free private network that lets you and a friend connect even when your internet provider blocks direct connections. Legacy Player can install it for you through Windows (official Tailscale package); Windows will ask you to approve. Install it now?","Install Tailscale"))return;
+   if(!V.allow_internet&&!await act(()=>api("settings",{key:"allow_internet",value:true})))return;
+   t=await act(()=>api("tailscale",{action:"install",confirm:true}));if(!t)return;
+   for(let i=0;i<150&&t.install.state==="installing";i++){say(t.install.message);await new Promise(r=>setTimeout(r,4000));t=await read()}
+   if(t.install.state==="error"){say(t.install.message);window.open(t.download_page,"_blank","noopener");return}
+  }
+  if(!t.running){
+   if(!await ask("Next: sign in to Tailscale. A browser page opens; sign in with Google, Microsoft or GitHub. Do this on both computers.","Open sign-in"))return;
+   await act(()=>api("tailscale",{action:"login"}));
+   for(let i=0;i<60&&!t.running;i++){say("Waiting for you to finish signing in…");await new Promise(r=>setTimeout(r,4000));t=await read()}
+  }
+  if(t.running){say("Tailscale is ready: "+t.address+". The server owner presses 'Use Tailscale for my server code', then shares their computer with the friend in Tailscale's admin page.");window.open(t.admin_page,"_blank","noopener")}
+  else say("Tailscale isn't signed in yet. Press this button again when you've signed in.")};
  const num=(key,min,max)=>h("input",{type:"number",value:V[key],min,max,style:"width:90px","aria-label":key});
  const players=num("server_max_players",2,8),rooms=num("server_max_rooms",1,10000),line=num("server_max_waiting",0,500);
  const pub=h("input",{type:"text",value:V.server_public_address||"",placeholder:"leave blank: found automatically",style:"width:min(380px,100%)","aria-label":"Address friends use"});
@@ -1415,7 +1431,9 @@ async function viewServers(m){
   st.online?h("div",{class:"inbanner ok"},"Your server is running. Closing this window with X keeps Legacy Player in the tray (notification area) so it stays managed; right-click the tray icon to stop it, copy a fresh server code or exit."):"",
   h("div",{class:"row"},h("button",{class:"btn primary",onclick:()=>srvAct("start")},"Start"),h("button",{class:"btn",onclick:()=>srvAct("restart")},"Restart"),h("button",{class:"btn",onclick:()=>srvAct("stop")},"Stop"),
    h("label",{class:"small"},share," Let friends connect (encrypted with this app's own certificate)"),
-   h("button",{class:"btn",title:"Opens the server port on your router and closes it again, to see if friends can reach you.",onclick:routerTest},"Test my router"),h("button",{class:"btn",onclick:fwAsk},"Check Windows Firewall")),
+   h("button",{class:"btn",title:"Opens the server port on your router and closes it again, to see if friends can reach you.",onclick:routerTest},"Test my router"),h("button",{class:"btn",onclick:fwAsk},"Check Windows Firewall"),
+   h("button",{class:"btn",onclick:tsSetup},"Set up Tailscale (private network)"),
+   h("button",{class:"btn",title:"Puts your Tailscale address in the server code. Works even when your provider shares your address or your router won't open a port. Your friend needs Tailscale too.",onclick:async()=>{const r=await act(()=>api("server_use_tailscale",{}));if(r){toast(r.message);S.settings=(await api("settings",{}).catch(()=>null))?.values||S.settings;go()}}},"Use Tailscale for my server code")),
   flag("server_autostart","Start my server by itself when I host or join a room","If your own server is not running, Legacy Player starts it for you."),
   flag("mp_auto_agree","When a host starts a game I already have, join it without asking me each time","Off: you are asked every time. On: you agree automatically, the game opens and connects, so nothing has to stop between games."),
   h("h3",{style:"margin-top:16px"},whyInline("Limits","Players per room is the most any room may hold. Rooms is how many your server will keep. Waiting line is how many people can queue for a full room (0 turns lines off). They apply the next time the server starts.")),
