@@ -6,7 +6,7 @@
 <title>Legacy Player</title>
 <style>
 :root{--bg:#050816;--panel:rgba(22,30,64,.58);--panel2:rgba(255,255,255,.07);--line:rgba(255,255,255,.13);--text:#eef1ff;--mute:#b9c5ea;--link:#8fb2ff;--grad-btn:linear-gradient(135deg,#2f62e0,#6a48f0 55%,#07805e);--accent:#4f8cff;--accent2:#3be0a8;--warn:#ffb454;--bad:#ff8c98;--r:16px;--grad:linear-gradient(135deg,#4f8cff,#7a5cff 55%,#3be0a8);--glow:0 0 22px rgba(79,140,255,.45);--chrome:rgba(8,12,30,.72)}
-[data-theme=light]{--orb1:#4f8cff;--orb2:#3be0a8;--bg:#eef2fb;--panel:rgba(255,255,255,.78);--panel2:rgba(30,50,120,.07);--line:rgba(30,50,120,.16);--text:#141a36;--mute:#37437a;--accent:#2f62e0;--link:#2f62e0;--accent2:#066f53;--warn:#a85a00;--bad:#c92a3b;--glow:0 0 18px rgba(47,98,224,.28);--chrome:rgba(255,255,255,.82)}
+[data-theme=light]{--orb1:#4f8cff;--orb2:#3be0a8;--bg:#eef2fb;--panel:rgba(255,255,255,.78);--panel2:rgba(30,50,120,.07);--line:rgba(30,50,120,.16);--text:#141a36;--mute:#2b3566;--accent:#2f62e0;--link:#2f62e0;--accent2:#066f53;--warn:#a85a00;--bad:#c92a3b;--glow:0 0 18px rgba(47,98,224,.28);--chrome:rgba(255,255,255,.82)}
 *{box-sizing:border-box}
 html{scrollbar-color:#3a4a8a transparent}
 body{margin:0;color:var(--text);font:15px/1.5 "Segoe UI Variable","Segoe UI",system-ui,Roboto,sans-serif;background:var(--bg);min-height:100vh}
@@ -1565,7 +1565,7 @@ async function askFirewall(){const f=await api("firewall_status");if(!f.supporte
 async function viewServers(m){
  const st=await pingServer();const cfg=await api("settings");S.settings=cfg.values;const V=cfg.values;
  m.append(h("h2",{},"Servers"),
-  h("div",{class:"why"},"A server keeps rooms and invite codes. Run your own here and give friends its short server code, or connect to a friend's server with theirs. Picking a game, the room and live connection numbers are in Server Info."));
+  h("div",{class:"why"},"Playing online needs one server. Only ONE person hosts it; everyone else just joins with the host's server code. If a friend is hosting, paste their code in the first box below and press Connect. If you are the host, start your server further down and send your code to your friends."));
  // 0. right now: connection, who is in, and (small) the server code once it is running
  const live=h("div",{class:"card",id:"srvlive",style:"margin-top:14px"});m.append(live);
  const dur=sec=>sec<90?Math.round(sec)+" s":sec<5400?Math.round(sec/60)+" min":(sec/3600).toFixed(1)+" h";
@@ -1646,7 +1646,7 @@ async function viewServers(m){
   const r=await act(()=>api("settings",{key:"server_public_address",value:pub.value.trim()}));if(!r)return;
   toast("Saved");if(restart&&st.online&&!(await act(()=>api("server_control",{action:"restart",share:share.checked}))))return;go()};
  m.append(h("div",{class:"card",style:"margin-top:14px"},
-  h("div",{class:"row"},h("h3",{class:"grow"},"Your server"),st.online?h("b",{class:"good"},"running"):h("b",{class:"bad"},"stopped")),
+  h("div",{class:"row"},h("h3",{class:"grow"},"Hosting? Your own server"),st.online?h("b",{class:"good"},"running"):h("b",{class:"bad"},"stopped")),
   h("p",{class:"small muted"},whyInline("What is it?","A small program that keeps rooms and invite codes. It keeps your rooms when you stop it and brings them back when you start it again. It runs on this computer while Legacy Player is open."),st.message?" "+st.message:""),
   st.online?h("div",{class:"inbanner ok"},"Your server is running. Closing this window with X keeps Legacy Player in the tray (notification area) so it stays managed; right-click the tray icon to stop it, copy a fresh server code or exit."):"",
   h("div",{class:"row"},...(st.online?[h("button",{class:"btn",onclick:()=>srvAct("restart")},"Restart"),h("button",{class:"btn bad",onclick:()=>srvAct("stop")},"Stop")]:[h("button",{class:"btn primary",onclick:()=>srvAct("start")},"Start")]),
@@ -1663,10 +1663,11 @@ async function viewServers(m){
  // 3. connect
  const code=h("input",{type:"text",placeholder:"LP-XXXX-XXXX-XXXX-XXXX-XX",style:"width:min(300px,100%)","aria-label":"Server code"});
  const mine=V.server_host==="127.0.0.1";
- m.append(h("div",{class:"card",style:"margin-top:14px"},h("h3",{},"Connect to a server"),
+ const joinCard=(h("div",{class:"card joincard",style:"margin-top:14px;border-color:var(--accent)"},h("h3",{},"Joining a friend? Paste their server code"),h("p",{class:"small muted"},"Ask the host for their server code (it starts with LP-). You do not need to start a server yourself."),
   h("p",{class:"small"},"Connected to: ",h("b",{},mine?"your own server (this computer)":h("span",{},ipSpan(V.server_host),":"+(V.server_remote_port||V.server_port))),mine?"":h("span",{class:"small muted"}," (encrypted, certificate checked)")),
   h("div",{class:"row"},code,h("button",{class:"btn good",onclick:async()=>{const r=await act(()=>api("server_connect",{code:code.value}));if(!r)return;toast(r.connected?"Connected to the server":r.message,r.connected?"":"warn");go();if(r.connected)autoNetTest(0)}},"Connect"),
    mine?null:h("button",{class:"btn",onclick:async()=>{await act(()=>api("server_connect",{local:true}),"Back to your own server");go()}},"Use my own server"))));
+ m.insertBefore(joinCard,$("#srvlive")||null);
  // 4. rooms on the connected server
  const s2=await api("mp_state");S.room=s2.room;S.waits=s2.waits||[];
  const waitsBox=h("div",{id:"waits"});m.append(waitsBox);drawWaits(waitsBox);
@@ -2447,11 +2448,11 @@ function liveInfo(){const r=S.room,w=(S.waits||[])[0];
   return{kind:"room",text:"ONLINE · "+r.game+" · "+n+(r.max_players?"/"+r.max_players:"")+" player"+(n===1?"":"s")+(avg!=null?" · "+Math.round(avg)+" ms":"")}}
  if(w)return{kind:"wait",text:"In line"+(w.position?" #"+w.position:"")+" for "+w.game};
  if(S.online)return{kind:"server",text:"Connected to a server"};
- return{kind:"off",text:"Multiplayer server offline"}}
+ return{kind:"off",text:"Not online yet · join a friend or host"}}
 function liveMenu(){const i=liveInfo();return[[(i.kind==="room"?"● ":i.kind==="wait"?"◐ ":i.kind==="server"?"○ ":"✕ ")+(i.kind==="room"?"In a room: "+S.room.game:i.kind==="off"?"Not connected":i.text),()=>nav(i.kind==="off"?"servers":"together")],"-"]}
 function renderLive(){
  const i=liveInfo(),pill=$("#srv");
- if(pill){pill.className="srvpill "+i.kind;pill.title=i.kind==="off"?"Open Servers":"Open your room";pill.onclick=()=>nav(i.kind==="off"?"servers":"together");
+ if(pill){pill.className="srvpill "+i.kind;pill.title=i.kind==="off"?"You are not connected to anyone yet. One person hosts the server; everyone else pastes the host's server code. Click to set it up.":"Open your room";pill.onclick=()=>nav(i.kind==="off"?"servers":"together");
   pill.replaceChildren(h("span",{class:"dot"+(i.kind==="room"||i.kind==="server"?" on":"")+(i.kind==="room"?" pulse":"")}),h("span",{id:"srvtxt"},i.text))}
  const bar=$("#livebar");
  if(bar){const r=S.room;
