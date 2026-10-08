@@ -57,6 +57,8 @@ CONSOLES: tuple[Console, ...] = (
             ("azahar", "citra"), "experimental", "Emulation is limited; multiplayer is not planned yet.", "3ds", "cartridge"),
     Console("ps3", "PlayStation 3", "Sony", 18, (".pkg",), ("ps3", "playstation 3"), ("rpcs3",),
             "not-practical", "Emulation is demanding; multiplayer is not practical yet.", "ps3", "internal"),
+    Console("pc", "PC games (Steam / Epic)", "PC", 19, (), ("pc", "steam", "epic"), (),
+            "not-practical", "These start through Steam or the Epic Games Launcher. Online play is whatever each game offers.", "x360", "internal"),
 )
 
 BY_ID = {c.id: c for c in CONSOLES}

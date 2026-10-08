@@ -40,14 +40,44 @@ def address_kind(ip: str) -> str:
     return "public"
 
 
-def _find_locations(timeout: float) -> list[str]:
+def _local_ipv4_addresses() -> list[str]:
+    """Every IPv4 address of this computer. A search sent only on the default route misses a router that sits behind
+    another adapter (a VPN, a virtual machine switch and WSL each add one), so the search is sent from each."""
     found: list[str] = []
+    try:
+        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            ip = info[4][0]
+            if ip not in found and not ip.startswith("127."):
+                found.append(ip)
+    except OSError:
+        pass
+    try:
+        probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            probe.connect(("192.0.2.1", 9))
+            ip = probe.getsockname()[0]
+            if ip not in found and not ip.startswith("127."):
+                found.insert(0, ip)
+        finally:
+            probe.close()
+    except OSError:
+        pass
+    return found
+
+
+def _search_from(source: str | None, timeout: float, found: list[str]) -> None:
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
     try:
         sock.settimeout(0.5)
         sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 2)
-        for target in SEARCH_TARGETS:
-            msg = ("M-SEARCH * HTTP/1.1\r\nHOST: 239.255.255.250:1900\r\nMAN: \"ssdp:discover\"\r\nMX: 1\r\nST: %s\r\n\r\n" % target).encode()
+        if source:
+            try:
+                sock.bind((source, 0))
+                sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_IF, socket.inet_aton(source))
+            except OSError:
+                return
+        for target in SEARCH_TARGETS + ("upnp:rootdevice",):
+            msg = ("M-SEARCH * HTTP/1.1\r\nHOST: 239.255.255.250:1900\r\nMAN: \"ssdp:discover\"\r\nMX: 2\r\nST: %s\r\n\r\n" % target).encode()
             try:
                 sock.sendto(msg, SSDP_ADDR)
             except OSError:
@@ -66,6 +96,18 @@ def _find_locations(timeout: float) -> list[str]:
                 found.append(match.group(1))
     finally:
         sock.close()
+
+
+def _find_locations(timeout: float) -> list[str]:
+    found: list[str] = []
+    sources = _local_ipv4_addresses() or [None]
+    per = max(2.0, timeout / max(1, len(sources)))
+    for source in sources:
+        _search_from(source, per, found)
+        if found:
+            break
+    if not found:                                    # last try the old way, on whatever the system picks
+        _search_from(None, per, found)
     return found
 
 

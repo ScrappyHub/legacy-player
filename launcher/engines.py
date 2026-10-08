@@ -58,7 +58,7 @@ ENGINES: dict[str, dict] = {
               "source": {"kind": "github", "repo": "xenia-canary/xenia-canary-releases", "asset": r"xenia_canary_windows\.zip$"},
               "license": "BSD-3-Clause"},
     "rpcs3": {"name": "RPCS3", "consoles": ["ps3"],
-              "source": {"kind": "github", "repo": "RPCS3/rpcs3-binaries-win", "asset": r"rpcs3-v[\d.]+-[0-9a-f]+_win64\.7z$"},
+              "source": {"kind": "github", "repo": "RPCS3/rpcs3-binaries-win", "asset": r"rpcs3-v[\d.]+-[\w\-]+_win64[\w]*\.7z$"},
               "license": "GPL-2.0", "bios": "ps3"},
 }
 

@@ -33,7 +33,7 @@ from . import overlay as overlaymod
 from . import procs
 from . import controllers, emulators, engines, pads, savefolders, saves
 from .installer import EngineInstaller, InstallError, latest_release, pick_asset
-from . import dolphinpads, dolphinpaths, privatelink, firewall, gameinfo, portmap, winplace, keyboard, memprobe, netcheck, reports, selfuninstall, sysinfo
+from . import dolphinpads, dolphinpaths, privatelink, firewall, gameinfo, portmap, pcgames, winplace, keyboard, memprobe, netcheck, reports, selfuninstall, sysinfo
 from .covers import (CONTENT_TYPES, CoverFetcher, SYSTEMS as COVER_SYSTEMS, clear_custom_cover, cover_path,
                      custom_cover, set_custom_cover)
 from .pcscan import PcScan
@@ -205,18 +205,29 @@ class LauncherApp:
         """Read the games folders again. The slow part (walking the disk) runs without the big lock, so the app stays
         responsive; only swapping the result in takes it."""
         roots = [Path(r) for r in self.catalog.data["roots"]]
-        if not roots:
+        pc = self._pc_entries()
+        if not roots and not pc:
             raise AppError("Add a games folder first (Library folders).")
         started = time.time()
         with self._scan_lock:                     # one disk walk at a time
-            result = scan(roots, DEFAULT_EXCLUDES)
+            result = scan(roots, DEFAULT_EXCLUDES) if roots else {"games": [], "skipped": {"unrecognized": 0, "duplicates": 0}}
             with self.api_lock:
                 self.games = {g.id: g.as_dict() for g in result["games"]}
+                self.games.update({g["id"]: g for g in pc})
                 self.skipped = result["skipped"]
                 self.catalog.data["last_rescan"] = time.time()
                 self.catalog.save()
                 self._cache_path().write_text(json.dumps({"games": list(self.games.values()), "skipped": self.skipped}), encoding="utf-8")
                 return {"games": len(self.games), "skipped": self.skipped, "seconds": round(time.time() - started, 2)}
+
+    def _pc_entries(self) -> list[dict]:
+        """Installed Steam and Epic games (names only), unless the player turned that off."""
+        if not self.catalog.settings().get("show_pc_games", True):
+            return []
+        try:
+            return pcgames.library_entries()
+        except Exception:                     # a launcher with odd files must never stop the scan
+            return []
 
     def api_roots(self, body: dict) -> dict:
         self._forget_emulators()
@@ -413,6 +424,8 @@ class LauncherApp:
             raise AppError("The launch options for this game have a quote that is not closed.") from exc
 
     def launch_check(self, game: dict) -> dict:
+        if game["console"] == "pc":
+            return {"ready": True, "emulator": "Steam" if game["root"] == "steam" else "Epic Games Launcher", "emulator_id": game["root"], "reason": ""}
         emulator_id, info = self._emulator_for(game["console"], prefer=self._meta(game).get("emulator"))
         if game["is_archive"] and not (game["console"] in ZIP_OK and game["extension"] == ".zip"):
             return {"ready": False, "reason": f"This game is a {game['extension']} archive. Extract it first; the launcher never changes your files."}
@@ -762,6 +775,13 @@ class LauncherApp:
         if not check["ready"]:
             raise AppError(check["reason"])
         eid = check["emulator_id"]
+        if game["console"] == "pc":
+            try:
+                pcgames.launch(game["path"])
+            except (OSError, ValueError) as exc:
+                raise AppError(f"Could not start {check['emulator']}: {exc}") from exc
+            self.catalog.record_play(game["id"])
+            return {"launched": game["title"], "emulator": check["emulator"], "pid": 0}
         mode, monitor, must_ask = self._display_choice(eid, game["console"], body)
         if must_ask:
             return {"needs_display": {"emulator": check["emulator"], "emulator_id": eid, "title": game["title"], "monitor": monitor,

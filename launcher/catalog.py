@@ -96,6 +96,11 @@ SETTINGS_SCHEMA: dict[str, dict] = {
         "label": "Allow direct connections (reveals your address)",
         "help": "Off (recommended): matches always go through the server relay, so other players never learn your IP address. On: lets a host choose a direct connection, which hands the host's address to every guest. Only turn on for a home network or a VPN such as Tailscale.",
     },
+    "show_pc_games": {
+        "type": "bool", "default": True, "group": "Library",
+        "label": "Show my installed Steam and Epic games in the library",
+        "help": "Reads the list of installed games that Steam and the Epic Games Launcher keep on this computer (names only; nothing is sent anywhere) and starts them through those launchers.",
+    },
     "use_private_link": {
         "type": "bool", "default": False, "group": "Privacy",
         "label": "Use an encrypted private link for Dolphin when everyone has Tailscale",

@@ -2483,7 +2483,7 @@ function prescription(){return h("div",{class:"rx",role:"note","aria-label":"The
 const RETIRE_LINES={emulators:"Sweeping out the waiting room...",library:"Shredding the paperwork...",saves:"Clearing the save shelves...",created:"Folding up the save boxes I left around...",firewall:"Closing the side door I opened for your friends...",logs:"Wiping the clipboard...",program:"Locking up the clinic..."};
 async function retireClinic(){
  const plan=await act(()=>api("self_uninstall",{}));if(!plan)return;
- const keep=h("input",{type:"checkbox",checked:true}),prog=h("input",{type:"checkbox",checked:true}),delMade=h("input",{type:"checkbox",checked:false});
+ const keep=h("input",{type:"radio",name:"lp-keep-saves",checked:true}),dropSaves=h("input",{type:"radio",name:"lp-keep-saves"}),prog=h("input",{type:"checkbox",checked:true}),delMade=h("input",{type:"checkbox",checked:false});
  const made=plan.created||[];
  const doc=h("div",{class:"docspot retiredoc"},pixels(doctorRows("worried"),104,"doctor worried"));
  const say=h("div",{class:"retiresay",role:"status","aria-live":"polite"},"Leaving already? I'll clean up properly so nothing is left behind. Your games stay untouched. Here's what I'll tidy"+((plan.created||[]).length||plan.items.some(i=>i.key==="saves")?", and I have a question about the save folders I made:":":"));
@@ -2496,7 +2496,10 @@ async function retireClinic(){
  const wait=ms=>new Promise(r=>setTimeout(r,ms));
  const saves=plan.items.find(i=>i.key==="saves"),program=plan.items.find(i=>i.key==="program");
  body.append(h("div",{class:"unlist"},...plan.items.map(item)),
-  saves?h("label",{class:"unopt"},keep,h("span",{},h("b",{},"Keep my game saves and backups"),h("div",{class:"small muted"},"Recommended. Saves stay in "+plan.data_dir+" so your progress is safe if you come back. Untick to delete them too (cannot be undone)."))):"",
+  saves?h("div",{class:"unopt savesq",role:"radiogroup","aria-label":"What to do with your game saves and backups"},
+   h("div",{},h("b",{},"Your game saves and backups"+(saves.mb?" ("+saves.mb+" MB)":"")),h("div",{class:"small muted"},"You choose. Saves made by emulators in their own folders are never touched either way.")),
+   h("label",{class:"small",style:"display:block;margin-top:6px"},keep,h("span",{}," Keep them (recommended). They stay in "+plan.data_dir+" so your progress is safe if you come back.")),
+   h("label",{class:"small",style:"display:block;margin-top:4px"},dropSaves,h("span",{}," Delete them too (cannot be undone)."))):"",
   made.length?h("div",{class:"unopt madeq",role:"group","aria-label":"Save folders the doctor made"},h("div",{},h("b",{},"I also made these in places you chose. Shall I clear them too?"),
     ...made.map(c=>h("div",{class:"small muted"},c.label+" - "+c.path+(c.mb?" ("+c.mb+" MB)":""))),
     h("label",{class:"small",style:"display:block;margin-top:6px"},delMade,h("span",{}," Yes, delete these folders and the saves in them (cannot be undone). Otherwise I leave them where they are.")))):"",
