@@ -662,3 +662,13 @@ class ThemeTests(unittest.TestCase):
             self.assertTrue(re.search(r"\[data-theme=%s\]\{" % name, html) or name == "dark", name)
             if name not in {"dark"}:
                 self.assertIn(f"[data-theme={name}] .bg{{" if name != "light" else "[data-theme=light] .bg{", html, name)
+
+
+class ThemePickerWiringTests(unittest.TestCase):
+    def test_picker_is_in_profile_menu_profile_page_and_settings_and_matches_the_choices(self):
+        import re
+        from launcher.catalog import SETTINGS_SCHEMA
+        html = (Path(__file__).resolve().parents[1] / "launcher" / "ui" / "index.html").read_text(encoding="utf-8")
+        self.assertGreaterEqual(html.count("themePicker()"), 3)
+        listed = re.findall(r'\["([a-z]+)","[A-Za-z]+","#', html[html.index("const THEMES="):html.index("function themePicker")])
+        self.assertEqual(sorted(listed), sorted(SETTINGS_SCHEMA["theme"]["choices"]))

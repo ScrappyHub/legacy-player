@@ -31,6 +31,9 @@ option{background:#141a33;color:#eef1ff}
 /* living background: drifting waves and soft light, like a console dashboard */
 .bg{position:fixed;inset:0;z-index:-1;overflow:hidden;background:radial-gradient(1100px 700px at 12% -8%,#1c2f80 0%,transparent 60%),radial-gradient(900px 620px at 98% 8%,#0d6a6a 0%,transparent 55%),linear-gradient(180deg,#090e2c,#050816)}
 [data-theme=light] .bg{background:radial-gradient(1100px 700px at 12% -8%,#c9d8ff 0%,transparent 60%),radial-gradient(900px 620px at 98% 8%,#c6f5e6 0%,transparent 55%),linear-gradient(180deg,#f3f6ff,#e6ecf9)}
+.themes{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.themes .sw{width:34px;height:34px;border-radius:50%;border:2px solid var(--line);padding:0;cursor:pointer}
+.themes .sw.on{outline:3px solid var(--accent);outline-offset:2px}.themes .sw:focus-visible{outline:3px solid var(--text);outline-offset:2px}
 .bg svg{position:absolute;left:-10%;width:140%;bottom:0;height:40vh;opacity:.3}
 .bg svg path{fill:url(#wg)}
 #wg stop:nth-child(1){stop-color:var(--orb1,var(--accent))}#wg stop:nth-child(2){stop-color:var(--wave-mid,#7a5cff)}#wg stop:nth-child(3){stop-color:var(--orb2,var(--accent2))}
@@ -657,6 +660,17 @@ function sittingMartin(size){const u=size/16,r=Math.round;
  const el=h("div",{class:"sitcat",role:"button",tabindex:"0",title:"Pet Martin",style:`width:${r(21*u)}px;height:${r(21*u)}px`,onkeydown:e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();el.click()}}},
   part(CAT_TAIL,"cattail",12,11),part(CAT_BODY,"catbody",0,12),part(MARTIN,"cathead",0,0));
  return el}
+const THEMES=[["dark","Midnight","#4f8cff","#3be0a8","#050816"],["light","Light","#2f62e0","#066f53","#eef2fb"],["ocean","Ocean","#38bdf8","#34d399","#031a24"],["forest","Forest","#4ade80","#bef264","#04150c"],["sunset","Sunset","#fb923c","#f472b6","#1a0a10"],["rose","Rose","#f472b6","#c084fc","#1c0b16"],["violet","Violet","#a78bfa","#60a5fa","#0d0820"],["crimson","Crimson","#f87171","#fbbf24","#170507"],["graphite","Graphite","#93c5fd","#86efac","#0c0d10"]];
+/* the colour-theme picker used on the profile page, in the profile menu and in Settings: one tap changes and saves it */
+function themePicker(){
+ const box=h("div",{class:"themes",role:"group","aria-label":"Colour theme"});
+ const draw=()=>{const cur=document.documentElement.dataset.theme||"dark";
+  box.replaceChildren(...THEMES.map(([id,name,c1,c2,bg])=>h("button",{type:"button",class:"sw"+(cur===id?" on":""),title:name,"aria-label":name+" theme","aria-pressed":cur===id?"true":"false",
+   style:`background:linear-gradient(135deg,${c1} 0 45%,${c2} 45% 70%,${bg} 70%)`,
+   onclick:async e=>{e.stopPropagation();document.documentElement.dataset.theme=id;document.dispatchEvent(new Event("lp-theme"));const r=await api("settings",{key:"theme",value:id}).catch(()=>null);if(r){S.settings=r.values}else toast("Could not save the theme.","warn")}})))};
+ draw();
+ const again=()=>{if(box.isConnected){box.__seen=true;draw()}else if(box.__seen)document.removeEventListener("lp-theme",again)};
+ document.addEventListener("lp-theme",again);return box}
 function avatarEl(id,size,cls){const a=AVATARS[id]||AVATARS.martin;return pixels(a.rows,size,"avatar "+(cls||""))}
 
 const S={tab:"home",console:null,q:"",fav:false,sort:"title",lib:null,settings:null,room:null,online:null,lastNotice:null,profile:null,netcheck:null,netBusy:false};
@@ -693,6 +707,7 @@ function whoMenu(){
   h("div",{class:"dd",role:"menu",onclick:e=>e.stopPropagation()},
    h("button",{type:"button",role:"menuitem",onclick:()=>{closeMenus();nav("profile")}},"Edit profile"),
    h("button",{type:"button",role:"menuitem",onclick:fast},"Fast start server"),codeRow,h("hr"),
+   h("div",{class:"small muted",style:"padding:4px 12px"},"Theme"),h("div",{style:"padding:2px 12px 8px"},themePicker()),h("hr"),
    h("button",{type:"button",role:"menuitem",onclick:()=>{closeMenus();quitApp()}},"Exit Legacy Player")));
  return box}
 document.addEventListener("click",closeMenus);document.addEventListener("keydown",e=>{if(e.key==="Escape")closeMenus()});
@@ -939,7 +954,8 @@ async function viewProfile(m){
    h("h3",{},"Name"),h("div",{class:"row"},name),h("h3",{},"Picture"),grid,
    h("div",{class:"row",style:"margin-top:8px"},h("button",{class:"btn primary",onclick:async()=>{const r=await act(()=>api("profile",{alias:name.value.trim(),avatar:pick}),"Saved");if(r){S.profile=r;renderWho();go()}}},"Save"),
     h("button",{class:"btn",onclick:async()=>{const r=await act(()=>api("profile",{claim:true}));if(r){S.profile=r;toast(r.claimed?"Your tag is "+r.player:r.note,r.claimed?"":"warn");renderWho();go()}}},"Ask my server for my tag")),
-   p.note?h("p",{class:"small muted"},p.note):null))}
+   p.note?h("p",{class:"small muted"},p.note):null),
+  h("div",{class:"card",style:"margin-top:14px"},h("h3",{},"Theme"),h("div",{class:"small muted",style:"margin-bottom:8px"},"The colours of the background and buttons. Tap one to change it; it is saved right away."),themePicker()))}
 
 /* ---------- First-run: scan everything once, then you are set ---------- */
 function scanPanel(onDone,opts){opts=opts||{};
@@ -1858,6 +1874,7 @@ async function viewSettings(m){
    let ctl;const v=s.values[k];
    const save=async val=>{const r=await act(()=>api("settings",{key:k,value:val}));if(r){S.settings=r.values;if(k==="theme")document.documentElement.dataset.theme=val;if(k==="view"||k==="show_region")toast("Saved");if(k==="display_name"){S.profile=await api("profile");renderWho()}if(k==="auto_network_test"&&val)autoNetTest(300)}};
    if(sp.type==="bool")ctl=h("input",{type:"checkbox",checked:v,onchange:e=>save(e.target.checked)});
+   else if(k==="theme")ctl=themePicker();
    else if(sp.type==="choice")ctl=h("select",{onchange:e=>save(e.target.value)},...sp.choices.map(c=>h("option",{value:c,selected:c===v},(sp.labels&&sp.labels[c])||c)));
    else if(sp.type==="int")ctl=h("input",{type:"number",value:v,min:sp.min,max:sp.max,onchange:e=>save(+e.target.value)});
    else ctl=h("input",{type:"text",value:v,onchange:e=>save(e.target.value)});
