@@ -43,7 +43,7 @@ PROMPT_GAP = 1800                  # seconds between asking
 MAX_PENDING = 30
 MAX_SENDS_PER_HOUR = 10
 MAX_TEXT = 4000
-NOISY = {"ping", "status", "mp_state", "server_status", "notices", "network_last", "setup_status", "pads", "bye", "specs", "keyboard",
+NOISY = {"ping", "status", "mp_state", "server_status", "notices", "update_all", "network_last", "setup_status", "pads", "bye", "specs", "keyboard",
          "home", "probe_status", "report_status"}
 
 _IPV4 = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}(?::\d{1,5})?\b")

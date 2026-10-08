@@ -738,10 +738,10 @@ function nav(tab,anchor){S.tab=tab;S.anchor=anchor||null;go()}
 
 /* ---------- menu bar ---------- */
 function menuDefs(){return[
- ["Account",[["Account: profile, avatar and colours",()=>nav("profile")],["Network",()=>nav("together")],["Settings",()=>nav("settings")],["Preferences",()=>nav("preferences")],["Check for updates",checkUpdates],"-",["Exit Legacy Player",quitApp]]],
+ ["Account",[["Account: profile, avatar and colours",()=>nav("profile")],["Network",()=>nav("together")],["Settings",()=>nav("settings")],["Preferences",()=>nav("preferences")],["Update everything",updateEverything],["Check for updates",checkUpdates],"-",["Exit Legacy Player",quitApp]]],
  ["Games",[["Library",()=>nav("library")],["Console mode",()=>nav("console")],["Storage by console",()=>nav("storage")],["Display and video",()=>nav("display")],["Controllers",()=>nav("controllers")],["Saves and backups",()=>nav("saves")],"-",["Rescan my games",()=>rescan()]]],
  ["Online",[...liveMenu(),["Server Info",()=>nav("together")],["Servers",()=>nav("servers")]]],
- ["Tools",[["Doctor's office (Setup)",()=>nav("setup")],["Engines",()=>nav("engines")],["Dolphin memory probe",()=>nav("probe")],["Emulators",()=>nav("emulators")],["Scan this computer",()=>{nav("engines");setTimeout(()=>runScan().then(v=>{if(v)go()}),250)}],["Credits",()=>nav("credits")]]],
+ ["Tools",[["Update everything",updateEverything],["Doctor's office (Setup)",()=>nav("setup")],["Engines",()=>nav("engines")],["Dolphin memory probe",()=>nav("probe")],["Emulators",()=>nav("emulators")],["Scan this computer",()=>{nav("engines");setTimeout(()=>runScan().then(v=>{if(v)go()}),250)}],["Credits",()=>nav("credits")]]],
  ["Help",[["How it works",()=>nav("help")],["How save files work",()=>nav("help","saves")],["Privacy",()=>nav("help","privacy")],["Uninstall Legacy Player...",()=>retireClinic()]]]]}
 function closeMenus(){document.querySelectorAll(".menu.open").forEach(x=>x.classList.remove("open"))}
 function buildMenubar(){const bar=$("#menubar");
@@ -767,6 +767,34 @@ document.addEventListener("click",closeMenus);document.addEventListener("keydown
 async function checkUpdates(){const r=await act(()=>api("check_update"));if(!r)return;
  if(r.newer){if(await ask("Version "+r.latest+" is available (you have "+r.current+"). Open its download page?","Open page"))window.open(r.page,"_blank","noopener")}
  else toast(r.ok?r.message+" You have "+r.current+".":r.message,r.ok?"":"warn")}
+/* ---------- one button: update everything, then list what is still needed ---------- */
+async function updateEverything(){
+ if(S.updating)return;
+ if(!S.settings||!S.settings.allow_internet){
+  if(!await ask("Updating everything downloads from GitHub only: the release pages of Legacy Player and of each emulator Legacy Player installed. Turn on 'Allow internet downloads' and go ahead?","Allow and update"))return;
+  const r=await act(()=>api("settings",{key:"allow_internet",value:true}));if(!r)return;S.settings=r.values}
+ else if(!await ask("Update everything now? It refreshes the emulators Legacy Player installed, checks for a newer Legacy Player (and Tailscale, if you have it), reads your games folders again, then lists what is still needed.","Update everything"))return;
+ const first=await act(()=>api("update_all",{action:"start",confirm:true}));if(!first)return;
+ S.updating=true;
+ const body=h("div",{}),close=()=>{S.updating=false;ov.remove();try{go()}catch(e){}};
+ const ov=h("div",{class:"modal",role:"dialog","aria-modal":"true"},h("div",{class:"modalbox wide"},h("h3",{style:"margin:0 0 6px"},"Updating everything"),body));
+ document.body.append(ov);
+ const mark={waiting:"○",running:"…",done:"✓",skipped:"–",problem:"!"};
+ const jump=a=>{close();({engines:()=>nav("engines"),setup:()=>nav("setup"),library:()=>nav("library"),servers:()=>nav("servers")}[a]||(()=>{}))()};
+ const draw=v=>{
+  const rows=h("div",{class:"unlist",style:"max-height:none;overflow:visible"},...v.steps.map(x=>h("div",{class:"unrow rrow"},h("span",{class:"rmark"},mark[x.state]||"○"),h("div",{class:"grow"},h("b",{},x.title),h("div",{class:"small muted"},x.detail||(x.state==="running"?"Working…":""))))));
+  const kids=[rows];
+  if(v.state==="running")kids.push(h("div",{class:"bar live",style:"margin:10px 0"},h("i",{})),h("p",{class:"small muted"},"Big emulators can take a few minutes. You can keep using the app; this window stays until it finishes."));
+  else if(v.report){const rp=v.report;
+   kids.push(h("h3",{style:"margin:12px 0 4px"},rp.needs.length?"Still to do":"You are all set"),
+    ...(rp.needs.length?[h("div",{class:"unlist",style:"max-height:none;overflow:visible"},...rp.needs.map(n=>h("div",{class:"unrow rrow"},h("span",{class:"rmark"},"•"),h("div",{class:"grow small"},n.text),
+      h("button",{class:"btn small",onclick:async()=>{if(n.action==="app_update"){if(await ask("Install the newest Legacy Player? A PowerShell window opens, downloads it from GitHub and restarts the app.","Update")){const r=await act(()=>api("app_update",{confirm:true}));if(r)toast(r.message)}}else jump(n.action)}},n.label))))]:[]),
+    h("details",{style:"margin-top:8px"},h("summary",{class:"small muted"},"Already fine"),h("ul",{class:"small"},...rp.ready.map(t=>h("li",{},t)))),
+    h("div",{class:"row",style:"justify-content:flex-end;margin-top:12px"},h("button",{class:"btn",onclick:()=>copyText(rp.text,"Checklist copied")},"Copy the checklist"),h("button",{class:"btn primary",onclick:close},"Done")))}
+  body.replaceChildren(...kids)};
+ draw(first);
+ for(let i=0;i<900;i++){await new Promise(r=>setTimeout(r,1000));const v=await api("update_all",{}).catch(()=>null);if(!v||!ov.isConnected)break;draw(v);if(v.state!=="running"){toast(v.report&&v.report.needs.length?"Updates finished. "+v.report.needs.length+" thing"+(v.report.needs.length===1?"":"s")+" still to do.":"Everything is updated and ready.");break}}
+ S.updating=false}
 async function quitApp(){const busy=S.room||(S.waits&&S.waits.length)||S.running;
  let srv=false;try{srv=!!(await api("server_control",{action:"status"})).running}catch(e){}
  if(await ask(busy?"Quit Legacy Player? You will leave your room"+(S.running?" and your game keeps running in its own window":"")+".":"Quit Legacy Player? To keep it running in the tray instead, just close the window with X.","Quit")){
@@ -912,7 +940,7 @@ function doctorSay(dr){if(!dr.last_scan)return "New here? Come in: I'll scan you
 function doctorDoor(dr){const n=dr.issues.filter(i=>!i.dismissed).length;
  return h("div",{class:"doc door"},h("div",{class:"row",style:"align-items:center;flex-wrap:nowrap;gap:14px"},pixels(doctorRows(dr.mood),104,"doctor "+dr.mood),
   h("div",{style:"flex:1;min-width:0"},h("div",{class:"retro"},h("div",{class:"hd"},doctorSay(dr)),h("div",{class:n?"w":""},"Check-up: "+(n?n+" thing"+(n>1?"s":"")+" to look at":"all clear")),h("div",{},"PC scanned: "+ago(dr.last_scan))),
-   h("button",{class:"btn primary",style:"margin:10px 3px 0;width:calc(100% - 6px)",onclick:()=>{S.autoVisit=true;nav("setup")}},"Visit the doctor's office"))))}
+   h("button",{class:"btn primary",style:"margin:10px 3px 0;width:calc(100% - 6px)",onclick:()=>{S.autoVisit=true;nav("setup")}},"Visit the doctor's office"),h("button",{class:"btn",style:"margin:8px 3px 0;width:calc(100% - 6px)",title:"Updates the app and its emulators, then lists what is still needed",onclick:updateEverything},"Update everything"))))}
 /* Home: each emulator is a little character card that wakes up when you hover it */
 function emulatorStrip(dr,d){const cards=dr.emulator_cards||[];const av=[AVATARS.controller,AVATARS.gem,AVATARS.rocket,AVATARS.star,AVATARS.robot,AVATARS.ghost];
  const head=h("div",{class:"row",style:"margin-bottom:10px"},h("h3",{class:"grow",style:"margin:0"},"Your emulators",h("span",{class:"badge good",style:"margin-left:10px"},cards.length+" ready")),

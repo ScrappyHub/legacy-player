@@ -33,7 +33,7 @@ from . import overlay as overlaymod
 from . import procs
 from . import controllers, emulators, engines, pads, savefolders, saves
 from .installer import EngineInstaller, InstallError, latest_release, pick_asset
-from . import dolphinpads, dolphinpaths, privatelink, firewall, gamefinder, gameinfo, portmap, pcgames, punch, reach, winplace, keyboard, memprobe, netcheck, reports, selfuninstall, sysinfo
+from . import updateall, dolphinpads, dolphinpaths, privatelink, firewall, gamefinder, gameinfo, portmap, pcgames, punch, reach, winplace, keyboard, memprobe, netcheck, reports, selfuninstall, sysinfo
 from .covers import (CONTENT_TYPES, CoverFetcher, SYSTEMS as COVER_SYSTEMS, clear_custom_cover, cover_path,
                      custom_cover, set_custom_cover)
 from .pcscan import PcScan
@@ -155,6 +155,7 @@ class LauncherApp:
         self.waits: dict[str, dict] = {}   # rooms you are queued for while doing something else
         self._overlay_launched = 0.0
         self.overlay_opener = None            # set by the web server: opens the browser-window overlay (fallback)
+        self.update_all = updateall.UpdateAll(self)
         self.on_server_change = None          # the tray listens here
         self._notices: list[dict] = []        # short messages for the page (a server started from the tray or the overlay)
         self._srv_cache = {"at": 0.0, "value": None}
@@ -1812,6 +1813,26 @@ class LauncherApp:
         except Exception:
             out["saves"] = False
         return out
+
+    def api_update_all(self, body: dict) -> dict:
+        """The one-button update. action 'start' needs the internet setting on and confirm=true; 'status' reads progress."""
+        if body.get("action") == "start":
+            self._internet_ok(body)
+            return self.update_all.start()
+        return self.update_all.snapshot()
+
+    def api_app_update(self, body: dict) -> dict:
+        """Install the newest Legacy Player by running the project's own installer in a visible PowerShell window."""
+        if sys.platform != "win32":
+            raise AppError("Updating Legacy Player itself is for the Windows app.")
+        if not body.get("confirm"):
+            raise AppError("Please confirm the update.")
+        if not self.catalog.settings()["allow_internet"]:
+            raise AppError("Internet downloads are off. Turn on 'Allow internet downloads' in Settings first.")
+        command = f"irm https://raw.githubusercontent.com/{REPO}/main/install.ps1 | iex"
+        subprocess.Popen(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", command],
+                         creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0))
+        return {"message": "The installer opened in its own window. Legacy Player restarts when it finishes."}
 
     def api_check_update(self, body: dict) -> dict:
         """Ask GitHub whether a newer release exists. Only when the user presses the button and allows internet."""
