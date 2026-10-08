@@ -2109,9 +2109,12 @@ async function refreshTitle(){try{const d=await api("status");const bits=["Legac
  if(d.game)bits.push("Playing "+d.game);
  if(d.room){const r=d.room;bits.push((r.role==="host"?"Hosting ":"In room: ")+r.game+" · "+r.players+(r.max?"/"+r.max:"")+" players"+(r.ping_ms!=null?" · "+Math.round(r.ping_ms)+" ms":""))}
  d.waits.forEach(w=>bits.push("In line for "+w.game+(w.position?" (#"+w.position+")":"")));
- bits.push(S.online===true?"Server online":S.online===false?"Server offline":"");
  document.title=bits.filter(Boolean).join(" — ")}catch(e){}}
-if(!OVERLAY){setInterval(refreshTitle,4000);setTimeout(refreshTitle,800)}
+/* Windows 11: tint the title bar to the theme so it blends into the app (like Steam or Discord). Quietly does nothing elsewhere. */
+function tintWindow(force){try{const cs=getComputedStyle(document.documentElement),bg=cs.getPropertyValue("--bg").trim(),fg=cs.getPropertyValue("--text").trim(),key=bg+fg,now=Date.now();
+ if(!force&&key===S.tintKey&&now-(S.tintAt||0)<20000)return;S.tintKey=key;S.tintAt=now;api("window_style",{bg,fg}).catch(()=>{})}catch(e){}}
+if(!OVERLAY){setInterval(refreshTitle,4000);setTimeout(refreshTitle,800);setInterval(()=>tintWindow(false),2500);[600,1800,4000].forEach(t=>setTimeout(()=>tintWindow(true),t));
+ new MutationObserver(()=>tintWindow(true)).observe(document.documentElement,{attributes:true,attributeFilter:["data-theme"]})}
 if(!OVERLAY)window.addEventListener("pagehide",()=>{try{fetch("/api/bye",{method:"POST",keepalive:true,headers:{"Content-Type":"application/json","X-LP-Token":TOKEN},body:"{}"})}catch(e){}});
 /* ================= right-click menu, game properties, custom covers ================= */
 const GAMES={};

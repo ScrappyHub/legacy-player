@@ -1900,6 +1900,11 @@ class LauncherApp:
                          creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0))
         return {"message": "The installer opened in its own window. Legacy Player restarts when it finishes."}
 
+    def api_window_style(self, body: dict) -> dict:
+        """Tint the window's title bar to the current theme (Windows 11; does nothing elsewhere)."""
+        from . import winstyle
+        return {"touched": winstyle.apply(str(body.get("bg", "")), str(body.get("fg", "")))}
+
     def api_check_update(self, body: dict) -> dict:
         """Ask GitHub whether a newer release exists. Only when the user presses the button and allows internet."""
         if not self.catalog.settings()["allow_internet"]:
