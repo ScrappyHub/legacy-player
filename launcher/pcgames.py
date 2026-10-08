@@ -137,3 +137,32 @@ def launch(uri: str) -> None:
     if sys.platform != "win32":
         raise OSError("Steam and Epic games start from Windows.")
     os.startfile(uri)      # noqa: S606 - the address was checked above
+
+
+def steam_art(appid: str, env: dict | None = None, limit: int = 600_000) -> bytes | None:
+    """Steam's own picture for an installed game, read from the copy Steam already keeps on this computer
+    (Steam/appcache/librarycache). Nothing is downloaded. Tall cover first, then the wide header."""
+    root = _steam_root(env)
+    if root is None or not str(appid).isdigit():
+        return None
+    cache = root / "appcache" / "librarycache"
+    names = ("library_600x900.jpg", "library_600x900_2x.jpg", "header.jpg", "library_header.jpg")
+    found: list[Path] = []
+    for n in names:                                         # older Steam: <appid>_<name>; newer: <appid>/<hash>/<name>
+        found.append(cache / f"{appid}_{n}")
+        try:
+            found += sorted((cache / str(appid)).rglob(n))
+        except OSError:
+            pass
+    for path in found:
+        try:
+            if path.is_file() and 0 < path.stat().st_size <= limit:
+                return path.read_bytes()
+        except OSError:
+            continue
+    return None
+
+
+def match_key(text: str) -> str:
+    """"Hades II (2024).png" and "hades ii" meet in the middle."""
+    return re.sub(r"[^a-z0-9]+", "", re.sub(r"\s*[\(\[].*?[\)\]]", "", str(text).lower()))

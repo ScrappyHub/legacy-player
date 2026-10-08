@@ -70,8 +70,8 @@ SETTINGS_SCHEMA: dict[str, dict] = {
         "label": "Theme", "help": "The colours of the background and buttons. Dark and the coloured themes are easier on the eyes in a dim room.",
     },
     "background": {
-        "type": "choice", "choices": ["waves", "aurora", "grid", "stars", "dots", "plain"], "default": "waves", "group": "Look",
-        "label": "Background", "help": "The picture behind the app. Waves drift slowly, Aurora glows, Grid is the retro one, Stars twinkle, Dots is calm, Plain is flat (the easiest on a slow computer). It uses your theme's colours.",
+        "type": "choice", "choices": ["waves", "aurora", "grid", "stars", "dots", "crt", "bokeh", "bitworld", "plain"], "default": "waves", "group": "Look",
+        "label": "Background", "help": "The picture behind the app. Waves drift slowly, Aurora glows, Grid is the retro one, Stars twinkle, Dots is calm, CRT is an old television, Bokeh is soft drifting lights, 1-bit World is a tiny pixel world with Martin and the clinic, Plain is flat (the easiest on a slow computer). It uses your theme's colours.",
     },
     "view": {
         "type": "choice", "choices": ["shelf", "list"], "default": "shelf", "group": "Look",
@@ -104,6 +104,14 @@ SETTINGS_SCHEMA: dict[str, dict] = {
         "type": "bool", "default": True, "group": "Library",
         "label": "Show my installed Steam and Epic games in the library",
         "help": "Reads the list of installed games that Steam and the Epic Games Launcher keep on this computer (names only; nothing is sent anywhere) and starts them through those launchers.",
+    },
+    "show_steam_games": {
+        "type": "bool", "default": True, "group": "Library",
+        "label": "Include Steam games", "help": "Needs the setting above. Turn off to leave Steam out while keeping Epic games.",
+    },
+    "show_epic_games": {
+        "type": "bool", "default": True, "group": "Library",
+        "label": "Include Epic games", "help": "Needs the setting above. Turn off to leave Epic out while keeping Steam games.",
     },
     "use_private_link": {
         "type": "bool", "default": False, "group": "Privacy",

@@ -49,6 +49,20 @@ option{background:#141a33;color:#eef1ff}
 [data-theme=light][data-bg=stars] .bg::before,[data-theme=light][data-bg=stars] .bg::after{filter:invert(1) opacity(.5)}
 [data-bg=dots] .bg svg{display:none}
 [data-bg=dots] .bg::before{content:"";position:absolute;inset:0;background:radial-gradient(color-mix(in srgb,var(--text) 22%,transparent) 1.4px,transparent 1.6px) 0 0/26px 26px;-webkit-mask-image:radial-gradient(ellipse at 50% 40%,#000,transparent 80%);mask-image:radial-gradient(ellipse at 50% 40%,#000,transparent 80%)}
+[data-bg=crt] .bg svg,[data-bg=crt] .orb{display:none}
+[data-bg=crt] .bg::before{content:"";position:absolute;inset:0;background:repeating-linear-gradient(0deg,rgba(0,0,0,.28) 0 1px,transparent 1px 3px);animation:crtroll 9s linear infinite}
+[data-bg=crt] .bg::after{content:"";position:absolute;inset:0;background:radial-gradient(ellipse at center,transparent 55%,rgba(0,0,0,.55) 100%),linear-gradient(transparent 46%,color-mix(in srgb,var(--accent) 9%,transparent) 50%,transparent 54%);background-size:100% 100%,100% 240%;animation:crtbar 7s linear infinite,crtflick .12s steps(2) infinite}
+@keyframes crtroll{to{background-position:0 6px}}@keyframes crtbar{from{background-position:0 0,0 -120%}to{background-position:0 0,0 120%}}@keyframes crtflick{50%{opacity:.94}}
+[data-theme=light][data-bg=crt] .bg::before{background:repeating-linear-gradient(0deg,rgba(30,50,120,.1) 0 1px,transparent 1px 3px)}
+[data-bg=bokeh] .bg svg{display:none}
+[data-bg=bokeh] .orb{display:none}
+[data-bg=bokeh] .bg::before,[data-bg=bokeh] .bg::after{content:"";position:absolute;inset:-10%;background-repeat:no-repeat}
+[data-bg=bokeh] .bg::before{background-image:radial-gradient(circle,color-mix(in srgb,var(--accent) 38%,transparent) 0 40%,transparent 41%),radial-gradient(circle,color-mix(in srgb,var(--accent2) 34%,transparent) 0 40%,transparent 41%),radial-gradient(circle,color-mix(in srgb,var(--accent) 26%,transparent) 0 40%,transparent 41%),radial-gradient(circle,color-mix(in srgb,var(--accent2) 22%,transparent) 0 40%,transparent 41%);background-size:140px 140px,220px 220px,90px 90px,300px 300px;background-position:8% 20%,80% 12%,60% 70%,24% 86%;filter:blur(7px);animation:bokehA 28s ease-in-out infinite alternate}
+[data-bg=bokeh] .bg::after{background-image:radial-gradient(circle,color-mix(in srgb,var(--accent2) 30%,transparent) 0 40%,transparent 41%),radial-gradient(circle,color-mix(in srgb,var(--accent) 30%,transparent) 0 40%,transparent 41%),radial-gradient(circle,color-mix(in srgb,var(--accent2) 24%,transparent) 0 40%,transparent 41%);background-size:170px 170px,110px 110px,260px 260px;background-position:40% 8%,92% 62%,6% 52%;filter:blur(12px);animation:bokehB 36s ease-in-out infinite alternate}
+@keyframes bokehA{from{transform:translate(0,0)}to{transform:translate(-3%,4%)}}@keyframes bokehB{from{transform:translate(0,0)}to{transform:translate(4%,-3%)}}
+#bitworld{display:none}
+[data-bg=bitworld] .bg svg,[data-bg=bitworld] .orb{display:none}
+[data-bg=bitworld] #bitworld{display:block;position:absolute;inset:0;width:100%;height:100%;image-rendering:pixelated;opacity:.8}
 [data-bg=plain] .bg svg,[data-bg=plain] .orb{display:none}
 [data-bg=plain] .bg{background:var(--bg)!important}
 @media(prefers-reduced-motion:reduce){.bg *,.bg::before,.bg::after{animation:none!important}}
@@ -560,7 +574,7 @@ label:has(>input[type=checkbox]:not(.switch input))>input,label:has(>input[type=
 </style>
 </head>
 <body>
-<div class="bg" aria-hidden="true"><div class="orb o1"></div><div class="orb o2"></div>
+<div class="bg" aria-hidden="true"><canvas id="bitworld"></canvas><div class="orb o1"></div><div class="orb o2"></div>
 <svg class="w1" viewBox="0 0 1440 320" preserveAspectRatio="none"><defs><linearGradient id="wg" x1="0" x2="1"><stop offset="0" stop-color="#4f8cff"/><stop offset=".55" stop-color="#7a5cff"/><stop offset="1" stop-color="#3be0a8"/></linearGradient></defs><path d="M0,170 C240,270 480,60 720,160 S1200,270 1440,150 L1440,320 L0,320Z"/></svg>
 <svg class="w2" viewBox="0 0 1440 320" preserveAspectRatio="none"><path d="M0,120 C300,40 540,250 800,150 S1230,60 1440,170 L1440,320 L0,320Z"/></svg>
 <svg class="w3" viewBox="0 0 1440 320" preserveAspectRatio="none"><path d="M0,200 C260,120 600,300 900,190 S1300,120 1440,210 L1440,320 L0,320Z"/></svg></div>
@@ -767,6 +781,55 @@ document.addEventListener("click",closeMenus);document.addEventListener("keydown
 async function checkUpdates(){const r=await act(()=>api("check_update"));if(!r)return;
  if(r.newer){if(await ask("Version "+r.latest+" is available (you have "+r.current+"). Open its download page?","Open page"))window.open(r.page,"_blank","noopener")}
  else toast(r.ok?r.message+" You have "+r.current+".":r.message,r.ok?"":"warn")}
+/* ---------- Steam and Epic games: which show, which are hidden, and their pictures ---------- */
+async function pcManager(){
+ let d=await act(()=>api("pc_games",{action:"list"}));if(!d)return;
+ const body=h("div",{}),ov=h("div",{class:"modal",role:"dialog","aria-modal":"true"},h("div",{class:"modalbox wide"},h("h3",{style:"margin:0 0 6px"},"Steam and PC games"),body));
+ document.body.append(ov);
+ const close=()=>{ov.remove();go()},call=async b=>{const r=await act(()=>api("pc_games",b));if(r){d=r;draw();return r}};
+ const sw=(label,key,on)=>{const cb=h("input",{type:"checkbox"});cb.checked=on;cb.onchange=()=>call({action:"stores",[key]:cb.checked});return h("label",{class:"small",style:"margin-right:14px"},cb," "+label)};
+ let folder="";
+ const draw=()=>{
+  const list=d.games.length?h("div",{class:"unlist",style:"max-height:260px"},...d.games.map(g=>{const cb=h("input",{type:"checkbox"});cb.checked=g.hidden;cb.onchange=()=>call({action:"hide",ids:[g.id],hidden:cb.checked});
+    return h("label",{class:"unrow rrow"},cb,h("div",{class:"grow"},h("b",{},g.title),h("span",{class:"small muted"}," · "+(g.store==="steam"?"Steam":"Epic")+(g.cover?" · has a picture":""))),h("span",{class:"small muted"},g.hidden?"hidden":""))})):h("p",{class:"muted small"},d.show?"No Steam or Epic games found on this computer.":"Steam and Epic games are switched off.");
+  const inp=h("input",{type:"text",placeholder:"Folder with pictures named like the games",value:folder,style:"width:min(340px,100%)","aria-label":"Folder of pictures",oninput:e=>{folder=e.target.value}});
+  body.replaceChildren(
+   h("p",{class:"small muted"},"Legacy Player only reads which games are installed. Hide the ones you do not want on your shelf; they stay installed and you can show them again here."),
+   h("div",{class:"row",style:"margin:6px 0"},sw("Show Steam and Epic games","show_pc_games",d.show),sw("Steam","show_steam_games",d.steam),sw("Epic","show_epic_games",d.epic)),
+   h("div",{class:"row",style:"margin:6px 0"},h("button",{class:"btn small",onclick:()=>call({action:"hide",all:true,hidden:true})},"Hide all"),h("button",{class:"btn small",onclick:()=>call({action:"hide",all:true,hidden:false})},"Show all"),
+    h("button",{class:"btn small",onclick:()=>call({action:"hide",store:"steam",hidden:true})},"Hide Steam"),h("button",{class:"btn small",onclick:()=>call({action:"hide",store:"epic",hidden:true})},"Hide Epic")),
+   list,
+   h("h3",{style:"margin:12px 0 4px"},"Pictures"),
+   h("p",{class:"small muted"},"Steam keeps a picture of every game on this computer; Legacy Player can copy those (nothing is downloaded). Epic does not keep any, so use your own pictures. You can also set one game's picture from its page."),
+   h("div",{class:"row"},h("button",{class:"btn primary",onclick:async()=>{const r=await call({action:"seed_covers"});if(r)toast(r.seeded?"Used Steam's own pictures for "+r.seeded+" games.":"No new Steam pictures were found.",r.seeded?"":"warn")}},"Use Steam's own pictures")),
+   h("div",{class:"row",style:"margin-top:8px"},inp,h("button",{class:"btn",onclick:async()=>{if(!folder.trim()){toast("Type the folder first","warn");return}const r=await call({action:"import_folder",path:folder.trim()});if(r)toast(r.imported?"Imported "+r.imported+" pictures.":"No picture matched a game name.",r.imported?"":"warn")}},"Import pictures")),
+   h("div",{class:"row",style:"justify-content:flex-end;margin-top:12px"},h("button",{class:"btn primary",onclick:close},"Done")))};
+ draw()}
+/* ---------- 1-bit World: a tiny pixel world in the theme's two colours (Martin, the clinic, a controller, the moon) ---------- */
+const BitWorld=(()=>{let cv,ctx,raf=0,W=0,H=120,t0=0,ink="#fff",paper="#000",stars=[],still=false;
+ const CAT=["..#......#..",".###....###.",".##########.",".#o######o#.",".####oo####.","..########..","..########..",".##########.",".##########.",".###....###."];
+ const PAD=[".###########.","#############","##o##...#o###".slice(0,13),"#ooo#...##o##".slice(0,13),"##o##...#o###".slice(0,13),"#############",".###.....###."];
+ const spr=(rows,x,y,eyes)=>{rows.forEach((row,j)=>{for(let i=0;i<row.length;i++){const c=row[i];if(c==="#"||(c==="o"&&eyes)){ctx.fillStyle=ink;ctx.fillRect(x+i,y+j,1,1)}else if(c==="o"){ctx.fillStyle=paper;ctx.fillRect(x+i,y+j,1,1)}}})};
+ const ground=x=>Math.round(H*.6+Math.sin(x/17)*3+Math.sin(x/5.3)*1.2);
+ const far=x=>Math.round(H*.48+Math.sin(x/23+1)*6+Math.sin(x/9)*2);
+ function size(){H=120;W=Math.max(96,Math.round(H*innerWidth/Math.max(innerHeight,1)));cv.width=W;cv.height=H;stars=[];let r=7;for(let i=0;i<46;i++){r=(r*9301+49297)%233280;const x=r%W;r=(r*9301+49297)%233280;stars.push([x,r%(H-45),i])}}
+ function draw(t){const cs=getComputedStyle(document.documentElement);paper=(cs.getPropertyValue("--bg")||"#050816").trim();ink=(cs.getPropertyValue("--accent")||"#4f8cff").trim();
+  ctx.imageSmoothingEnabled=false;ctx.fillStyle=paper;ctx.fillRect(0,0,W,H);ctx.fillStyle=ink;
+  for(const[x,y,i]of stars){if(((Math.floor(t*1.3)+i)%7)!==0)ctx.fillRect(x,y,1,1)}
+  const mx=Math.round(W*.82),my=18;for(let y=-7;y<=7;y++)for(let x=-7;x<=7;x++)if(x*x+y*y<=45&&((x+3)*(x+3)+(y-1)*(y-1)>38))ctx.fillRect(mx+x,my+y,1,1);
+  for(let c=0;c<3;c++){const cx=Math.round(((c*W*.45-t*3)%(W+40)+W+40)%(W+40))-20,cy=14+c*11;for(let x=-9;x<=9;x++)for(let y=-3;y<=2;y++){const lim=y<0?(9-Math.abs(x)*0.8):(8-Math.abs(x)*.5);if(Math.abs(y)*3<lim&&((x+y+cx)&1)===0)ctx.fillRect(cx+x,cy+y,1,1)}}
+  for(let x=0;x<W;x++){const f=far(x);for(let y=f;y<f+18;y++)if(((x+y)&1)===0&&(y-f<10||(y-f)%2===0))ctx.fillRect(x,y,1,1);ctx.fillRect(x,f,1,1)}
+  for(let x=0;x<W;x++){const g=ground(x);ctx.fillRect(x,g,1,3);for(let y=g+3;y<g+22;y++)if(((x+y)&1)===0&&(y-g<13||(y&1)===0))ctx.fillRect(x,y,1,1)}
+    ctx.fillStyle=ink;for(let k=0;k<4;k++){const x=Math.round(W*(.12+k*.23))+((k*37)%9),g=ground(x);if(k===1)continue;ctx.fillRect(x,g-6,1,6);ctx.fillRect(x-2,g-9,5,4);ctx.fillRect(x-1,g-11,3,2)}
+  const hx=Math.round(W*.66),hg=ground(hx);ctx.fillStyle=ink;ctx.fillRect(hx,hg-14,18,14);for(let i=0;i<9;i++)ctx.fillRect(hx-1+i,hg-14-i,20-i*2,1);
+  ctx.fillStyle=paper;ctx.fillRect(hx+3,hg-10,5,5);ctx.fillRect(hx+11,hg-8,4,8);if((Math.floor(t/1.4)&1)===0){ctx.fillStyle=ink;ctx.fillRect(hx+5,hg-9,1,3);ctx.fillRect(hx+4,hg-8,3,1)}
+  const cx=Math.round(W*.28),cg=ground(cx),blink=(t%4.2)<.15;spr(CAT,cx,cg-10,!blink);
+  const tail=Math.sin(t*2.2)>0;ctx.fillStyle=ink;ctx.fillRect(cx+12,cg-1,2,1);ctx.fillRect(cx+13,cg-2-(tail?1:0),1,2);ctx.fillRect(cx+14,cg-3-(tail?2:0),1,2);
+  const px=Math.round(W*.47),py=Math.round(30+Math.sin(t*1.4)*3);spr(PAD,px,py,false)}
+ function loop(ts){const t=(ts-t0)/1000;draw(t);if(!still)raf=setTimeout(()=>requestAnimationFrame(loop),90)}
+ return{start(){cv=$("#bitworld");if(!cv)return;ctx=cv.getContext("2d");still=!!(window.matchMedia&&matchMedia("(prefers-reduced-motion: reduce)").matches);size();t0=performance.now();this.stop();requestAnimationFrame(loop);addEventListener("resize",this.onResize=()=>{if(cv){size()}});},
+  stop(){clearTimeout(raf);if(this.onResize)removeEventListener("resize",this.onResize)}}})();
+function applyBg(v){v=v||"waves";document.documentElement.dataset.bg=v;if(v==="bitworld")BitWorld.start();else BitWorld.stop()}
 /* ---------- one button: update everything, then list what is still needed ---------- */
 async function updateEverything(){
  if(S.updating)return;
@@ -1175,7 +1238,7 @@ function gamePicker(games){
 async function viewLibrary(m){
  const d=S.lib=await api("library",{console:S.console,q:S.q,favorites:S.fav,sort:S.sort,collection:S.collection,hidden:S.showHidden});
  const st=S.settings=(await api("settings")).values;
- document.documentElement.dataset.theme=st.theme;document.documentElement.dataset.bg=st.background||"waves";
+ document.documentElement.dataset.theme=st.theme;applyBg(st.background);
  if(!d.roots.length){m.append(emptyState());return}
  const search=h("input",{type:"search",placeholder:"Search your games",value:S.q,"aria-label":"Search",oninput:e=>{S.q=e.target.value;clearTimeout(S.t);S.t=setTimeout(()=>refreshGrid(),180)}});
  const sort=h("select",{"aria-label":"Sort",onchange:e=>{S.sort=e.target.value;refreshGrid()}},...[["title","A-Z"],["recent","Recently played"],["size","Largest"]].map(([v,l])=>h("option",{value:v,selected:S.sort===v},l)));
@@ -1185,7 +1248,7 @@ async function viewLibrary(m){
  m.append(h("div",{class:"chips",id:"chips"}),h("div",{class:"chips",id:"colchips",style:"margin-top:4px"}));
  m.append(h("div",{id:"gridwrap"}));
  drawChips(d);drawGrid(d);
- m.append(h("div",{class:"libfoot"},coverBtn(),h("span",{class:"small muted"},"Box art is looked up by game name. If a game has none, right-click it to find or add a picture.")));
+ m.append(h("div",{class:"libfoot"},coverBtn(),h("button",{class:"btn",title:"Hide Steam and Epic games, or add their pictures",onclick:pcManager},"Steam and PC games"),h("span",{class:"small muted"},"Box art is looked up by game name. If a game has none, right-click it to find or add a picture.")));
 }
 function drawChips(d){drawCols(d);const c=$("#chips");c.replaceChildren(h("button",{class:"chip"+(S.console?"":" on"),onclick:()=>{S.console=null;go()}},"All",h("small",{},d.total)),
  ...d.consoles.map(k=>h("button",{class:"chip"+(S.console===k.id?" on":""),title:k.netplay_note,onclick:()=>{S.console=k.id;go()}},k.name,h("small",{},k.count))))}
@@ -1934,7 +1997,7 @@ function settingGroups(m,s,groups,wanted){
  for(const[g,items]of Object.entries(groups).filter(([g])=>wanted(g)).sort((a,b)=>(a[0]==="You"?-1:0)-(b[0]==="You"?-1:0))){
   m.append(h("div",{class:"card",style:"margin-top:14px"},h("h3",{},g),...items.map(([k,sp])=>{
    let ctl;const v=s.values[k];
-   const save=async val=>{const r=await act(()=>api("settings",{key:k,value:val}));if(r){S.settings=r.values;if(k==="theme")document.documentElement.dataset.theme=val;if(k==="background")document.documentElement.dataset.bg=val;if(k==="view"||k==="show_region")toast("Saved");if(k==="display_name"){S.profile=await api("profile");renderWho()}if(k==="auto_network_test"&&val)autoNetTest(300)}};
+   const save=async val=>{const r=await act(()=>api("settings",{key:k,value:val}));if(r){S.settings=r.values;if(k==="theme")document.documentElement.dataset.theme=val;if(k==="background")applyBg(val);if(k==="view"||k==="show_region")toast("Saved");if(k==="display_name"){S.profile=await api("profile");renderWho()}if(k==="auto_network_test"&&val)autoNetTest(300)}};
    if(sp.type==="bool")ctl=h("input",{type:"checkbox",checked:v,onchange:e=>save(e.target.checked)});
    else if(k==="theme")ctl=themePicker();
    else if(sp.type==="choice")ctl=h("select",{onchange:e=>save(e.target.value)},...sp.choices.map(c=>h("option",{value:c,selected:c===v},(sp.labels&&sp.labels[c])||c)));
@@ -2743,7 +2806,7 @@ async function homeArtTip(){
   "No box art for "+g.title+" yet.",h("div",{class:"row",style:"gap:6px"},h("button",{class:"btn",onclick:()=>{GAMES[g.id]=GAMES[g.id]||g;findArt(g)}},"Find art"),
    h("button",{class:"btn",onclick:e=>{S.artTipOff=g.id;e.target.closest(".arttip").remove()}},"Not now")))))}
 
-(async function init(){if(OVERLAY){await overlayInit();return}try{const s=await api("settings");S.settings=s.values;document.documentElement.dataset.theme=s.values.theme;document.documentElement.dataset.bg=s.values.background||"waves"}catch(e){}
+(async function init(){if(OVERLAY){await overlayInit();return}try{const s=await api("settings");S.settings=s.values;document.documentElement.dataset.theme=s.values.theme;applyBg(s.values.background)}catch(e){}
  buildMenubar();$("#brand").addEventListener("click",()=>nav("home"));$("#logomartin").append(martin(34));$("#bootmartin").append(martin(96,"hop"));
  try{S.profile=await api("profile")}catch(e){}renderWho();
  const r=await api("mp_state").catch(()=>({room:null}));S.room=r.room;S.waits=r.waits||[];if(S.room||S.waits.length)poll();pingServer();setInterval(pingServer,15000);setInterval(async()=>{const n=await api("notices").catch(()=>null);if(n&&n.notices)n.notices.forEach(x=>{toast(x.text,x.level);if(/server/i.test(x.text))pingServer()})},2000);

@@ -228,8 +228,10 @@ class LauncherApp:
         """Installed Steam and Epic games (names only), unless the player turned that off."""
         if not self.catalog.settings().get("show_pc_games", True):
             return []
+        st = self.catalog.settings()
         try:
-            return pcgames.library_entries()
+            return [g for g in pcgames.library_entries()
+                    if (g["root"] == "steam" and st.get("show_steam_games", True)) or (g["root"] == "epic" and st.get("show_epic_games", True))]
         except Exception:                     # a launcher with odd files must never stop the scan
             return []
 
@@ -1067,6 +1069,66 @@ class LauncherApp:
             return own, CONTENT_TYPES.get(own.suffix.lstrip("."), "image/png")
         p = cover_path(self.covers.cache, game_id)
         return (p, "image/png") if p.is_file() else None
+
+    def api_pc_games(self, body: dict) -> dict:
+        """Manage the Steam and Epic games in the library: which stores, which games are hidden, and their pictures."""
+        action = body.get("action", "list")
+        pc = [g for g in self.games.values() if g["console"] == "pc"]
+        metas = self.catalog.data["game_meta"]
+        if action == "stores":
+            for key in ("show_pc_games", "show_steam_games", "show_epic_games"):
+                if key in body:
+                    self.catalog.set_setting(key, bool(body[key]))
+            try:
+                self.rescan()
+            except AppError:                      # nothing left at all: no folders and no PC games
+                with self.api_lock:
+                    self.games = {k: g for k, g in self.games.items() if g["console"] != "pc"}
+            pc = [g for g in self.games.values() if g["console"] == "pc"]
+        elif action == "hide":
+            ids = [str(i) for i in (body.get("ids") or [])]
+            if body.get("store") in ("steam", "epic"):
+                ids += [g["id"] for g in pc if g["root"] == body["store"]]
+            if body.get("all"):
+                ids += [g["id"] for g in pc]
+            known = {g["id"] for g in pc}
+            for gid in ids:
+                if gid in known:
+                    self.catalog.set_game_meta(gid, hidden=bool(body.get("hidden", True)))
+            metas = self.catalog.data["game_meta"]
+        seeded = imported = 0
+        if action == "seed_covers":
+            for g in pc:
+                if g["root"] != "steam" or (custom_cover(self.covers.cache, g["id"]) and not body.get("overwrite")):
+                    continue
+                data = pcgames.steam_art(g["path"].rsplit("/", 1)[-1])
+                if data:
+                    try:
+                        set_custom_cover(self.covers.cache, g["id"], data)
+                        seeded += 1
+                    except ValueError:
+                        pass
+        elif action == "import_folder":
+            folder = Path(str(body.get("path") or "").strip().strip('"'))
+            if not folder.is_dir():
+                raise AppError("That folder does not exist.")
+            by_name = {}
+            for g in pc:
+                by_name.setdefault(pcgames.match_key(g["title"]), g)
+            for f in sorted(folder.iterdir())[:2000]:
+                g = by_name.get(pcgames.match_key(f.stem)) if f.is_file() else None
+                if g is None or f.suffix.lower() not in (".png", ".jpg", ".jpeg", ".gif", ".webp"):
+                    continue
+                try:
+                    set_custom_cover(self.covers.cache, g["id"], f.read_bytes())
+                    imported += 1
+                except (ValueError, OSError):
+                    pass
+        s = self.catalog.settings()
+        return {"show": s.get("show_pc_games", True), "steam": s.get("show_steam_games", True), "epic": s.get("show_epic_games", True),
+                "seeded": seeded, "imported": imported,
+                "games": [{"id": g["id"], "title": g["title"], "store": g["root"], "hidden": bool(metas.get(g["id"], {}).get("hidden")),
+                           "cover": custom_cover(self.covers.cache, g["id"]) is not None} for g in sorted(pc, key=lambda x: x["sort_title"])]}
 
     def api_game_meta(self, body: dict) -> dict:
         """Per-game choices: name, hidden, emulator, launch options, note."""
