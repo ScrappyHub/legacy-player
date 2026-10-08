@@ -31,6 +31,27 @@ option{background:#141a33;color:#eef1ff}
 /* living background: drifting waves and soft light, like a console dashboard */
 .bg{position:fixed;inset:0;z-index:-1;overflow:hidden;background:radial-gradient(1100px 700px at 12% -8%,#1c2f80 0%,transparent 60%),radial-gradient(900px 620px at 98% 8%,#0d6a6a 0%,transparent 55%),linear-gradient(180deg,#090e2c,#050816)}
 [data-theme=light] .bg{background:radial-gradient(1100px 700px at 12% -8%,#c9d8ff 0%,transparent 60%),radial-gradient(900px 620px at 98% 8%,#c6f5e6 0%,transparent 55%),linear-gradient(180deg,#f3f6ff,#e6ecf9)}
+/* background styles (Preferences > Look): the same theme colours, a different picture behind the app */
+[data-bg=aurora] .bg svg{display:none}
+[data-bg=aurora] .orb{opacity:.5;filter:blur(90px)}
+[data-bg=aurora] .o1{width:60vw;height:50vh;left:-10%;top:-8%;animation-duration:30s}
+[data-bg=aurora] .o2{width:55vw;height:46vh;right:-10%;top:30%;animation-duration:38s}
+[data-bg=aurora] .bg::after{content:"";position:absolute;inset:-20%;background:conic-gradient(from 0deg at 50% 60%,transparent 0 55%,color-mix(in srgb,var(--accent) 38%,transparent) 65%,transparent 78%,color-mix(in srgb,var(--accent2) 30%,transparent) 88%,transparent);filter:blur(70px);animation:spin 60s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+[data-bg=grid] .bg svg,[data-bg=grid] .orb{display:none}
+[data-bg=grid] .bg::before{content:"";position:absolute;left:-50%;right:-50%;bottom:-10%;height:80%;background:linear-gradient(color-mix(in srgb,var(--accent) 70%,transparent) 1px,transparent 1px) 0 0/100% 46px,linear-gradient(90deg,color-mix(in srgb,var(--accent) 70%,transparent) 1px,transparent 1px) 0 0/64px 100%;transform:perspective(420px) rotateX(62deg);transform-origin:50% 100%;-webkit-mask-image:linear-gradient(transparent,#000 70%);mask-image:linear-gradient(transparent,#000 70%);animation:gridgo 3.5s linear infinite}
+@keyframes gridgo{to{background-position:0 46px,0 0}}
+[data-bg=stars] .bg svg,[data-bg=stars] .orb{display:none}
+[data-bg=stars] .bg::before,[data-bg=stars] .bg::after{content:"";position:absolute;inset:0;background-repeat:repeat}
+[data-bg=stars] .bg::before{background-image:radial-gradient(1.5px 1.5px at 20px 30px,#fff,transparent),radial-gradient(1px 1px at 90px 120px,#fff9,transparent),radial-gradient(1.5px 1.5px at 160px 60px,#fff,transparent),radial-gradient(1px 1px at 230px 190px,#fff8,transparent),radial-gradient(2px 2px at 300px 90px,#fff,transparent);background-size:340px 240px;animation:twinkle 5s ease-in-out infinite alternate}
+[data-bg=stars] .bg::after{background-image:radial-gradient(1px 1px at 60px 80px,#fff9,transparent),radial-gradient(1.5px 1.5px at 190px 150px,#fff,transparent),radial-gradient(1px 1px at 270px 20px,#fff8,transparent);background-size:290px 210px;animation:twinkle 7s ease-in-out -2s infinite alternate}
+@keyframes twinkle{from{opacity:.35}to{opacity:1}}
+[data-theme=light][data-bg=stars] .bg::before,[data-theme=light][data-bg=stars] .bg::after{filter:invert(1) opacity(.5)}
+[data-bg=dots] .bg svg{display:none}
+[data-bg=dots] .bg::before{content:"";position:absolute;inset:0;background:radial-gradient(color-mix(in srgb,var(--text) 22%,transparent) 1.4px,transparent 1.6px) 0 0/26px 26px;-webkit-mask-image:radial-gradient(ellipse at 50% 40%,#000,transparent 80%);mask-image:radial-gradient(ellipse at 50% 40%,#000,transparent 80%)}
+[data-bg=plain] .bg svg,[data-bg=plain] .orb{display:none}
+[data-bg=plain] .bg{background:var(--bg)!important}
+@media(prefers-reduced-motion:reduce){.bg *,.bg::before,.bg::after{animation:none!important}}
 .themes{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .themes .sw{width:34px;height:34px;border-radius:50%;border:2px solid var(--line);padding:0;cursor:pointer}
 .themes .sw.on{outline:3px solid var(--accent);outline-offset:2px}.themes .sw:focus-visible{outline:3px solid var(--text);outline-offset:2px}
@@ -255,7 +276,7 @@ body.busy .brand .martin,.hop{animation:hop .55s ease-in-out infinite}
 .docsay{position:relative;z-index:3;margin-bottom:12px;background:#fff6c8;color:#2b3157;font:700 12px ui-monospace,Consolas,monospace;padding:8px 12px;box-shadow:0 -4px #2b3157,0 4px #2b3157,-4px 0 #2b3157,4px 0 #2b3157;max-width:78%;text-align:center}
 .desk{position:relative;z-index:4;width:84%;height:64px;border-radius:10px 10px 0 0;background:linear-gradient(#9a6a45,#7a4f31);box-shadow:0 -4px #b98457 inset,0 8px 0 #5d3a22;margin-bottom:0}
 .desk .plate{position:absolute;left:50%;top:18px;transform:translateX(-50%);background:#e6c46a;color:#4a3410;font:800 11px ui-monospace,monospace;letter-spacing:2px;padding:3px 12px;border-radius:3px}
-.desk .deskcat{position:absolute;right:14px;top:-78px;z-index:5}
+.desk .deskpc{position:absolute;left:12%;top:-70px;z-index:5;filter:drop-shadow(0 4px 6px #0007)}.desk .deskpc .px rect[fill="#47d36b"]{animation:pcglow 2.4s ease-in-out infinite alternate}@keyframes pcglow{from{opacity:.55}to{opacity:1}}.office.scanning .deskpc .px rect[fill="#47d36b"]{animation-duration:.5s}.desk .deskcat{position:absolute;right:14px;top:-78px;z-index:5}
 .clip{border:1px solid var(--line);border-radius:18px;padding:16px;background:var(--solid);position:relative}
 .clip::before{content:"";position:absolute;left:50%;top:-8px;width:70px;height:14px;transform:translateX(-50%);background:#9aa3b8;border-radius:5px}
 .clip .doc{max-width:none;min-width:0;flex:none}
@@ -1126,7 +1147,7 @@ function gamePicker(games){
 async function viewLibrary(m){
  const d=S.lib=await api("library",{console:S.console,q:S.q,favorites:S.fav,sort:S.sort,collection:S.collection,hidden:S.showHidden});
  const st=S.settings=(await api("settings")).values;
- document.documentElement.dataset.theme=st.theme;
+ document.documentElement.dataset.theme=st.theme;document.documentElement.dataset.bg=st.background||"waves";
  if(!d.roots.length){m.append(emptyState());return}
  const search=h("input",{type:"search",placeholder:"Search your games",value:S.q,"aria-label":"Search",oninput:e=>{S.q=e.target.value;clearTimeout(S.t);S.t=setTimeout(()=>refreshGrid(),180)}});
  const sort=h("select",{"aria-label":"Sort",onchange:e=>{S.sort=e.target.value;refreshGrid()}},...[["title","A-Z"],["recent","Recently played"],["size","Largest"]].map(([v,l])=>h("option",{value:v,selected:S.sort===v},l)));
@@ -1885,7 +1906,7 @@ function settingGroups(m,s,groups,wanted){
  for(const[g,items]of Object.entries(groups).filter(([g])=>wanted(g)).sort((a,b)=>(a[0]==="You"?-1:0)-(b[0]==="You"?-1:0))){
   m.append(h("div",{class:"card",style:"margin-top:14px"},h("h3",{},g),...items.map(([k,sp])=>{
    let ctl;const v=s.values[k];
-   const save=async val=>{const r=await act(()=>api("settings",{key:k,value:val}));if(r){S.settings=r.values;if(k==="theme")document.documentElement.dataset.theme=val;if(k==="view"||k==="show_region")toast("Saved");if(k==="display_name"){S.profile=await api("profile");renderWho()}if(k==="auto_network_test"&&val)autoNetTest(300)}};
+   const save=async val=>{const r=await act(()=>api("settings",{key:k,value:val}));if(r){S.settings=r.values;if(k==="theme")document.documentElement.dataset.theme=val;if(k==="background")document.documentElement.dataset.bg=val;if(k==="view"||k==="show_region")toast("Saved");if(k==="display_name"){S.profile=await api("profile");renderWho()}if(k==="auto_network_test"&&val)autoNetTest(300)}};
    if(sp.type==="bool")ctl=h("input",{type:"checkbox",checked:v,onchange:e=>save(e.target.checked)});
    else if(k==="theme")ctl=themePicker();
    else if(sp.type==="choice")ctl=h("select",{onchange:e=>save(e.target.value)},...sp.choices.map(c=>h("option",{value:c,selected:c===v},(sp.labels&&sp.labels[c])||c)));
@@ -2135,6 +2156,7 @@ async function gameProps(id){
  document.body.append(ov);title.focus()}
 
 /* ================= the doctor's office (Setup) ================= */
+const DESKPC=["................",".DDDDDDDDDDDDDD.",".DEEEEEEEEEEEED.",".DENNNNNNEEEEED.",".DEEEEEEEEEEEED.",".DENNNNEEEENEED.",".DEEEEEEEEEEEED.",".DENNNNNNNNEEED.",".DEEEEEEEEEEEED.",".DDDDDDDDDDDDDD.","......GGGG......",".....GGGGGG.....","....DDDDDDDD....","..KKKKKKKKKKKK.."];
 const PLANT=["...N..N...","..NNNNNN..",".NNTNNTNN.","..NNNTNN..","...NTNN...","....TT....","..XXXXXX..","..XXXXXX..","...XXXX...","...XXXX..."];
 const DIPLOMA=["YYYYYYYYYYYYYY","YWWWWWWWWWWWWY","YWGGGGGGGGGGWY","YWWWWWWWWWWWWY","YWGGGGGGGGWWWY","YWGGGGGGGGWWWY","YWWWWWWWWRRWWY","YWWWWWWWWRRWWY","YWWWWWWWWWWWWY","YYYYYYYYYYYYYY"];
 const WINDOW=["DDDDDDDDDDDDDDDD","DCCCCCCDCCCCCCCD","DCCCYYCDCCCCCCCD","DCCYYYYDCCCWWCCD","DCCCYYCDCCWWWWCD","DCCCCCCDCCCCCCCD","DDDDDDDDDDDDDDDD","DCCCCCCDCCCCCCCD","DCCCCCCDCCCCCCCD","DCNNCCCDCCCCCNND","DNNNNCCDCCCNNNND","DNNNNNNDNNNNNNND","DDDDDDDDDDDDDDDD","..LLLLLLLLLLLL.."];
@@ -2188,8 +2210,8 @@ const TIRED={
  10:["suspicious","Wait a second...","...you're not sick. You're not even a little bit sick.","Are you just messing with me?"]};
 /* The doctor runs the scan himself, on his own computer: a little green terminal on the desk prints what he is doing. */
 function docTerminal(on){const zone=$(".office");if(!zone)return null;let t=$(".docterm");
- if(!on){if(t){t.classList.add("off");setTimeout(()=>t.remove(),700)}const l=$(".scanline");if(l)l.remove();return null}
- if(!t){t=h("div",{class:"docterm"},h("div",{class:"dthead"},"DOC-PC"),h("div",{class:"dtbody"}),h("span",{class:"cur"},"_"));zone.append(t,h("div",{class:"scanline"}))}
+ if(!on){zone.classList.remove("scanning");if(t){t.classList.add("off");setTimeout(()=>t.remove(),700)}const l=$(".scanline");if(l)l.remove();return null}
+ zone.classList.add("scanning");if(!t){t=h("div",{class:"docterm"},h("div",{class:"dthead"},"DOC-PC"),h("div",{class:"dtbody"}),h("span",{class:"cur"},"_"));zone.append(t,h("div",{class:"scanline"}))}
  const body=t.querySelector(".dtbody");return line=>{body.append(h("div",{},"> "+line));while(body.children.length>6)body.firstChild.remove()}}
 const folderLabel=w=>{const n=String(w||"").split(/[\\/]/).filter(Boolean).pop();return n?n.slice(0,26):""};
 async function doctorAutoScan(say){
@@ -2287,7 +2309,7 @@ async function viewSetup(m){
   h("div",{class:"officegrid"},
    h("div",{class:"office"},h("div",{class:"wall"},
      h("div",{class:"decor win"},pixels(WINDOW,150)),h("div",{class:"decor dip"},pixels(DIPLOMA,92)),h("div",{class:"decor sign"},pixels(CROSS,40)),h("div",{class:"decor plant"},pixels(PLANT,64)),h("div",{class:"decor books"},pixels(BOOKS,130))),
-    h("div",{class:"deskzone"},say,spot,h("div",{class:"desk"},h("span",{class:"plate"},"DOC"),h("span",{class:"deskcat"},sittingMartin(64)))),h("div",{class:"fxlayer"}),start),
+    h("div",{class:"deskzone"},say,spot,h("div",{class:"desk"},h("span",{class:"deskpc",title:"The doctor's computer"},pixels(DESKPC,84)),h("span",{class:"plate"},"DOC"),h("span",{class:"deskcat"},sittingMartin(64)))),h("div",{class:"fxlayer"}),start),
    h("div",{class:"clip"},h("h3",{style:"margin:0 0 10px"},"Today's check-up"),report)),
   dr.issues.length?h("h3",{class:"sect"},"Case files"):"",caseCards(dr,refresh),
   h("h3",{class:"sect"},"In the waiting room: your emulators"),emulatorCards(dr),
@@ -2693,7 +2715,7 @@ async function homeArtTip(){
   "No box art for "+g.title+" yet.",h("div",{class:"row",style:"gap:6px"},h("button",{class:"btn",onclick:()=>{GAMES[g.id]=GAMES[g.id]||g;findArt(g)}},"Find art"),
    h("button",{class:"btn",onclick:e=>{S.artTipOff=g.id;e.target.closest(".arttip").remove()}},"Not now")))))}
 
-(async function init(){if(OVERLAY){await overlayInit();return}try{const s=await api("settings");S.settings=s.values;document.documentElement.dataset.theme=s.values.theme}catch(e){}
+(async function init(){if(OVERLAY){await overlayInit();return}try{const s=await api("settings");S.settings=s.values;document.documentElement.dataset.theme=s.values.theme;document.documentElement.dataset.bg=s.values.background||"waves"}catch(e){}
  buildMenubar();$("#brand").addEventListener("click",()=>nav("home"));$("#logomartin").append(martin(34));$("#bootmartin").append(martin(96,"hop"));
  try{S.profile=await api("profile")}catch(e){}renderWho();
  const r=await api("mp_state").catch(()=>({room:null}));S.room=r.room;S.waits=r.waits||[];if(S.room||S.waits.length)poll();pingServer();setInterval(pingServer,15000);setInterval(async()=>{const n=await api("notices").catch(()=>null);if(n&&n.notices)n.notices.forEach(x=>{toast(x.text,x.level);if(/server/i.test(x.text))pingServer()})},2000);

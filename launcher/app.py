@@ -155,6 +155,7 @@ class LauncherApp:
         self.waits: dict[str, dict] = {}   # rooms you are queued for while doing something else
         self._overlay_launched = 0.0
         self.overlay_opener = None            # set by the web server: opens the browser-window overlay (fallback)
+        self.on_server_change = None          # the tray listens here
         self._notices: list[dict] = []        # short messages for the page (a server started from the tray or the overlay)
         self._srv_cache = {"at": 0.0, "value": None}
         self.overlay_native = None            # set by the web server: the real overlay panel
@@ -2734,6 +2735,12 @@ class LauncherApp:
                 self.catalog.data["server_share_wanted"] = bool(body.get("share"))
                 self.catalog.save()
         reach = self._manage_router(action, code, bool(body.get("share")), args.port)
+        self._srv_cache["at"] = 0.0
+        if self.on_server_change is not None:
+            try:
+                self.on_server_change()
+            except Exception:
+                pass
         return {"message": message, "running": cli._is_running(args.state_dir), "shared": bool(body.get("share")),
                 "log": str(args.state_dir / "server.log"), "fingerprint": self.server_fingerprint(),
                 "limits": {"players": args.max_players, "rooms": args.max_rooms, "waiting": args.max_waiting}, "reach": reach}

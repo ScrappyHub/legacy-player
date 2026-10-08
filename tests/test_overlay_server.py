@@ -43,6 +43,19 @@ class OverlayAndNoticeTests(unittest.TestCase):
         self.assertFalse({"Full screen", "Windowed", "Back to the game"} & labels)
         self.assertTrue({"Turn on", "Turn off", "Restart", "Restart game"} <= labels)
 
+    def test_tray_hears_about_server_changes_from_anywhere(self):
+        from launcher.tray import TrayController
+        tray = TrayController(self.app, lambda: None)
+        self.assertEqual(tray.poke, self.app.on_server_change)
+
+    def test_background_is_a_choice_with_a_default(self):
+        spec = self.app.catalog.settings()
+        self.assertEqual("waves", spec["background"])
+        self.app.catalog.set_setting("background", "grid")
+        self.assertEqual("grid", self.app.catalog.settings()["background"])
+        with self.assertRaises(Exception):
+            self.app.catalog.set_setting("background", "nonsense")
+
 
 if __name__ == "__main__":
     unittest.main()

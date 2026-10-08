@@ -239,6 +239,10 @@ class UiSmokeTests(unittest.TestCase):
             page.wait_for_timeout(300)
             self.assertEqual(0, page.locator(".retire").count())
             # servers page: compact "Right now" panel, no big code card; the name menu has quick actions
+            page.evaluate('nav("setup")')
+            page.wait_for_selector(".office .desk .deskpc")          # the doctor has a computer at his desk
+            page.evaluate('document.documentElement.dataset.bg="grid"')
+            self.assertEqual("grid", page.evaluate('document.documentElement.dataset.bg'))
             page.evaluate('nav("servers")')
             page.wait_for_selector("#srvlive")
             self.assertIn("Right now", page.inner_text("#srvlive"))

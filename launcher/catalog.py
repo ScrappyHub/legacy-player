@@ -69,6 +69,10 @@ SETTINGS_SCHEMA: dict[str, dict] = {
         "type": "choice", "choices": ["dark", "light", "ocean", "forest", "sunset", "rose", "violet", "crimson", "graphite"], "default": "dark", "group": "Look",
         "label": "Theme", "help": "The colours of the background and buttons. Dark and the coloured themes are easier on the eyes in a dim room.",
     },
+    "background": {
+        "type": "choice", "choices": ["waves", "aurora", "grid", "stars", "dots", "plain"], "default": "waves", "group": "Look",
+        "label": "Background", "help": "The picture behind the app. Waves drift slowly, Aurora glows, Grid is the retro one, Stars twinkle, Dots is calm, Plain is flat (the easiest on a slow computer). It uses your theme's colours.",
+    },
     "view": {
         "type": "choice", "choices": ["shelf", "list"], "default": "shelf", "group": "Look",
         "label": "Library view", "help": "Shelf shows big cards by console. List is denser and good for big libraries.",

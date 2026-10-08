@@ -48,14 +48,16 @@ class NativeTray:
         import ctypes
         from ctypes import wintypes
         user32, shell32, kernel32 = ctypes.windll.user32, ctypes.windll.shell32, ctypes.windll.kernel32
-        try:                                  # make Windows draw this menu dark (or light) like the app, not always white
-            uxtheme = ctypes.WinDLL("uxtheme")
-            set_mode = uxtheme[135]                # SetPreferredAppMode: 0 default, 1 allow dark, 2 force dark, 3 force light
-            set_mode.argtypes = [ctypes.c_int]
-            set_mode(3 if getattr(self, "light", False) else 2)
-            uxtheme[136]()                         # FlushMenuThemes
-        except Exception:
-            pass
+        def apply_menu_theme() -> None:      # make Windows draw this menu dark (or light) like the app, not always white
+            try:
+                uxtheme = ctypes.WinDLL("uxtheme")
+                set_mode = uxtheme[135]            # SetPreferredAppMode: 0 default, 1 allow dark, 2 force dark, 3 force light
+                set_mode.argtypes = [ctypes.c_int]
+                set_mode(3 if getattr(self, "light", False) else 2)
+                uxtheme[136]()                     # FlushMenuThemes
+            except Exception:
+                pass
+        apply_menu_theme()
         LRESULT, WPARAM, LPARAM = ctypes.c_ssize_t, ctypes.c_size_t, ctypes.c_ssize_t
         WNDPROC = ctypes.WINFUNCTYPE(LRESULT, wintypes.HWND, wintypes.UINT, WPARAM, LPARAM)
 
@@ -165,6 +167,7 @@ class NativeTray:
             fg_thread = user32.GetWindowThreadProcessId(fg, None) if fg else 0
             me = kernel32.GetCurrentThreadId()
             attached = bool(fg_thread and fg_thread != me and user32.AttachThreadInput(me, fg_thread, True))
+            apply_menu_theme()
             user32.SetForegroundWindow(self.hwnd)
             chosen = user32.TrackPopupMenu(hmenu, TPM_RETURNCMD | TPM_RIGHTBUTTON | TPM_BOTTOMALIGN, pt.x, pt.y, 0, self.hwnd, None)
             if attached:
@@ -272,6 +275,7 @@ class TrayController:
         self.native.light = app.catalog.settings().get("theme") == "light"
         self._state = {"running": False, "players": 0, "live": 0, "open_rooms": 0, "cert": False, "known": False, "shared": False}
         self._wake = threading.Event()
+        app.on_server_change = self.poke         # a server started or stopped from the page or the overlay shows here at once
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
 
@@ -344,6 +348,7 @@ class TrayController:
         st = self._state
         room = app.room
         self.poke()                                    # so the next right-click is fresher still
+        self.native.light = app.catalog.settings().get("theme") == "light"   # the menu follows the app's theme
         if st["running"]:
             line = "Server running  ·  " + self._plural(st["players"], "player") + "  ·  " + self._plural(st["live"], "room")
             if not st.get("shared"):
