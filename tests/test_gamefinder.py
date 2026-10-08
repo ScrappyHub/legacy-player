@@ -108,3 +108,11 @@ class TidyTests(unittest.TestCase):
         html = (Path(__file__).resolve().parent.parent / "launcher" / "ui" / "index.html").read_text(encoding="utf-8")
         for needle in ("preferences:viewPreferences", 'nav("preferences")', "async function viewPreferences", "PREF_GROUPS"):
             self.assertIn(needle, html)
+
+
+class FormControlTests(unittest.TestCase):
+    def test_one_form_style_for_every_theme(self):
+        html = (Path(__file__).resolve().parent.parent / "launcher" / "ui" / "index.html").read_text(encoding="utf-8")
+        for needle in ("one look for every form control", "appearance:none", "--on-accent", "color-scheme:light", "option,optgroup{background:var(--solid)"):
+            self.assertIn(needle, html)
+        self.assertNotIn("accent-color:var(--accent);width:16px", html)
