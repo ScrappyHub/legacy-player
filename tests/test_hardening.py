@@ -147,7 +147,7 @@ class Round4Tests(unittest.TestCase):
             seen["cmd"] = cmd
             folder = P(tempfile.gettempdir())
             seen["script"] = (folder / "lp-firewall.cmd").read_text(encoding="ascii")
-            (folder / "lp-firewall.log").write_text("The requested operation requires elevation.", encoding="utf-8")
+            (folder / "lp-firewall.log").write_text("The requested operation requires elevation.\nLP_EXIT=1\n", encoding="utf-8")
             return mock.Mock(stderr="")
         out = firewall._elevated(firewall.rule_args(8765, "C:\\Program Files\\LP\\LegacyPlayer.exe"), run)
         self.assertIn("RunAs", seen["cmd"][-1])
@@ -155,6 +155,7 @@ class Round4Tests(unittest.TestCase):
         self.assertIn('"program=C:\\Program Files\\LP\\LegacyPlayer.exe"', seen["script"])
         self.assertEqual(out["log"], "The requested operation requires elevation.")
         self.assertFalse(out["cancelled"])
+        self.assertFalse(out["ok"])
 
     def test_firewall_cancel_is_told_apart_and_a_manual_command_is_given(self):
         def run(cmd, timeout=15.0):
@@ -315,3 +316,36 @@ class FirewallProgramMatchTests(unittest.TestCase):
         self.assertTrue(firewall._program_matches(exe, base + "Program:   Alle\n"))
         self.assertTrue(firewall._program_matches(exe, base + "Program: c:\\users\\A\\appdata\\local\\programs\\legacyplayer\\LEGACYPLAYER.EXE\n"))
         self.assertFalse(firewall._program_matches(exe, base + "Program: C:\\Other\\thing.exe\n"))
+
+
+class FirewallTrustsNetshTests(unittest.TestCase):
+    def test_exit_code_zero_counts_as_added_even_if_reading_the_rule_back_disagrees(self):
+        import tempfile
+        from pathlib import Path as P
+
+        def run(cmd, timeout=15.0):
+            if cmd[0] == "powershell":
+                (P(tempfile.gettempdir()) / "lp-firewall.log").write_text("Ok.\nLP_EXIT=0\n", encoding="utf-8")
+                return mock.Mock(stderr="")
+            return mock.Mock(returncode=1, stdout="")          # reading the rule never matches
+        with mock.patch("launcher.firewall.supported", return_value=True):
+            r = firewall.allow(8765, run)
+        self.assertTrue(r["allowed"])
+
+    def test_one_approval_replaces_an_old_rule_and_adds_the_new_one(self):
+        import tempfile
+        from pathlib import Path as P
+        seen = {}
+
+        def run(cmd, timeout=15.0):
+            if cmd[0] == "powershell":
+                seen["script"] = (P(tempfile.gettempdir()) / "lp-firewall.cmd").read_text(encoding="ascii")
+                (P(tempfile.gettempdir()) / "lp-firewall.log").write_text("LP_EXIT=0\n", encoding="utf-8")
+                return mock.Mock(stderr="")
+            if "show" in cmd:
+                return mock.Mock(returncode=0, stdout="Rule Name: Legacy Player server\nLocalPort: 1111\n")        # stale rule
+            return mock.Mock(returncode=1, stdout="")          # delete and add both need administrator
+        with mock.patch("launcher.firewall.supported", return_value=True):
+            firewall.allow(8765, run)
+        self.assertLess(seen["script"].index("delete rule"), seen["script"].index("add rule"))
+        self.assertEqual(seen["script"].count("netsh"), 2)
