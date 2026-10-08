@@ -923,7 +923,7 @@ class LauncherApp:
 
     def _netcheck_result(self, address, kind, mock, room, server, local, s) -> dict:
         return {"address": address, "address_kind": kind["kind"], "address_text": kind["text"], "mock": mock, "room_load": room,
-                "server": server, "server_is_local": local, "server_name": "this computer" if local else s["server_host"],
+                "server": server, "server_is_local": local, "server_name": "this computer" if local else "your friend's server",
                 "advice": netcheck.advise(kind["kind"], mock, room, server, local)}
 
     def api_scan_pc(self, body: dict) -> dict:
@@ -2878,7 +2878,7 @@ class LauncherApp:
         if body.get("local"):
             for key, value in (("server_host", "127.0.0.1"), ("server_tls", False), ("server_fingerprint", "-"), ("server_access_key", "")):
                 self.catalog.set_setting(key, value)
-            return {"connected": self.api_server_status({}).get("online", False), "host": "this computer"}
+            return {"connected": self.api_server_status({}).get("online", False)}
         try:
             found = servercode.decode(str(body.get("code", "")))
         except servercode.CodeError as exc:
@@ -2892,7 +2892,7 @@ class LauncherApp:
         def undo(message: str) -> dict:                   # a wrong code must not leave the app pointed at a dead server
             for k, v in before.items():
                 self.catalog.set_setting(k, v)
-            return {"connected": False, "host": found["host"], "message": message + " Nothing was changed: you are still on your previous server."}
+            return {"connected": False, "message": message + " Nothing was changed: you are still on your previous server."}
         status = self.api_server_status({})
         if status.get("online"):      # the key is only checked on browse/create/join, so ask for something it guards
             try:
@@ -2901,7 +2901,7 @@ class LauncherApp:
                 return undo(str(exc))
         if not status.get("online"):
             return undo(status.get("message") or "That server did not answer. Check the code, and that the host has started it with 'Let friends connect'.")
-        return {"connected": True, "host": found["host"]}
+        return {"connected": True}
 
     def api_server_status(self, body: dict) -> dict:
         try:

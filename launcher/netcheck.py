@@ -132,9 +132,9 @@ def advise(address_kind: str, mock: dict, room: dict, server: dict | None, local
         reasons.append("Hosting a room here is light: this computer handled %d simulated players at %d requests per second." % (room["players"], room["requests_per_s"]))
     if address_kind == "cgnat":
         host_ok = False
-        reasons.append("Your provider uses carrier-grade NAT, so friends cannot reach this computer directly. Join a friend's server, or host through a VPN.")
+        reasons.append("Your provider shares one address between many customers, so a router port cannot reach this computer. Friends can still join through a shared server (a cheap rented one) or over IPv6 if you both have it.")
     elif address_kind == "private":
-        reasons.append("Friends on your home network or a VPN can join. For friends elsewhere, forward the server port on your router, or use a relay server that has a public address.")
+        reasons.append("Friends on your home network can join at once. For friends elsewhere, Legacy Player tries to open the port on your router by itself; Servers > How friends reach me shows what works here.")
     elif address_kind == "loopback":
         host_ok = False
         reasons.append("This computer is not on a network right now.")

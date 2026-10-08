@@ -762,7 +762,8 @@ function farewell(){if(S.saidBye)return;S.saidBye=true;document.title="Legacy Pl
 /* ---------- network test runs by itself so Server Info already knows where you stand ---------- */
 async function pollNet(){S.netBusy=true;redrawNet();
  for(let i=0;i<60;i++){const r=await api("network_last").catch(()=>null);if(r){if(r.at)S.netcheck=r;if(!r.running)break}await new Promise(x=>setTimeout(x,800))}
- S.netBusy=false;redrawNet()}
+ S.netBusy=false;const done=S.netcheck;
+ if(done&&done.at&&done.advice){S.netJustDone=done.at;toast("Network test finished: "+done.advice.headline,done.advice.verdict==="join"?"warn":"");redrawNet();const b=$("#netbox");if(b&&b.scrollIntoView)b.scrollIntoView({block:"nearest",behavior:"smooth"})}else redrawNet()}
 async function runNetTest(){if(S.netBusy)return;await act(()=>api("network_start"));pollNet()}
 async function autoNetTest(maxAge){
  if(S.netBusy||!S.settings||!S.settings.auto_network_test)return;
@@ -1268,13 +1269,15 @@ function drawNetCheck(box){
   S.netBusy?h("div",{class:"bar live",style:"margin:8px 0"},h("i")):null,
   (!r&&!S.netBusy)?h("p",{class:"small muted"},"Not tested yet. Run a quick test to see if this computer should host, or join someone else."):null,
   r?h("div",{style:S.netBusy?"opacity:.55":""},
-    h("div",{class:"panel",style:"margin:8px 0"},h("b",{class:r.advice.verdict==="join"?"warn":"good"},r.advice.headline),h("ul",{class:"small"},...r.advice.reasons.map(t=>h("li",{},t)))),
+    S.netJustDone&&S.netJustDone===r.at&&!S.netBusy?h("div",{class:"inbanner ok",role:"status"},"✓ Test finished. The result is below."):null,
+    h("div",{class:"panel",style:"margin:8px 0"},h("b",{class:r.advice.verdict==="join"?"warn":"good"},(r.advice.verdict==="join"?"! ":"✓ ")+r.advice.headline),h("ul",{class:"small"},...r.advice.reasons.map(t=>h("li",{},t)))),
     h("table",{},h("tbody",{},
      h("tr",{},h("td",{},"This computer's network address"),h("td",{},ipSpan(r.address)," · "+kinds[r.address_kind])),
      h("tr",{},h("td",{},"Ping to "+r.server_name),h("td",{},r.server.ok?r.server.avg_ms+" ms average ("+r.server.min_ms+"–"+r.server.max_ms+"), jitter "+r.server.jitter_ms+" ms, "+r.server.loss_pct+"% lost"
        :[r.server_is_local?"Your server is not running, so nothing answered. Start it in Servers.":"That server did not answer.",r.last_good?h("div",{class:"small muted"},"Last answer: "+r.last_good.avg_ms+" ms from "+r.last_good.name+", "+ago(r.last_good.at)+"."):h("div",{class:"small muted"},"It has not answered yet, so there is no earlier result to show.")])),
      h("tr",{},h("td",{},"Pretend room on this computer"),h("td",{},r.room_load.players+" players, "+r.room_load.requests_per_s+" requests per second")),
-     h("tr",{},h("td",{},"This computer's own speed"),h("td",{},r.mock.rtt_ms+" ms round trip, "+Math.round(r.mock.mbps)+" Mbps")))))
+     h("tr",{},h("td",{},"This computer's own speed"),h("td",{},r.mock.rtt_ms+" ms round trip, "+Math.round(r.mock.mbps)+" Mbps")))),
+    h("div",{class:"row",style:"margin-top:8px"},h("button",{class:"btn primary",onclick:()=>{S.tab="servers";go()}},"How friends can reach me"),h("span",{class:"small muted"},"Shows which ways a friend can connect to this computer, and fixes the ones it can.")))
    :null)}
 async function drawBrowse(box){
  const d=await api("mp_browse").catch(()=>null);if(!d)return;
@@ -1443,7 +1446,7 @@ async function viewServers(m){
   S.srvOnline=a.online;
   const rm=S.room||null;
   const who=rm?rm.members.map(p=>p.name+(p.me?" (you)":"")).join(", "):"";
-  const con=V.server_host==="127.0.0.1"?(a.online?"Connected to your own server":"Your own server is not running"):"Connected to a friend's server at "+V.server_host;
+  const con=V.server_host==="127.0.0.1"?(a.online?"Connected to your own server":"Your own server is not running"):"Connected to a friend's server";
   live.replaceChildren(
    h("div",{class:"row"},h("h3",{class:"grow"},"Right now"),a.online?h("b",{class:"good"},"● Running"+(a.shared?", open to friends":", this computer only")):h("b",{class:"bad"},"● Stopped")),
    h("p",{class:"small"},con+(a.online?". "+a.players+" "+(a.players===1?"player":"players")+" in "+a.rooms+" "+(a.rooms===1?"room":"rooms")+(a.waiting?", "+a.waiting+" waiting in line":"")+", up for "+dur(a.uptime_seconds)+".":".")),

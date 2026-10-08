@@ -32,6 +32,11 @@ class LobbyClient:
         # A pinned SHA-256 of the server certificate (what the in-app server shows its owner).
         self.fingerprint = re.sub(r"[^0-9a-f]", "", fingerprint.lower())
 
+    def _where(self) -> str:
+        """How a server is named in messages shown to the player. A friend's address is never printed:
+        it ends up in screenshots, toasts and bug reports."""
+        return "this computer's server" if self.host in {"127.0.0.1", "localhost", "::1"} else "the server"
+
     def _connect(self, source_port: int | None = None) -> socket.socket:
         if source_port is None:
             sock = socket.create_connection((self.host, self.port), timeout=self.timeout)
@@ -98,7 +103,7 @@ class LobbyClient:
             peer = reply["result"]["peer"]
             return port, [str(peer[0]), int(peer[1])]
         except (OSError, ssl.SSLError, ValueError, KeyError) as exc:
-            raise LobbyClientError(f"Could not set up a direct connection through {self.host}:{self.port} ({exc}).") from exc
+            raise LobbyClientError(f"Could not set up a direct connection through {self._where()} ({exc}).") from exc
 
     def open_relay(self, role: str, auth: dict, *, wait_paired: bool, on_socket=None) -> socket.socket:
         """Open a relay connection through the lobby server. Returns the raw socket once the
@@ -123,7 +128,7 @@ class LobbyClient:
             sock.settimeout(None)
             return sock
         except (OSError, ssl.SSLError, ValueError) as exc:
-            raise LobbyClientError(f"Could not open a relay through {self.host}:{self.port} ({exc}).") from exc
+            raise LobbyClientError(f"Could not open a relay through {self._where()} ({exc}).") from exc
 
     def call(self, request: dict) -> dict:
         if self.access_key and "access_key" not in request:
@@ -148,13 +153,13 @@ class LobbyClient:
                 line = sock.makefile("rb").readline()
         except (OSError, ssl.SSLError) as exc:
             raise LobbyClientError(
-                f"Could not reach the multiplayer server at {self.host}:{self.port} ({exc}). "
+                f"Could not reach the multiplayer server at {self._where()} ({exc}). "
                 "The server may not be running, or a firewall or router is blocking it (ask the host to check Windows Firewall and their router), or the server code is out of date."
             ) from exc
         try:
             response = json.loads(line)
         except ValueError as exc:
-            raise LobbyClientError(f"Something answered at {self.host}:{self.port} but it is not a Legacy Player server.") from exc
+            raise LobbyClientError(f"Something answered at {self._where()} but it is not a Legacy Player server.") from exc
         if not response.get("ok"):
             raise LobbyClientError(response.get("error", "server error"))
         return response["result"]
