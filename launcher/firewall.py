@@ -85,9 +85,11 @@ def _program_matches(program: str, text: str) -> bool:
     """The rule is fine when it names this program (by file name, so path spelling cannot matter) or names no program at all
     ("Any", in any language), as a rule added by hand does. A rule for a different program does not count."""
     m = re.search(r"^\s*Program:\s*(.+?)\s*$", text, re.M)
-    if m and not re.search(r"[\\/]|\.exe", m.group(1), re.I):
-        return True
-    return Path(program).name.lower() in text.lower()
+    if m is None:
+        return True          # Windows prints no Program line at all for a rule that is not tied to a program (as one added by hand)
+    if not re.search(r"[\\/]|\.exe", m.group(1), re.I):
+        return True          # "Any" in whatever language
+    return Path(program).name.lower() in m.group(1).lower()
 
 
 def status(port: int, run=_run) -> dict:

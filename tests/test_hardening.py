@@ -312,6 +312,7 @@ class FirewallProgramMatchTests(unittest.TestCase):
     def test_a_rule_added_by_hand_for_any_program_counts_and_another_program_does_not(self):
         exe = "C:\\Users\\a\\AppData\\Local\\Programs\\LegacyPlayer\\LegacyPlayer.exe"
         base = "Rule Name: Legacy Player server\nLocalPort: 8765\n"
+        self.assertTrue(firewall._program_matches(exe, base + "Action: Allow\nOk.\n"))      # real netsh output of a hand-made rule: no Program line
         self.assertTrue(firewall._program_matches(exe, base + "Program: Any\n"))
         self.assertTrue(firewall._program_matches(exe, base + "Program:   Alle\n"))
         self.assertTrue(firewall._program_matches(exe, base + "Program: c:\\users\\A\\appdata\\local\\programs\\legacyplayer\\LEGACYPLAYER.EXE\n"))
