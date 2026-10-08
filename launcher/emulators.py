@@ -41,12 +41,18 @@ _EXE = {eid: re.compile(r"^" + re.escape(pre) + r"[\w.\-]*\.exe$", re.I) for eid
 _ARCHIVE = {eid: re.compile(r"^" + re.escape(pre) + r"[\w.\-]*\.(zip|7z|rar)$", re.I) for eid, pre in _PREFIX.items()}
 
 
+_EXACT = {}
+for _eid, _spec in EMULATORS.items():
+    for _exe in _spec["exes"]:
+        _EXACT.setdefault(_exe.lower(), _eid)
+
+
 def program_for(filename: str) -> str | None:
     """Which emulator a file name belongs to, or None. Exact names win; otherwise a known prefix with .exe."""
     low = filename.lower()
-    for eid, spec in EMULATORS.items():
-        if low in {e.lower() for e in spec["exes"]}:
-            return eid
+    hit = _EXACT.get(low)
+    if hit:
+        return hit
     if not low.endswith(".exe") or _NOT_THE_EMULATOR.search(low):
         return None
     for eid, rx in _EXE.items():
@@ -64,31 +70,36 @@ def archive_for(filename: str) -> str | None:
 
 
 def find_emulators(search_roots: list[Path], configured: dict[str, str]) -> dict[str, dict]:
-    result = {}
+    result, missing = {}, []
     for emulator_id, spec in EMULATORS.items():
         path = configured.get(emulator_id)
-        source = "you set this"
         if path and not Path(path).is_file():
             path = None
+        result[emulator_id] = {"name": spec["name"], "path": path, "source": "you set this" if path else None}
         if not path:
-            source = "found automatically"
-            for root in search_roots:
-                for dirpath, dirnames, filenames in os.walk(root):
-                    if len(Path(dirpath).relative_to(root).parts) >= 4:
-                        dirnames[:] = []  # emulators live near the top; keep the search quick
-                    hit = next((f for f in filenames if program_for(f) == emulator_id), None)
-                    if hit:
-                        path = str(Path(dirpath) / hit)
-                        break
-                if path:
-                    break
-            if not path:
-                for exe in spec["exes"]:
-                    found = shutil.which(exe)
-                    if found:
-                        path = found
-                        break
-        result[emulator_id] = {"name": spec["name"], "path": path, "source": source if path else None}
+            missing.append(emulator_id)
+    # ONE walk for every emulator still missing (it used to walk every folder once per emulator, which made the whole app slow
+    # when the games folders were big). The first hit in folder order wins, as before.
+    wanted = set(missing)
+    for root in search_roots:
+        if not wanted:
+            break
+        for dirpath, dirnames, filenames in os.walk(root):
+            if len(Path(dirpath).relative_to(root).parts) >= 4:
+                dirnames[:] = []        # emulators live near the top; keep the search quick
+            for f in filenames:
+                eid = program_for(f)
+                if eid in wanted:
+                    result[eid].update(path=str(Path(dirpath) / f), source="found automatically")
+                    wanted.discard(eid)
+            if not wanted:
+                break
+    for eid in wanted:
+        for exe in EMULATORS[eid]["exes"]:
+            found = shutil.which(exe)
+            if found:
+                result[eid].update(path=found, source="found automatically")
+                break
     return result
 
 

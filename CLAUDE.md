@@ -11,10 +11,10 @@ This repository is the `legacy-player` service inside the Constellation determin
 
 Before auditing, planning, refactoring, or editing this repository, read:
 
-1. `C:\dev\Constellation\ecosystem\SERVICE_MAP.md`
-2. `C:\dev\Constellation\registry\services.json`
-3. `C:\dev\Constellation\ecosystem\AGENT_POLICY.md`
-4. `C:\dev\Constellation\ecosystem\SHARED_INVARIANTS.md`
+1. `../Constellation/ecosystem/SERVICE_MAP.md`
+2. `../Constellation/registry/services.json`
+3. `../Constellation/ecosystem/AGENT_POLICY.md`
+4. `../Constellation/ecosystem/SHARED_INVARIANTS.md`
 5. `docs\canonical\ECOSYSTEM_INTEGRATION.md`
 6. `docs\canonical\IDENTITY.md` when present
 7. `docs\canonical\SPEC.md` when present

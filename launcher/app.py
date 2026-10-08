@@ -201,6 +201,7 @@ class LauncherApp:
             pass
 
     def rescan(self, body: dict | None = None) -> dict:
+        self._forget_emulators()
         """Read the games folders again. The slow part (walking the disk) runs without the big lock, so the app stays
         responsive; only swapping the result in takes it."""
         roots = [Path(r) for r in self.catalog.data["roots"]]
@@ -218,6 +219,7 @@ class LauncherApp:
                 return {"games": len(self.games), "skipped": self.skipped, "seconds": round(time.time() - started, 2)}
 
     def api_roots(self, body: dict) -> dict:
+        self._forget_emulators()
         if "roots" in body:
             try:
                 self.catalog.set_roots(body["roots"])
@@ -237,13 +239,32 @@ class LauncherApp:
     def api_rescan(self, body: dict) -> dict:
         return self.rescan(body)
 
-    def _public(self, game: dict, emus: dict | None = None) -> dict:
+    def _cover_index(self) -> dict:
+        """What cover pictures exist, from two folder listings instead of up to five file checks for every game."""
+        out = {"custom": {}, "auto": {}, "cols": {n: set(ids) for n, ids in self.catalog.data["collections"].items()}}
+        for kind, folder in (("auto", Path(self.covers.cache)), ("custom", Path(self.covers.cache) / "custom")):
+            try:
+                with os.scandir(folder) as it:
+                    for entry in it:
+                        if entry.is_file():
+                            out[kind][entry.name] = entry.path
+            except OSError:
+                pass
+        return out
+
+    def _public(self, game: dict, emus: dict | None = None, index: dict | None = None) -> dict:
         history = self.catalog.data["history"].get(game["id"], {})
         emus = emus if emus is not None else getattr(self, "_emus_cache", {})
         meta = self.catalog.data["game_meta"].get(game["id"], {})
-        own = custom_cover(self.covers.cache, game["id"])
-        auto = cover_path(self.covers.cache, game["id"])
-        shown = own or (auto if auto.exists() else None)
+        if index is None:
+            own = custom_cover(self.covers.cache, game["id"])
+            auto = cover_path(self.covers.cache, game["id"])
+            shown = own or (auto if auto.exists() else None)
+        else:
+            safe = re.sub(r"[^A-Za-z0-9_-]", "_", game["id"])
+            own = next((Path(index["custom"][f"{safe}.{k}"]) for k in CONTENT_TYPES if f"{safe}.{k}" in index["custom"]), None)
+            auto = index["auto"].get(f"{safe}.png")
+            shown = own or (Path(auto) if auto else None)
         emulator = emulators.EMULATORS[meta["emulator"]]["name"] if meta.get("emulator") in emulators.EMULATORS else emus.get(game["console"])
         return {
             "emulator": emulator, "cover": shown is not None, "custom_cover": own is not None,
@@ -252,7 +273,8 @@ class LauncherApp:
             "args": meta.get("args", ""), "note": meta.get("note", ""),
             "players": gameinfo.players_for(game["console"], meta.get("title") or game["title"], meta.get("players", "")),
             "own_players": meta.get("players", ""),
-            "collections": [n for n, ids in self.catalog.data["collections"].items() if game["id"] in ids],
+            "collections": ([n for n, ids in index["cols"].items() if game["id"] in ids] if index is not None
+                            else [n for n, ids in self.catalog.data["collections"].items() if game["id"] in ids]),
             "original_title": game["title"],
             "id": game["id"], "title": meta.get("title") or game["title"], "console": game["console"], "region": game["region"],
             "tags": game["tags"], "size_mb": round(game["size"] / 1048576, 1),
@@ -302,12 +324,13 @@ class LauncherApp:
             for c in CONSOLES if counts.get(c.id)
         ]
         self._emus_cache = self._console_emulators()
+        index = self._cover_index()
         return {
             "consoles": consoles, "total": sum(counts.values()), "shown": len(selected),
             "hidden_total": hidden_total, "showing_hidden": show_hidden,
             "collections": [{"name": n, "count": len(set(ids) & set(self.games))} for n, ids in sorted(cols.items(), key=lambda kv: kv[0].lower())],
             "favorites_total": len(favorites & set(self.games)),
-            "games": [self._public(g) for g in selected[:1000]],
+            "games": [self._public(g, None, index) for g in selected[:1000]],
             "truncated": len(selected) > 1000, "skipped": self.skipped,
             "roots": self.catalog.data["roots"],
         }
@@ -324,6 +347,22 @@ class LauncherApp:
         return game
 
     # emulators / launching --------------------------------------------------
+    EMU_TTL = 15.0
+
+    def _emulators(self) -> dict:
+        """Where each emulator is. The folder search can take a while on a big library, so the answer is kept for a few seconds
+        (and thrown away the moment you change folders, paths or install something)."""
+        key = (tuple(str(r) for r in self._search_roots()), tuple(sorted(self.catalog.data["emulator_paths"].items())))
+        cached = getattr(self, "_emu_cache", None)
+        if cached and cached[0] == key and time.monotonic() - cached[1] < self.EMU_TTL:
+            return {k: dict(v) for k, v in cached[2].items()}
+        found = emulators.find_emulators(self._search_roots(), self.catalog.data["emulator_paths"])
+        self._emu_cache = (key, time.monotonic(), found)
+        return {k: dict(v) for k, v in found.items()}
+
+    def _forget_emulators(self) -> None:
+        self._emu_cache = None
+
     def _search_roots(self) -> list[Path]:
         roots = []
         for root in self.catalog.data["roots"]:
@@ -346,7 +385,7 @@ class LauncherApp:
             return False
 
     def _emulator_for(self, console_id: str, found: dict | None = None, prefer: str | None = None):
-        found = found or emulators.find_emulators(self._search_roots(), self.catalog.data["emulator_paths"])
+        found = found or self._emulators()
         preferred = self.catalog.data["console_emulator"].get(console_id)
         order = ([prefer] if prefer else []) + ([preferred] if preferred else []) + list(BY_ID[console_id].emulators)
         for emulator_id in order:
@@ -357,7 +396,7 @@ class LauncherApp:
         return None, None
 
     def _console_emulators(self) -> dict[str, str | None]:
-        found = emulators.find_emulators(self._search_roots(), self.catalog.data["emulator_paths"])
+        found = self._emulators()
         return {c.id: (self._emulator_for(c.id, found)[1] or {}).get("name") for c in CONSOLES}
 
     def _meta(self, game: dict) -> dict:
@@ -379,7 +418,7 @@ class LauncherApp:
             return {"ready": False, "reason": f"This game is a {game['extension']} archive. Extract it first; the launcher never changes your files."}
         if emulator_id is None:
             names = ", ".join(emulators.EMULATORS[e]["name"] for e in BY_ID[game["console"]].emulators if e in emulators.EMULATORS)
-            ra = emulators.find_emulators(self._search_roots(), self.catalog.data["emulator_paths"]).get("retroarch", {}).get("path")
+            ra = self._emulators().get("retroarch", {}).get("path")
             if ra and game["console"] in CORES:
                 return {"ready": False, "reason": f"RetroArch is installed but has no core for {BY_ID[game['console']].name} yet. Open Setup and press Install missing cores, or add another emulator for it ({names})."}
             return {"ready": False, "reason": f"No emulator set for {BY_ID[game['console']].name}. Supported: {names}. Set its path in Emulators."}
@@ -515,7 +554,7 @@ class LauncherApp:
 
     def api_dolphin_folders(self, body: dict) -> dict:
         """Put the folders your GameCube and Wii games are in into Dolphin's game list, so you never open Dolphin's settings."""
-        found = emulators.find_emulators(self._search_roots(), self.catalog.data["emulator_paths"])
+        found = self._emulators()
         exe = found.get("dolphin", {}).get("path")
         if not exe:
             raise AppError("Dolphin is not set up yet.")
@@ -532,7 +571,7 @@ class LauncherApp:
 
     def api_dolphin_pads(self, body: dict) -> dict:
         """What Legacy Player would write into Dolphin's GameCube pad file, or put the player's own file back."""
-        found = emulators.find_emulators(self._search_roots(), self.catalog.data["emulator_paths"])
+        found = self._emulators()
         exe = found.get("dolphin", {}).get("path")
         if not exe:
             raise AppError("Dolphin is not set up yet.")
@@ -567,7 +606,7 @@ class LauncherApp:
     def netplay_check(self, game: dict) -> dict:
         """Can this game be launched into emulator-native netplay (RetroArch)?"""
         if game["console"] in DOLPHIN_CONSOLES:
-            found = emulators.find_emulators(self._search_roots(), self.catalog.data["emulator_paths"])
+            found = self._emulators()
             exe = found.get("dolphin", {}).get("path")
             if not exe:
                 return {"ready": False, "engine": "dolphin", "reason": "Dolphin is not set up. Set its path in Emulators or use Setup."}
@@ -579,7 +618,7 @@ class LauncherApp:
                     "steps": NETPLAY_STEPS.get(game["console"], [])}
         if game["is_archive"] and not (game["extension"] == ".zip"):
             return {"ready": False, "reason": f"Extract this {game['extension']} archive first."}
-        found = emulators.find_emulators(self._search_roots(), self.catalog.data["emulator_paths"])
+        found = self._emulators()
         exe = found.get("retroarch", {}).get("path")
         if not exe:
             return {"ready": False, "reason": "RetroArch is not set up. Set its path in Emulators."}
@@ -595,7 +634,7 @@ class LauncherApp:
         return found.get("retroarch", {}).get("path")
 
     def api_setup_status(self, body: dict) -> dict:
-        found = emulators.find_emulators(self._search_roots(), self.catalog.data["emulator_paths"])
+        found = self._emulators()
         return self.setup.check(found.get("dolphin", {}).get("path"))
 
     def _internet_ok(self, body: dict) -> None:
@@ -605,6 +644,7 @@ class LauncherApp:
             raise AppError("Please confirm the download.")
 
     def api_setup_install(self, body: dict) -> dict:
+        self._forget_emulators()
         self._internet_ok(body)
         try:
             return {"job": self.setup.start(str(body.get("what", "all")))}
@@ -630,7 +670,7 @@ class LauncherApp:
         }
 
     def _emulator_choices(self, console_id: str) -> list[dict]:
-        found = emulators.find_emulators(self._search_roots(), self.catalog.data["emulator_paths"])
+        found = self._emulators()
         return [{"id": e, "name": emulators.EMULATORS[e]["name"], "installed": bool(found.get(e, {}).get("path"))}
                 for e in BY_ID[console_id].emulators if e in emulators.EMULATORS]
 
@@ -711,7 +751,7 @@ class LauncherApp:
                 raise AppError("That monitor is not connected right now.")
             prefs["monitor"] = key
         self.catalog.save()
-        found = emulators.find_emulators(self._search_roots(), self.catalog.data["emulator_paths"])
+        found = self._emulators()
         return {"monitor": prefs["monitor"], "monitors": winplace.list_monitors(),
                 "emulators": [{"id": k, "name": v["name"], "mode": prefs["modes"].get(k, "ask"),
                                "flag": emulators.fullscreen_status(k)} for k, v in found.items() if v["path"]]}
@@ -751,6 +791,7 @@ class LauncherApp:
         return {"launched": game["title"], "emulator": check["emulator"], "pid": pid}
 
     def api_emulators(self, body: dict) -> dict:
+        self._forget_emulators()
         if "folder" in body:
             folders = list(self.catalog.data.get("emulator_folders", []))
             folder = str(body["folder"] or "").strip().strip('"')
@@ -769,7 +810,7 @@ class LauncherApp:
             if path is not None and not Path(path).is_file():
                 raise AppError("That file does not exist. Paste the full path to the emulator program.")
             self.catalog.set_mapping("emulator_paths", emulator_id, path or None)
-        found = emulators.find_emulators(self._search_roots(), self.catalog.data["emulator_paths"])
+        found = self._emulators()
         return {
             "folders": self.catalog.data.get("emulator_folders", []),
             "emulators": [{"id": k, **v} for k, v in found.items()],
@@ -834,6 +875,7 @@ class LauncherApp:
                 "advice": netcheck.advise(kind["kind"], mock, room, server, local)}
 
     def api_scan_pc(self, body: dict) -> dict:
+        self._forget_emulators()
         """Look through this computer for emulator programs. Starts only on an explicit request."""
         action = body.get("action", "status")
         if action == "start":
@@ -843,7 +885,7 @@ class LauncherApp:
         elif action == "cancel":
             self.pcscan.cancel()
         view = self.pcscan.view()
-        have = {eid: v["path"] for eid, v in emulators.find_emulators(self._search_roots(), self.catalog.data["emulator_paths"]).items()}
+        have = {eid: v["path"] for eid, v in self._emulators().items()}
         view["emulators"] = {eid: {"name": emulators.EMULATORS[eid]["name"], "paths": paths, "in_use": have.get(eid)}
                              for eid, paths in view["found"].items()}
         view["packages"] = {eid: {"name": emulators.EMULATORS[eid]["name"], "paths": paths}
@@ -857,7 +899,7 @@ class LauncherApp:
         chosen = {}
         for eid, paths in view["found"].items():
             if paths and not self.catalog.data["emulator_paths"].get(eid) \
-                    and not emulators.find_emulators(self._search_roots(), self.catalog.data["emulator_paths"])[eid]["path"]:
+                    and not self._emulators()[eid]["path"]:
                 self.catalog.set_mapping("emulator_paths", eid, paths[0])
                 chosen[eid] = paths[0]
         extra = [Path(p).parent for p in self.catalog.data["emulator_paths"].values() if p]
@@ -878,7 +920,7 @@ class LauncherApp:
 
     # engines (the owned shell's view of emulators) -----------------------------------
     def _engines_payload(self) -> dict:
-        found = emulators.find_emulators(self._search_roots(), self.catalog.data["emulator_paths"])
+        found = self._emulators()
         rows = []
         for engine_id, spec in engines.ENGINES.items():
             info = found.get(engine_id, {})
@@ -928,7 +970,7 @@ class LauncherApp:
             else:
                 store[key] = value
             self.catalog.save()
-        found = emulators.find_emulators(self._search_roots(), self.catalog.data["emulator_paths"])
+        found = self._emulators()
         rows = []
         for c in CONSOLES:
             eid, info = self._emulator_for(c.id, found)
@@ -1198,7 +1240,7 @@ class LauncherApp:
     # whole-library save backups -----------------------------------------------------
     def _save_sources(self) -> dict[str, Path]:
         root = self._save_root()
-        found = emulators.find_emulators(self._search_roots(), self.catalog.data["emulator_paths"])
+        found = self._emulators()
         out = {}
         for c in CONSOLES:
             eid, _ = self._emulator_for(c.id, found)
@@ -1245,7 +1287,7 @@ class LauncherApp:
         return done
 
     def api_credits(self, body: dict) -> dict:
-        found = emulators.find_emulators(self._search_roots(), self.catalog.data["emulator_paths"])
+        found = self._emulators()
         rows = [{"id": eid, "name": spec["name"], "consoles": spec["consoles"], "license": spec["license"],
                  "homepage": engines.HOMEPAGES.get(eid, spec["source"].get("url", "")),
                  "redistributable": eid not in engines.NOT_REDISTRIBUTABLE, "path": found.get(eid, {}).get("path")}
@@ -1258,7 +1300,7 @@ class LauncherApp:
     def api_engines_install_all(self, body: dict) -> dict:
         """One click: fetch every missing engine that has an official GitHub release, one after another."""
         self._internet_ok(body)
-        found = emulators.find_emulators(self._search_roots(), self.catalog.data["emulator_paths"])
+        found = self._emulators()
         wanted = [eid for eid, spec in engines.ENGINES.items()
                   if spec["source"]["kind"] == "github" and not found.get(eid, {}).get("path") and eid not in engines.NOT_REDISTRIBUTABLE]
         try:
@@ -1433,7 +1475,7 @@ class LauncherApp:
                 savefolders.ensure(root, [c.id for c in CONSOLES if c.id in CORES])
             except OSError as exc:
                 raise AppError(f"Could not create the save folders: {exc}") from exc
-        found = emulators.find_emulators(self._search_roots(), self.catalog.data["emulator_paths"])
+        found = self._emulators()
         rows = []
         for console in CONSOLES:
             emulator_id, _ = self._emulator_for(console.id, found)
@@ -1604,8 +1646,10 @@ class LauncherApp:
         hidden = {i for i, m in self.catalog.data["game_meta"].items() if m.get("hidden")}
         recent = sorted((g for g in self.games.values() if history.get(g["id"], {}).get("last_played") and g["id"] not in hidden),
                         key=lambda g: -history[g["id"]]["last_played"])[:8]
-        favs = [g for g in self.games.values() if g["id"] in set(self.catalog.data["favorites"]) and g["id"] not in hidden][:8]
-        found = emulators.find_emulators(self._search_roots(), self.catalog.data["emulator_paths"])
+        fav_ids = set(self.catalog.data["favorites"])
+        favs = [g for g in self.games.values() if g["id"] in fav_ids and g["id"] not in hidden][:8]
+        index = self._cover_index()
+        found = self._emulators()
         emus = self._console_emulators()
         s = self.catalog.settings()
         featured = None
@@ -1613,7 +1657,7 @@ class LauncherApp:
             featured = {"title": s["featured_title"], "text": s["featured_text"], "link": s["featured_link"]}
         ready = [c.id for c in CONSOLES if self._emulator_for(c.id, found)[0]]
         return {
-            "recent": [self._public(g, emus) for g in recent], "favorites": [self._public(g, emus) for g in favs],
+            "recent": [self._public(g, emus, index) for g in recent], "favorites": [self._public(g, emus, index) for g in favs],
             "emulators": [{"id": k, "name": v["name"], "path": v["path"]} for k, v in found.items() if v["path"]],
             "consoles_ready": len(ready), "consoles_total": len(CONSOLES), "games_total": len(self.games),
             "featured": featured, "version": VERSION, "alias": s["display_name"], "avatar": s["avatar"],
@@ -1621,7 +1665,7 @@ class LauncherApp:
 
     def api_doctor(self, body: dict) -> dict:
         """A health check of everything the app needs, in plain facts. Nothing is changed."""
-        found = emulators.find_emulators(self._search_roots(), self.catalog.data["emulator_paths"])
+        found = self._emulators()
         have = [v["name"] for v in found.values() if v["path"]]
         counts: dict[str, int] = {}
         for g in self.games.values():

@@ -66,8 +66,8 @@ SETTINGS_SCHEMA: dict[str, dict] = {
         "label": "First-run setup finished", "help": "Turn off to see the welcome steps again next time.",
     },
     "theme": {
-        "type": "choice", "choices": ["dark", "light"], "default": "dark", "group": "Look",
-        "label": "Theme", "help": "Dark is easier on the eyes in a dim room.",
+        "type": "choice", "choices": ["dark", "light", "ocean", "forest", "sunset", "rose", "violet", "crimson", "graphite"], "default": "dark", "group": "Look",
+        "label": "Theme", "help": "The colours of the background and buttons. Dark and the coloured themes are easier on the eyes in a dim room.",
     },
     "view": {
         "type": "choice", "choices": ["shelf", "list"], "default": "shelf", "group": "Look",

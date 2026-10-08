@@ -651,3 +651,14 @@ class CatalogRobustnessTests(unittest.TestCase):
             c = Catalog(d)
             self.assertIsInstance(c.data["roots"], list)
             self.assertIsInstance(c.data["favorites"], list)
+
+
+class ThemeTests(unittest.TestCase):
+    def test_every_theme_choice_has_its_colours(self):
+        import re
+        from launcher.catalog import SETTINGS_SCHEMA
+        html = (Path(__file__).resolve().parents[1] / "launcher" / "ui" / "index.html").read_text(encoding="utf-8")
+        for name in SETTINGS_SCHEMA["theme"]["choices"]:
+            self.assertTrue(re.search(r"\[data-theme=%s\]\{" % name, html) or name == "dark", name)
+            if name not in {"dark"}:
+                self.assertIn(f"[data-theme={name}] .bg{{" if name != "light" else "[data-theme=light] .bg{", html, name)
