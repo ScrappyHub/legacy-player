@@ -48,6 +48,14 @@ class NativeTray:
         import ctypes
         from ctypes import wintypes
         user32, shell32, kernel32 = ctypes.windll.user32, ctypes.windll.shell32, ctypes.windll.kernel32
+        try:                                  # make Windows draw this menu dark (or light) like the app, not always white
+            uxtheme = ctypes.WinDLL("uxtheme")
+            set_mode = uxtheme[135]                # SetPreferredAppMode: 0 default, 1 allow dark, 2 force dark, 3 force light
+            set_mode.argtypes = [ctypes.c_int]
+            set_mode(3 if getattr(self, "light", False) else 2)
+            uxtheme[136]()                         # FlushMenuThemes
+        except Exception:
+            pass
         LRESULT, WPARAM, LPARAM = ctypes.c_ssize_t, ctypes.c_size_t, ctypes.c_ssize_t
         WNDPROC = ctypes.WINFUNCTYPE(LRESULT, wintypes.HWND, wintypes.UINT, WPARAM, LPARAM)
 
@@ -261,6 +269,7 @@ class TrayController:
     def __init__(self, app, open_window) -> None:
         self.app, self.open_window = app, open_window
         self.native = NativeTray("Legacy Player", self.menu, self.command)
+        self.native.light = app.catalog.settings().get("theme") == "light"
         self._state = {"running": False, "players": 0, "live": 0, "open_rooms": 0, "cert": False, "known": False, "shared": False}
         self._wake = threading.Event()
         self._stop = threading.Event()
@@ -359,12 +368,12 @@ class TrayController:
             who = room.get("game", "a game")
             items.append(("open", f"In a room: {who}" + (" (you are hosting)" if room.get("role") == "host" else ""), True))
         if st["running"]:
-            shared = bool(st.get("shared")) and st["cert"]
+            opens = "" if st.get("shared") else " (opens the server to friends first)"
             items += [("server_stop", "Stop server", True), ("server_restart", "Restart server", True)]
             if not st.get("shared"):
                 items.append(("server_share", "Let friends connect (restarts the server)", True))
-            items += [("server_code", "Copy server code", shared),
-                      ("server_fresh_code", "Make a fresh server code and copy it", shared)]
+            items += [("server_code", "Copy server code" + opens, True),
+                      ("server_fresh_code", "Make a fresh server code and copy it" + opens, True)]
         else:
             items += [("server_start", "Start server (this computer only)", True),
                       ("server_share", "Start server (let friends connect)", True)]
@@ -386,12 +395,18 @@ class TrayController:
                 app.api_server_control({"action": action, "share": bool(share)})
                 if share and action != "stop":
                     self._firewall_for_friends()
-                self.native.notify("Your server", {"start": "Server started.", "stop": "Server stopped.", "restart": "Server restarted."}[action]
-                                   + (" Friends can connect." if share and action != "stop" else ""))
+                said = {"start": "Server started.", "stop": "Server stopped.", "restart": "Server restarted."}[action] + (" Friends can connect." if share and action != "stop" else "")
+                self.native.notify("Your server", said)
+                app.notify_ui(said)
             elif command in ("server_code", "server_fresh_code"):
+                if not self._state.get("shared"):         # a code only exists once the server is open to friends: do that first
+                    app.api_server_control({"action": "restart", "share": True})
+                    self._firewall_for_friends()
+                    app.notify_ui("Server opened to friends.")
                 got = app.api_server_code({"refresh": command == "server_fresh_code"})
                 if got.get("code"):
                     self._copy(got["code"])
+                    app.notify_ui("Server code copied. Paste it to a friend.")
                     self.native.notify("Server code copied", ("Fresh code made: the old one no longer lets new people in. Players already connected stay connected. " if got.get("rotated") else "") + "Paste it to a friend. They enter it under Servers.")
                 else:
                     self.native.notify("No server code", got.get("error") or "Start the server with 'let friends connect' first.")

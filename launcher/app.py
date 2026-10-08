@@ -155,6 +155,8 @@ class LauncherApp:
         self.waits: dict[str, dict] = {}   # rooms you are queued for while doing something else
         self._overlay_launched = 0.0
         self.overlay_opener = None            # set by the web server: opens the browser-window overlay (fallback)
+        self._notices: list[dict] = []        # short messages for the page (a server started from the tray or the overlay)
+        self._srv_cache = {"at": 0.0, "value": None}
         self.overlay_native = None            # set by the web server: the real overlay panel
         self.show_main_window = None          # set by the web server: bring the app window forward
         self.overlay_listeners = None         # global shortcut + controller watcher
@@ -840,6 +842,7 @@ class LauncherApp:
         self._bring_forward(pid, eid, mode, monitor)
         self.catalog.record_play(game["id"])
         self._note_running(pid, game["title"], check["emulator"], eid)
+        self.running["game_id"] = game["id"]
         return {"launched": game["title"], "emulator": check["emulator"], "pid": pid}
 
     def api_emulators(self, body: dict) -> dict:
@@ -1726,6 +1729,8 @@ class LauncherApp:
         issues = []
         ra = found.get("retroarch", {}).get("path")
         for c in CONSOLES:
+            if c.id == "pc":
+                continue                       # Steam and Epic games start themselves; no emulator is ever needed
             if counts.get(c.id) and not self._emulator_for(c.id, found)[0]:
                 names = ", ".join(emulators.EMULATORS[e]["name"] for e in c.emulators if e in emulators.EMULATORS)
                 if ra and c.id in CORES:
@@ -2412,7 +2417,7 @@ class LauncherApp:
 
     # window lifetime (used by the packaged app so it quits when its window closes) ----------
     # calls that need no global lock: quick reads, or slow work that only touches its own cache
-    UNLOCKED = frozenset({"force_quit", "server_activity", "overlay", "overlay_open", "overlay_state", "overlay_capture_pad", "game_window", "router_test", "firewall_allow", "ping", "bye", "status", "specs", "server_status", "network_last", "server_control", "rescan", "scan_everything"})
+    UNLOCKED = frozenset({"force_quit", "server_activity", "notices", "overlay", "overlay_open", "overlay_state", "overlay_capture_pad", "game_window", "router_test", "firewall_allow", "ping", "bye", "status", "specs", "server_status", "network_last", "notices", "server_control", "rescan", "scan_everything"})
 
     def api_ping(self, body: dict) -> dict:
         self.last_ping, self.bye_at, self.tray_mode = time.time(), 0.0, False
@@ -2503,8 +2508,11 @@ class LauncherApp:
             return {"open": False}
         if winplace.close_titled(overlaymod.TITLE):
             return {"open": False}
-        if not self._running_now():
-            raise AppError("The overlay is for while a game is running. Start a game from Legacy Player first.")
+        preview = bool(body.get("preview"))
+        if not self._running_now() and not (preview and native is not None):
+            raise AppError("The overlay is for while a game is running. Start a game from Legacy Player first, or press 'Preview the overlay' in Preferences.")
+        if preview and native is not None:
+            native.preview = True
         if time.time() - self._overlay_launched < 1.0:
             return {"open": True}                      # a second press while it is still starting must not undo it
         if native is not None:
@@ -2524,13 +2532,41 @@ class LauncherApp:
         winplace.pin_titled(overlaymod.TITLE, self._monitor_for(prefs["monitor"]) or next((m for m in winplace.list_monitors() if m.get("primary")), None))
         return {"open": True}
 
+    def notify_ui(self, text: str, level: str = "") -> None:
+        """Queue a short message that the open page shows as a notification."""
+        self._notices.append({"text": text, "level": level, "at": time.time()})
+        del self._notices[:-20]
+
+    def api_notices(self, body: dict) -> dict:
+        out, self._notices = self._notices, []
+        return {"notices": out}
+
+    def _server_summary(self) -> dict | None:
+        """Your own server in one small dict for the overlay; read in the background so the overlay never waits on it."""
+        cache = self._srv_cache
+        if not (self.data_dir / "server").exists():                 # nothing was ever started here
+            return {"running": False, "shared": False, "players": 0, "rooms": 0}
+        if time.time() - cache["at"] > 3.0:
+            cache["at"] = time.time()
+
+            def work() -> None:
+                try:
+                    a = self.api_server_activity({})
+                    cache["value"] = {"running": bool(a.get("online")), "shared": bool(a.get("shared")),
+                                      "players": a.get("players", 0), "rooms": a.get("rooms", 0)}
+                except Exception:
+                    cache["value"] = {"running": False, "shared": False, "players": 0, "rooms": 0}
+            threading.Thread(target=work, daemon=True, name="overlay-server").start()
+        return cache["value"]
+
     def _overlay_view(self) -> dict:
         """What the overlay panel shows, read fresh every second."""
         running = self._running_now()
         room = self.room
         members = [n for n in ((room.get("session") or {}).get("participants") or {})] if room else []
         return {"game": ({"title": running["title"], "emulator": running["emulator"], "since": running.get("since")} if running else None),
-                "room": ({"game": room.get("game"), "role": room.get("role"), "invite_code": room.get("invite_code"), "members": members} if room else None)}
+                "room": ({"game": room.get("game"), "role": room.get("role"), "invite_code": room.get("invite_code"), "members": members} if room else None),
+                "server": self._server_summary(), "can_restart": bool(running and running.get("game_id"))}
 
     def _overlay_monitor(self) -> dict | None:
         prefs = self._display_prefs()
@@ -2549,8 +2585,33 @@ class LauncherApp:
                 self.overlay_native.close()
             if self.show_main_window:
                 self.show_main_window()
+        def server(action: str):
+            def run() -> str:
+                share = bool(self.catalog.settings().get("server_tls"))
+                self.api_server_control({"action": action, "share": share})
+                self._srv_cache["at"] = 0.0
+                said = {"start": "Server turned on.", "stop": "Server turned off.", "restart": "Server restarted."}[action]
+                self.notify_ui(said)
+                return said
+            return run
+
+        def restart_game() -> str:
+            r = self._running_now()
+            if not r or not r.get("game_id"):
+                raise AppError("This match was started from a room. Leave it and start it again from Legacy Player.")
+            gid = r["game_id"]
+            emulators.stop_pid(r["pid"])
+            self.running = None
+            for _ in range(40):
+                if not procs.is_alive(r["pid"], r.get("started")):
+                    break
+                time.sleep(0.15)
+            self.api_launch({"id": gid})
+            return "Restarting " + r["title"] + "."
         return {"back": lambda: self.overlay_native.close(), "fullscreen": window("fullscreen"), "windowed": window("windowed"),
-                "force_quit": lambda: self.api_force_quit({}), "open_app": open_app}
+                "force_quit": lambda: self.api_force_quit({}), "open_app": open_app,
+                "server_on": server("start"), "server_off": server("stop"), "server_restart": server("restart"),
+                "restart_game": restart_game}
 
     def api_overlay_state(self, body: dict) -> dict:
         room = self.room

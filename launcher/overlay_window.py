@@ -18,6 +18,7 @@ except Exception:                                      # pragma: no cover - depe
 
 BG, CARD, TEXT, MUTED, ACCENT, BAD = "#10142a", "#1a2040", "#e9ecff", "#9aa3c7", "#4f8cff", "#e5484d"
 WIDTH = 340
+SLOW = {"server_on", "server_off", "server_restart", "restart_game"}
 
 
 def available() -> bool:
@@ -50,6 +51,7 @@ class NativeOverlay:
         self._lock = threading.RLock()
         self._stopping = False
         self.error = ""
+        self.preview = False                              # opened from Preferences to look at it, with no game running
 
     # --- called from any thread ---------------------------------------------------------------------------
     def toggle(self) -> bool:
@@ -133,6 +135,10 @@ class NativeOverlay:
         try:
             while True:
                 cmd = self._q.get_nowait()
+                if isinstance(cmd, tuple):
+                    if cmd[0] == "flash" and self._open:
+                        self._flash(cmd[1])
+                    continue
                 if cmd == "show":
                     self._draw()
                     self._place()
@@ -158,7 +164,9 @@ class NativeOverlay:
 
     def _signature(self, s: dict) -> str:
         g, r = s.get("game") or {}, s.get("room") or {}
-        return repr((g.get("title"), g.get("emulator"), r.get("game"), r.get("invite_code"), tuple(r.get("members") or []), time.time() - self._armed < 4.0))
+        sv = s.get("server") or {}
+        return repr((g.get("title"), g.get("emulator"), r.get("game"), r.get("invite_code"), tuple(r.get("members") or []),
+                     time.time() - self._armed < 4.0, tuple(sorted(sv.items())), bool(s.get("can_restart"))))
 
     def _tick(self) -> None:
         """Once a second: redraw only if something changed, otherwise just move the session timer (no flicker)."""
@@ -167,7 +175,7 @@ class NativeOverlay:
             s = self.state() or {}
         except Exception:
             return
-        if not s.get("game"):
+        if not s.get("game") and not self.preview:
             self._hide()                                    # the game ended: nothing left to manage
             return
         if self._signature(s) != getattr(self, "_sig", None):
@@ -179,6 +187,7 @@ class NativeOverlay:
 
     def _hide(self, user: bool = False) -> None:
         self._open = False
+        self.preview = False
         self.win.withdraw()
 
     def _place(self) -> None:
@@ -206,6 +215,15 @@ class NativeOverlay:
             try:
                 if command:
                     command()
+                elif action in SLOW:                        # starting a server takes seconds: never freeze the overlay
+                    self._flash("Working...")
+
+                    def work() -> None:
+                        try:
+                            self._q.put(("flash", str(self.actions[action]() or "")))
+                        except Exception as exc:
+                            self._q.put(("flash", f"That did not work: {exc}"))
+                    threading.Thread(target=work, daemon=True, name="overlay-action").start()
                 elif action:
                     self.actions[action]()
             except Exception as exc:                        # a failing action must never take the overlay down
@@ -223,6 +241,12 @@ class NativeOverlay:
         b.bind("<Return>", lambda e: b.invoke())
         self._buttons.append(b)
         return b
+
+    def _run_action(self, name: str) -> None:
+        try:
+            self.actions[name]()
+        except Exception as exc:
+            self._flash(f"That did not work: {exc}")
 
     def _flash(self, text: str) -> None:
         self._note = text
@@ -246,20 +270,63 @@ class NativeOverlay:
         game, room = s.get("game"), s.get("room")
         self._sig, self._timer = self._signature(s), None
         head = tk.Frame(self.body, bg=BG)
-        head.pack(fill="x", padx=14, pady=(12, 0))
-        tk.Label(head, text="Legacy Player", bg=BG, fg=MUTED, font=("Segoe UI", 9)).pack(side="left")
+        head.pack(fill="x", padx=14, pady=(10, 0))
+        home = tk.Button(head, text="⌂  Legacy Player", command=lambda: self._run_action("open_app"), bd=0, bg=BG, fg=TEXT,
+                         activebackground=BG, activeforeground=ACCENT, font=("Segoe UI", 10, "bold"), cursor="hand2", anchor="w",
+                         takefocus=1, highlightthickness=2, highlightbackground=BG, highlightcolor=ACCENT)
+        home.pack(side="left")
+        home.bind("<Return>", lambda e: home.invoke())
+        self._buttons.append(home)
         tk.Button(head, text="✕", command=lambda: self._hide(), bd=0, bg=BG, fg=MUTED, activebackground=BG, activeforeground=TEXT,
                   font=("Segoe UI", 10), cursor="hand2", takefocus=0, highlightthickness=0).pack(side="right")
         if game:
-            self._label(game["title"], 13, True, pady=(4, 0))
+            self._label(game["title"], 13, True, pady=(6, 0))
             since = game.get("since")
             line = ("Playing for " + duration(time.time() - since) + "  ·  " if since else "") + "in " + str(game.get("emulator") or "an emulator")
-            self._timer = self._label(line, 9, fg=MUTED, pady=(0, 8))
-            self._button(self.body, "Back to the game", "back").configure(bg=ACCENT, fg="#ffffff")
-            row = tk.Frame(self.body, bg=BG)
-            row.pack(fill="x", padx=14, pady=3)
-            self._button(row, "Full screen", "fullscreen", side="left")
-            self._button(row, "Windowed", "windowed", side="left")
+            self._timer = self._label(line, 9, fg=MUTED, pady=(0, 6))
+        else:
+            self._label("No game is running", 12, True, pady=(6, 6))
+        # room and server, in one small card
+        sv = s.get("server") or {}
+        box = tk.Frame(self.body, bg=CARD)
+        box.pack(fill="x", padx=14, pady=(4, 3))
+        if room:
+            tk.Label(box, text=("Hosting " if room.get("role") == "host" else "In room: ") + str(room.get("game") or ""), bg=CARD, fg=TEXT,
+                     anchor="w", font=("Segoe UI", 9, "bold"), wraplength=WIDTH - 60).pack(fill="x", padx=10, pady=(8, 0))
+            names = ", ".join(room.get("members") or [])
+            if names:
+                tk.Label(box, text=names, bg=CARD, fg=MUTED, anchor="w", font=("Segoe UI", 9), wraplength=WIDTH - 60).pack(fill="x", padx=10)
+            if room.get("invite_code"):
+                code = room["invite_code"]
+                r = tk.Frame(box, bg=CARD)
+                r.pack(fill="x", padx=10, pady=(4, 2))
+                tk.Label(r, text=code, bg=CARD, fg=TEXT, font=("Consolas", 10, "bold")).pack(side="left")
+                self._button(r, "Copy", None, command=lambda c=code: self._copy(c), side="right", small=True)
+        else:
+            tk.Label(box, text="Not in a room", bg=CARD, fg=MUTED, anchor="w", font=("Segoe UI", 9)).pack(fill="x", padx=10, pady=(8, 0))
+        if sv:
+            if sv.get("running"):
+                text = "Your server: on" + (", open to friends" if sv.get("shared") else ", this computer only") + \
+                    f"  ·  {sv.get('players', 0)} playing, {sv.get('rooms', 0)} rooms"
+            else:
+                text = "Your server: off"
+            tk.Label(box, text=text, bg=CARD, fg=(TEXT if sv.get("running") else MUTED), anchor="w", justify="left", font=("Segoe UI", 9),
+                     wraplength=WIDTH - 60).pack(fill="x", padx=10, pady=(2, 4))
+            srow = tk.Frame(box, bg=CARD)
+            srow.pack(fill="x", padx=10, pady=(0, 8))
+            if sv.get("running"):
+                self._button(srow, "Turn off", "server_off", side="left", small=True)
+                self._button(srow, "Restart", "server_restart", side="left", small=True)
+            else:
+                self._button(srow, "Turn on", "server_on", side="left", small=True)
+        else:
+            tk.Frame(box, bg=CARD, height=8).pack()
+        # the game
+        if game:
+            grow = tk.Frame(self.body, bg=BG)
+            grow.pack(fill="x", padx=14, pady=(8, 3))
+            if s.get("can_restart"):
+                self._button(grow, "Restart game", "restart_game", side="left")
             armed = time.time() - self._armed < 4.0
 
             def quit_click() -> None:
@@ -270,27 +337,11 @@ class NativeOverlay:
                 else:
                     self._armed = time.time()
                     self._draw(force=True)
-            self._button(self.body, "Press again to force quit (unsaved progress is lost)" if armed else "Force quit game", None, bad=True, command=quit_click)
-        else:
-            self._label("No game is running", 13, True, pady=(4, 8))
-        if room:
-            box = tk.Frame(self.body, bg=CARD)
-            box.pack(fill="x", padx=14, pady=(10, 3))
-            tk.Label(box, text=("Hosting " if room.get("role") == "host" else "In room: ") + str(room.get("game") or ""), bg=CARD, fg=MUTED,
-                     anchor="w", font=("Segoe UI", 9), wraplength=WIDTH - 60).pack(fill="x", padx=10, pady=(8, 2))
-            names = ", ".join(room.get("members") or [])
-            if names:
-                tk.Label(box, text=names, bg=CARD, fg=TEXT, anchor="w", font=("Segoe UI", 9), wraplength=WIDTH - 60).pack(fill="x", padx=10)
-            if room.get("invite_code"):
-                code = room["invite_code"]
-                r = tk.Frame(box, bg=CARD)
-                r.pack(fill="x", padx=10, pady=(4, 8))
-                tk.Label(r, text=code, bg=CARD, fg=TEXT, font=("Consolas", 10, "bold")).pack(side="left")
-                self._button(r, "Copy", None, command=lambda c=code: self._copy(c), side="right", small=True)
-        self._button(self.body, "Open Legacy Player", "open_app")
+            fq = self._button(grow, "Press again: unsaved progress is lost" if armed else "Force quit", None, bad=True, command=quit_click, side="left")
+            fq.pack_configure(padx=(6, 0) if s.get("can_restart") else 0)
         note = getattr(self, "_note", "")
         if note:
-            self._label(note, 9, fg=BAD, pady=(4, 0))
+            self._label(note, 9, fg=(BAD if "not work" in note else MUTED), pady=(4, 0))
         tk.Frame(self.body, bg=BG, height=10).pack()
         if focus_idx >= 0 and focus_idx < len(self._buttons):
             self._buttons[focus_idx].focus_set()

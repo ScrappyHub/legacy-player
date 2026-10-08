@@ -607,7 +607,7 @@ const $=(s,r=document)=>r.querySelector(s);
 function h(tag,attrs,...kids){const e=document.createElement(tag);for(const[k,v]of Object.entries(attrs||{})){if(k==="class")e.className=v;else if(k.startsWith("on"))e.addEventListener(k.slice(2),v);else if(v===true)e.setAttribute(k,"");else if(v!==false&&v!=null)e.setAttribute(k,v)}
  for(const c of kids.flat()){if(c==null||c===false)continue;e.append(c.nodeType?c:document.createTextNode(String(c)))}return e}
 /* A thin shimmer bar at the top and a hopping Martin show the app is working. Quiet background polls do not trigger it. */
-let pending=0,busyT=null;const QUIET=new Set(["ping","mp_state","status","scan_pc","server_status","pads","bye","network_last","setup_status","specs","keyboard","home","server_control"]);
+let pending=0,busyT=null;const QUIET=new Set(["ping","mp_state","status","scan_pc","server_status","notices","pads","bye","network_last","setup_status","specs","keyboard","home","server_control"]);
 async function api(name,body={}){const loud=!QUIET.has(name);if(loud){pending++;if(pending===1)busyT=setTimeout(()=>document.body.classList.add("busy"),200)}
  try{const r=await fetch("/api/"+name,{method:"POST",headers:{"Content-Type":"application/json","X-LP-Token":TOKEN},body:JSON.stringify(body)});
   const j=await r.json();if(!r.ok)throw new Error(j.error||"Request failed");return j}
@@ -1939,7 +1939,7 @@ async function viewPreferences(m){
   h("div",{class:"row",style:"gap:8px;margin-top:8px;flex-wrap:wrap"},h("b",{style:"min-width:150px"},"Controller combo"),padOut,
    h("button",{class:"btn",onclick:e=>capture(e.target)},"Set by holding buttons"),h("button",{class:"btn",onclick:()=>saveOv({pad:["back","start"]})},"Back + Start"),h("button",{class:"btn",onclick:()=>saveOv({pad:[]})},"Turn off")),
   h("div",{class:"small muted",style:"margin-top:6px"},"Hold the combo for about a second. Works with Xbox-style controllers (including most PlayStation and other pads run through Steam Input or DS4Windows)."),
-  ovNote,h("div",{class:"row",style:"margin-top:8px"},h("button",{class:"btn primary",onclick:()=>act(()=>api("overlay_open"))},"Try the overlay now"))));
+  ovNote,h("div",{class:"row",style:"margin-top:8px"},h("button",{class:"btn primary",onclick:()=>act(()=>api("overlay_open",{preview:true}))},"Preview the overlay"),h("span",{class:"small muted"},"Opens it without a game so you can look at it. In a real game, press "+(ov.hotkey||"your shortcut")+(ov.pad&&ov.pad.length?" or hold the controller combo":"")+"; press it again or Esc to close."))));
  settingGroups(m,s,groups,g=>PREF_GROUPS.has(g));
 }
 
@@ -2256,10 +2256,10 @@ const GRADS=[["#3b6bff","#7a5cff"],["#d9468f","#ff8a5c"],["#0aa57a","#2bd1b0"],[
 async function fixDolphin(i,refresh){
  if(i.kind==="dolphin-folders"){const r=await act(()=>api("dolphin_folders",{}));if(r){toast(r.added?"Added "+r.added+" game folder(s) to Dolphin.":"Dolphin already has them.");refresh()}}
  else{if(!await ask("Dolphin online play lets the other players see your address. Allow direct connections?","Allow"))return;if(await act(()=>api("settings",{key:"allow_direct_connections",value:true}),"Allowed"))refresh()}}
-function caseCards(dr,refresh){const act=dr.issues.filter(i=>!i.dismissed),quiet=dr.issues.filter(i=>i.dismissed);
+function caseCards(dr,refresh){const todo=dr.issues.filter(i=>!i.dismissed),quiet=dr.issues.filter(i=>i.dismissed);
  const ic={core:AVATARS.gem,emulator:AVATARS.controller,bios:AVATARS.ghost};
  const fix=i=>i.kind==="dolphin-folders"||i.kind==="dolphin-direct"?{t:i.kind==="dolphin-folders"?"Add the folders":"Allow it",fn:()=>fixDolphin(i,refresh)}:i.kind==="core"?{t:"Install the core",fn:()=>{const el=$("#supplies");if(el)el.scrollIntoView({behavior:"smooth"});toast("Press “Install missing cores” in the supply cabinet","")}}:{t:i.kind==="bios"?"Find BIOS files":"Find an emulator",fn:()=>nav("engines")};
- return h("div",{},act.length?h("div",{class:"cases"},...act.map((i,n)=>{const g=GRADS[n%GRADS.length],f=fix(i);
+ return h("div",{},todo.length?h("div",{class:"cases"},...todo.map((i,n)=>{const g=GRADS[n%GRADS.length],f=fix(i);
    return h("div",{class:"case",style:`--c1:${g[0]};--c2:${g[1]}`},h("span",{class:"stamp"},"NEEDS A DOCTOR"),pixels((ic[i.kind]||AVATARS.gem).rows,44,"caseicon"),
     h("div",{class:"ct"},i.kind==="dolphin-folders"?"Dolphin can't see your games":i.kind==="dolphin-direct"?"Dolphin online is switched off":i.kind==="core"?"Missing core":i.kind==="bios"?"Missing BIOS":"Missing emulator"),h("p",{},i.text),
     h("div",{class:"row",style:"gap:8px"},h("button",{class:"btn primary",onclick:f.fn},f.t),
@@ -2696,7 +2696,7 @@ async function homeArtTip(){
 (async function init(){if(OVERLAY){await overlayInit();return}try{const s=await api("settings");S.settings=s.values;document.documentElement.dataset.theme=s.values.theme}catch(e){}
  buildMenubar();$("#brand").addEventListener("click",()=>nav("home"));$("#logomartin").append(martin(34));$("#bootmartin").append(martin(96,"hop"));
  try{S.profile=await api("profile")}catch(e){}renderWho();
- const r=await api("mp_state").catch(()=>({room:null}));S.room=r.room;S.waits=r.waits||[];if(S.room||S.waits.length)poll();pingServer();setInterval(pingServer,15000);
+ const r=await api("mp_state").catch(()=>({room:null}));S.room=r.room;S.waits=r.waits||[];if(S.room||S.waits.length)poll();pingServer();setInterval(pingServer,15000);setInterval(async()=>{const n=await api("notices").catch(()=>null);if(n&&n.notices)n.notices.forEach(x=>{toast(x.text,x.level);if(/server/i.test(x.text))pingServer()})},2000);
  if(S.settings&&!S.settings.setup_done)S.tab="welcome";
  await go();
  setTimeout(()=>{const b=$("#boot");if(b){b.classList.add("gone");setTimeout(()=>b.remove(),800)}},350);

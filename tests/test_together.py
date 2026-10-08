@@ -563,7 +563,8 @@ class TrayTests(unittest.TestCase):
         tray._state = {"running": True, "players": 0, "live": 0, "open_rooms": 0, "cert": True, "known": True, "shared": False}
         items = {i[0] + i[1]: i for i in tray.menu() if i}
         self.assertIn("server_shareLet friends connect (restarts the server)", items)
-        self.assertFalse(items["server_codeCopy server code"][2], "no code while the server is only on this computer")
+        label = "server_codeCopy server code (opens the server to friends first)"
+        self.assertTrue(items[label][2], "the code is always offered: it opens the server to friends first when needed")
         self.assertIn("Server running  ·  0 players  ·  0 rooms  ·  this computer only", [i[1] for i in tray.menu() if i])
         tray._state["shared"] = True
         items = {i[0] + i[1]: i for i in tray.menu() if i}
