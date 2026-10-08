@@ -4,7 +4,13 @@ What you need: one small Linux machine with a public address (any VPS), Docker, 
 cloud security group. For problem reports you also need a name pointing at it (for example `reports.example.com`) and
 TCP 80 and 443 open.
 
-## 1. Start it
+## Quickest: one command on a fresh Ubuntu/Debian machine
+```
+curl -fsSL https://raw.githubusercontent.com/ScrappyHub/legacy-player/main/deploy/setup-vps.sh | sudo bash
+```
+It installs what it needs, starts the server (and restarts it after a reboot), opens TCP 8765 in the machine's own firewall and prints the server code. Open TCP 8765 in your provider's cloud firewall too. The server listens on IPv4 and IPv6. The rest of this page is the Docker route.
+
+## 1. Start it (Docker)
 ```
 cd deploy
 cp .env.example .env

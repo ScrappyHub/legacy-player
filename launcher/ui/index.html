@@ -1452,6 +1452,19 @@ async function viewServers(m){
   }
   if(t.running){say("Tailscale is ready: "+t.address+". The server owner presses 'Use Tailscale for my server code', then shares their computer with the friend in Tailscale's admin page.");window.open(t.admin_page,"_blank","noopener")}
   else say("Tailscale isn't signed in yet. Press this button again when you've signed in.")};
+ const reachDialog=async()=>{const r=await act(()=>api("reach",{}));if(!r)return;
+  const close=()=>ov.remove();
+  const row=x=>h("div",{class:"unrow rrow"},h("span",{class:"rmark"},x.ok?"✓":"•"),h("div",{class:"grow"},h("b",{},x.label),h("div",{class:"small muted"},x.text)));
+  const ov=h("div",{class:"modal",role:"dialog","aria-modal":"true"},h("div",{class:"modalbox wide"},
+   h("h3",{style:"margin:0 0 6px"},"How friends can reach your server"),
+   h("p",{class:"small muted"},"Nothing extra to install. A shared server is the route that always works; IPv6 and a router port work when both of you can use them."),
+   h("div",{class:"unlist"},...r.routes.map(row)),
+   r.ipv6.available?h("div",{class:"row",style:"margin-top:8px"},h("button",{class:"btn",onclick:async()=>{const x=await act(()=>api("server_use_ipv6",{}));if(x){toast(x.message);close()}}},r.using_ipv6?"Using my IPv6 address in the server code":"Use my IPv6 address in the server code")):"",
+   h("details",{style:"margin-top:12px"},h("summary",{class:"small muted"},"Advanced: a private network with Tailscale (optional)"),
+    h("div",{class:"row",style:"margin-top:6px"},h("button",{class:"btn",onclick:tsSetup},"Set up Tailscale"),
+     h("button",{class:"btn",title:"Puts your Tailscale address in the server code. Works even when your provider shares your address or your router won't open a port. Your friend needs Tailscale too.",onclick:async()=>{const r=await act(()=>api("server_use_tailscale",{}));if(r){toast(r.message);S.settings=(await api("settings",{}).catch(()=>null))?.values||S.settings;go()}}},"Use Tailscale for my server code"))),
+   h("div",{class:"row",style:"justify-content:flex-end;margin-top:12px"},h("button",{class:"btn",onclick:close},"Close"))));
+  document.body.append(ov)};
  const num=(key,min,max)=>h("input",{type:"number",value:V[key],min,max,style:"width:90px","aria-label":key});
  const players=num("server_max_players",2,8),rooms=num("server_max_rooms",1,10000),line=num("server_max_waiting",0,500);
  const pub=h("input",{type:"text",value:V.server_public_address||"",placeholder:"leave blank: found automatically",style:"width:min(380px,100%)","aria-label":"Address friends use"});
@@ -1466,8 +1479,8 @@ async function viewServers(m){
   h("div",{class:"row"},h("button",{class:"btn primary",onclick:()=>srvAct("start")},"Start"),h("button",{class:"btn",onclick:()=>srvAct("restart")},"Restart"),h("button",{class:"btn",onclick:()=>srvAct("stop")},"Stop"),
    h("label",{class:"small"},share," Let friends connect (encrypted with this app's own certificate)"),
    h("button",{class:"btn",title:"Opens the server port on your router and closes it again, to see if friends can reach you.",onclick:routerTest},"Test my router"),h("button",{class:"btn",onclick:fwAsk},"Check Windows Firewall"),
-   h("button",{class:"btn",onclick:tsSetup},"Set up Tailscale (private network)"),
-   h("button",{class:"btn",title:"Puts your Tailscale address in the server code. Works even when your provider shares your address or your router won't open a port. Your friend needs Tailscale too.",onclick:async()=>{const r=await act(()=>api("server_use_tailscale",{}));if(r){toast(r.message);S.settings=(await api("settings",{}).catch(()=>null))?.values||S.settings;go()}}},"Use Tailscale for my server code")),
+   h("button",{class:"btn primary",title:"Shows the ways a friend can connect to you, and which of them work on this computer.",onclick:reachDialog},"How friends reach me"),
+   ),
   flag("server_autostart","Start my server by itself when I host or join a room","If your own server is not running, Legacy Player starts it for you."),
   flag("mp_auto_agree","When a host starts a game I already have, join it without asking me each time","Off: you are asked every time. On: you agree automatically, the game opens and connects, so nothing has to stop between games."),
   h("h3",{style:"margin-top:16px"},whyInline("Limits","Players per room is the most any room may hold. Rooms is how many your server will keep. Waiting line is how many people can queue for a full room (0 turns lines off). They apply the next time the server starts.")),
@@ -1505,8 +1518,6 @@ async function viewSupplies(m){
    st.retroarch.installed&&!st.info_installed?h("p",{class:"small bad"},"Core info files are missing. RetroArch refuses netplay without them. Press Install to add them."):null,
    h("div",{class:"card",style:"margin-top:12px"},h("div",{class:"row"},h("h3",{class:"grow"},"Dolphin (GameCube and Wii)"),ok(st.dolphin.installed)),
     h("p",{class:"small muted"},st.dolphin.installed?st.dolphin.path:"Not found. Download it from the official page, then set its path in Emulators."),
-    h("p",{class:"small muted"},st.tailscale?(st.tailscale.running?"Private link ready (Tailscale "+st.tailscale.address+").":st.tailscale.installed?"Tailscale is installed but not signed in.":"Optional encrypted private link: needs Tailscale."):""),
-    st.tailscale&&!st.tailscale.installed?h("a",{href:st.tailscale.download_page,target:"_blank",rel:"noopener noreferrer"},"Get Tailscale (official page)"):null,
     st.dolphin.installed?h("div",{class:"row"},h("button",{class:"btn",onclick:async()=>{const r=await act(()=>api("dolphin_folders",{}));if(r)toast(r.added?"Added "+r.added+" game folder(s) to Dolphin. Open Dolphin to see them.":"Dolphin already has your game folders.")}},"Add my game folders to Dolphin"),h("span",{class:"small muted"},"Close Dolphin first.")):h("a",{href:st.dolphin.download_page,target:"_blank",rel:"noopener noreferrer"},"Open the Dolphin download page")),
    h("div",{class:"card",style:"margin-top:12px"},h("h3",{},"Install"),
     h("div",{class:"row"},

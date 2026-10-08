@@ -33,7 +33,7 @@ from . import overlay as overlaymod
 from . import procs
 from . import controllers, emulators, engines, pads, savefolders, saves
 from .installer import EngineInstaller, InstallError, latest_release, pick_asset
-from . import dolphinpads, dolphinpaths, privatelink, firewall, gameinfo, portmap, pcgames, winplace, keyboard, memprobe, netcheck, reports, selfuninstall, sysinfo
+from . import dolphinpads, dolphinpaths, privatelink, firewall, gameinfo, portmap, pcgames, reach, winplace, keyboard, memprobe, netcheck, reports, selfuninstall, sysinfo
 from .covers import (CONTENT_TYPES, CoverFetcher, SYSTEMS as COVER_SYSTEMS, clear_custom_cover, cover_path,
                      custom_cover, set_custom_cover)
 from .pcscan import PcScan
@@ -2787,6 +2787,23 @@ class LauncherApp:
         elif action != "status":
             raise AppError("action must be status, install or login")
         return {**privatelink.status(), "install": privatelink.install_state(), "admin_page": privatelink.ADMIN_PAGE}
+
+    def api_reach(self, body: dict) -> dict:
+        """The ways friends can reach this computer's server without installing anything, and which of them work here."""
+        ipv6 = reach.global_ipv6()
+        state = (self.port_map or {}).get("state", "")
+        shared = bool(self.catalog.settings().get("server_host") not in ("127.0.0.1", "localhost", "::1"))
+        return {"ipv6": ipv6, "port_state": state, "shared_server": shared, "routes": reach.plan(ipv6, state, shared),
+                "using_ipv6": self.catalog.settings().get("server_public_address") == ipv6.get("address") and bool(ipv6.get("address"))}
+
+    def api_server_use_ipv6(self, body: dict) -> dict:
+        """Put this computer's public IPv6 address in the server code. Friends who have IPv6 connect straight in; no router setup."""
+        ipv6 = reach.global_ipv6()
+        if not ipv6["available"]:
+            raise AppError("This computer has no public IPv6 address, so this route is not available. A shared server works for everyone.")
+        self.catalog.set_setting("server_public_address", ipv6["address"])
+        note = "" if ipv6["stable"] else " The address can change from day to day, so make a fresh code each time you host."
+        return {"address": ipv6["address"], "message": "Your server code now uses your IPv6 address. Make a new code and send it; your friend needs IPv6 too, and your server must be running with sharing on." + note}
 
     def api_server_use_tailscale(self, body: dict) -> dict:
         """Make the server code carry this computer's Tailscale address, so a friend who is on your Tailscale network can connect

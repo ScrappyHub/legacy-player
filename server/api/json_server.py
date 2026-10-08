@@ -170,14 +170,23 @@ async def serve(
         ssl_context.minimum_version = ssl.TLSVersion.TLSv1_2
         ssl_context.load_cert_chain(tls_cert, tls_key)
     connection_limit = asyncio.Semaphore(128)
-    server = await asyncio.start_server(
-        lambda reader, writer: handle_client(reader, writer, service, connection_limit, control, relay),
-        host,
-        port,
-        limit=MAX_REQUEST_BYTES * 2,
-        ssl=ssl_context,
-        ssl_handshake_timeout=8 if ssl_context is not None else None,      # a stranger that never finishes the handshake cannot hold a slot
-    )
+    async def listen(where):
+        return await asyncio.start_server(
+            lambda reader, writer: handle_client(reader, writer, service, connection_limit, control, relay),
+            where,
+            port,
+            limit=MAX_REQUEST_BYTES * 2,
+            ssl=ssl_context,
+            ssl_handshake_timeout=8 if ssl_context is not None else None,      # a stranger that never finishes the handshake cannot hold a slot
+        )
+    server = None
+    if host == "0.0.0.0":          # shared server: listen on IPv6 too, so players on IPv6 need no router setup at all
+        try:
+            server = await listen(["0.0.0.0", "::"])
+        except OSError:            # no IPv6 on this machine: IPv4 only, as before
+            server = None
+    if server is None:
+        server = await listen(host)
     bound = server.sockets[0].getsockname()
     store.write_info(
         {"host": host, "port": bound[1], "tls": ssl_context is not None, "started_at": time.time()}
