@@ -22,8 +22,9 @@ def _norm(p: str) -> str:
     return p.strip().strip('"').replace("\\", "/").rstrip("/").lower()
 
 
-def add_game_folders(exe: str | Path, folders: list, *, recursive: bool = True) -> dict:
-    """Add each folder not already listed. `recursive` also ticks Dolphin's "Search Subfolders"."""
+def add_game_folders(exe: str | Path, folders: list, *, recursive: bool = False) -> dict:
+    """Add each folder not already listed. The folders are the exact ones the games are in, so Dolphin's own "Search Subfolders"
+    choice is left alone unless `recursive` is asked for."""
     try:
         user = find_user_dir(exe)
         if user is None:

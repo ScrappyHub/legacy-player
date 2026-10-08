@@ -301,7 +301,7 @@ class LauncherApp:
              "netplay": c.netplay, "netplay_note": c.netplay_note}
             for c in CONSOLES if counts.get(c.id)
         ]
-        self._emus_cache = emus = self._console_emulators()
+        self._emus_cache = self._console_emulators()
         return {
             "consoles": consoles, "total": sum(counts.values()), "shown": len(selected),
             "hidden_total": hidden_total, "showing_hidden": show_hidden,
@@ -1574,7 +1574,8 @@ class LauncherApp:
             self.catalog.set_setting("display_name", name)
         if "avatar" in body:
             self.catalog.set_setting("avatar", str(body["avatar"])[:24])
-        claimed = self._claim_alias() if ("alias" in body or body.get("claim")) else None
+        if "alias" in body or body.get("claim"):
+            self._claim_alias()
         s = self.catalog.settings()
         tag = self.catalog.data.get("alias_tag") or ""
         return {"alias": s["display_name"], "avatar": s["avatar"], "tag": tag, "claimed": bool(tag),

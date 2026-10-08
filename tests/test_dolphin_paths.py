@@ -40,7 +40,7 @@ class DolphinPathsTests(unittest.TestCase):
         self.assertIn("SkipIPL = True", text)
 
     def test_already_present_is_left_alone_and_backup_made_once(self):
-        self.ini.write_text("[General]\nISOPaths = 1\nISOPath0 = c:\\games\\gc\nRecursiveISOPaths = True\n")
+        self.ini.write_text("[General]\nISOPaths = 1\nISOPath0 = c:\\games\\gc\n")
         before = self.ini.read_text()
         self.assertFalse(self.add()["added"])
         self.assertEqual(self.ini.read_text(), before)
@@ -59,12 +59,17 @@ class DolphinPathsTests(unittest.TestCase):
 
     def test_many_folders_and_search_subfolders(self):
         self.ini.write_text("[General]\nISOPaths = 0\nRecursiveISOPaths = False\n")
-        out = dolphinpaths.add_game_folders("dolphin.exe", ["C:/A", "C:/B", "c:\\a"])
+        out = dolphinpaths.add_game_folders("dolphin.exe", ["C:/A", "C:/B", "c:\\a"], recursive=True)
         self.assertEqual(out["added"], ["C:/A", "C:/B"])
         text = self.ini.read_text()
         self.assertIn("ISOPaths = 2", text)
         self.assertIn("RecursiveISOPaths = True", text)
         self.assertNotIn("False", text)
+
+    def test_subfolder_choice_is_left_alone_by_default(self):
+        self.ini.write_text("[General]\nRecursiveISOPaths = False\n")
+        dolphinpaths.add_game_folders("dolphin.exe", ["C:/A"])
+        self.assertIn("RecursiveISOPaths = False", self.ini.read_text())
 
     def test_newest_settings_folder_wins(self):
         from launcher import dolphinpads

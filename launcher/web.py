@@ -89,7 +89,6 @@ def make_handler(app: LauncherApp, token: str, port_getter, launch: Launch | Non
             from urllib.parse import parse_qs, urlparse
             parsed = urlparse(self.path)
             if parsed.path in {"/", "/index.html"}:
-                extra = {}
                 if launch is not None:
                     cookie_name = f"lp_{port_getter()}"
                     jar = {}
