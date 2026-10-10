@@ -74,6 +74,7 @@ option{background:#141a33;color:#eef1ff}
 .wtile b{font-size:.9rem;padding:0 2px}.wtile span{font-size:.74rem;color:var(--mute);padding:0 2px;line-height:1.3}
 .themes .wsw{width:34px;height:34px;border-radius:8px;border:2px solid var(--line);padding:0;cursor:pointer;image-rendering:pixelated}
 .themes .wsw.on{outline:3px solid var(--accent);outline-offset:2px}.themes .wsw:focus-visible{outline:3px solid var(--text);outline-offset:2px}
+.worldfold>summary{padding:6px 0;flex-wrap:wrap}.worldfold>summary .small{margin-left:auto}
 .tlabel{font:800 .68rem ui-monospace,Consolas,monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--mute);margin:10px 0 6px}
 [data-bg=plain] .bg svg,[data-bg=plain] .orb{display:none}
 [data-bg=plain] .bg{background:var(--bg)!important}
@@ -860,6 +861,10 @@ async function pickTheme(id,opts){opts=opts||{};S.settings=S.settings||{};S.sett
  const r=await api("settings",{key:"theme",value:id}).catch(()=>null);if(r)S.settings=r.values;else{toast("Could not save the theme.","warn");return}
  if(BIOME_BY[id]&&opts.scene&&document.documentElement.dataset.bg!=="scene"){applyBg("scene");const b=await api("settings",{key:"background",value:"scene"}).catch(()=>null);if(b)S.settings=b.values;toast(BIOME_BY[id].name+": the background shows the place too. Pick another under Background if you like.")}}
 async function pickTime(v){S.settings=S.settings||{};S.settings.time_of_day=v;applyTheme(document.documentElement.dataset.theme);const r=await api("settings",{key:"time_of_day",value:v}).catch(()=>null);if(r)S.settings=r.values;else toast("Could not save that.","warn")}
+/* the World previews fold away: open the first time, and if the player closes them they stay closed (on this computer)
+   until they open them again */
+function worldOpen(){try{const v=localStorage.getItem("lp_world_open");if(v!==null)return v!=="0"}catch(e){}return S.worldOpen!==false}
+function setWorldOpen(v){S.worldOpen=!!v;try{localStorage.setItem("lp_world_open",v?"1":"0")}catch(e){}}
 function themePicker(compact){
  const box=h("div",{class:"themes-wrap",role:"group","aria-label":"Theme"});
  const draw=()=>{const cur=document.documentElement.dataset.theme||"dark",tod=(S.settings&&S.settings.time_of_day)||"auto";
@@ -870,11 +875,15 @@ function themePicker(compact){
    const world=h("div",{class:"themes"},...BIOMES.map(b=>{const d=b.day.p,n=b.night.p;return h("button",{type:"button",class:"wsw"+(cur===b.id?" on":""),title:b.name,"aria-label":b.name+" theme","aria-pressed":cur===b.id?"true":"false",
      style:`background:linear-gradient(180deg,${d.S} 0 34%,${d.F} 34% 52%,${d.G} 52% 100%) left/50% 100% no-repeat,linear-gradient(180deg,${n.S} 0 34%,${n.F} 34% 52%,${n.G} 52% 100%) right/50% 100% no-repeat`,onclick:e=>{e.stopPropagation();pickTheme(b.id,{scene:true})}})}));
    box.replaceChildren(h("div",{class:"tlabel"},"Classic"),classic,h("div",{class:"tlabel"},"Legacy Player World"),world,h("div",{style:"margin-top:8px"},timeSeg));return}
-  box.replaceChildren(h("div",{class:"tlabel",style:"margin-top:0"},"Classic colours"),classic,
-   h("div",{class:"row",style:"margin:14px 0 6px"},h("div",{class:"tlabel grow",style:"margin:0"},"Legacy Player World: day | night"),timeSeg),
-   h("div",{class:"wgrid"},...BIOMES.map(b=>h("button",{type:"button",class:"wtile"+(cur===b.id?" on":""),"aria-pressed":cur===b.id?"true":"false",title:b.name+": "+b.blurb,onclick:e=>{e.stopPropagation();pickTheme(b.id,{scene:true})}},
-    Scene.thumb(b,120,54),h("b",{},b.name),h("span",{},b.blurb)))),
-   h("div",{class:"small muted",style:"margin-top:8px"},"Each place has its own colours by day and by night. Follow my clock switches at 7 in the morning and 7 in the evening."))};
+  const curWorld=BIOME_BY[cur];
+  const open=worldOpen();
+  const world=h("details",{class:"fold worldfold",open,ontoggle:e=>{if(e.target.open===worldOpen())return;setWorldOpen(e.target.open);document.querySelectorAll(".worldfold").forEach(d=>{if(d!==e.target)d.open=e.target.open});if(e.target.open)draw()}},
+   h("summary",{},h("span",{class:"tlabel",style:"margin:0"},"Legacy Player World: day | night"),
+    h("span",{class:"small muted"},curWorld?"Now: "+curWorld.name+", "+(document.documentElement.dataset.time==="day"?"day":"night"):"8 places")),
+   h("div",{class:"row",style:"margin:8px 0 8px"},h("span",{class:"small muted grow"},"Each place has its own colours by day and by night. Follow my clock switches at 7 in the morning and 7 in the evening."),timeSeg),
+   open?h("div",{class:"wgrid"},...BIOMES.map(b=>h("button",{type:"button",class:"wtile"+(cur===b.id?" on":""),"aria-pressed":cur===b.id?"true":"false",title:b.name+": "+b.blurb,onclick:e=>{e.stopPropagation();pickTheme(b.id,{scene:true})}},
+    Scene.thumb(b,120,54),h("b",{},b.name),h("span",{},b.blurb)))):h("div",{class:"wgrid"}));
+  box.replaceChildren(h("div",{class:"tlabel",style:"margin-top:0"},"Classic colours"),classic,h("div",{style:"margin-top:14px"},world))};
  draw();
  const again=()=>{if(box.isConnected){box.__seen=true;draw()}else if(box.__seen)document.removeEventListener("lp-theme",again)};
  document.addEventListener("lp-theme",again);return box}
