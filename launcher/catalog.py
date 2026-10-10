@@ -66,15 +66,21 @@ SETTINGS_SCHEMA: dict[str, dict] = {
         "label": "First-run setup finished", "help": "Turn off to see the welcome steps again next time.",
     },
     "theme": {
-        "type": "choice", "choices": ["dark", "light", "ocean", "forest", "sunset", "rose", "violet", "crimson", "graphite"], "default": "dark", "group": "Look",
-        "label": "Theme", "help": "The colours of the background and buttons. Dark and the coloured themes are easier on the eyes in a dim room.",
+        "type": "choice", "choices": ["dark", "light", "ocean", "forest", "sunset", "rose", "violet", "crimson", "graphite",
+                                      "meadow", "harbor", "ember", "frost", "dunes", "glimmer", "neon", "cloudtop"], "default": "dark", "group": "Look",
+        "label": "Theme", "help": "The colours of the background and buttons. The Legacy Player World themes are eight places (a meadow village, a harbour, volcanic peaks, a snowy village, desert dunes, a glowing mushroom wood, an arcade city and sky islands), each with its own day and night colours and a pixel scene behind the app.",
+    },
+    "time_of_day": {
+        "type": "choice", "choices": ["auto", "day", "night"], "default": "auto", "group": "Look", "hidden": True,
+        "labels": {"auto": "Follow my clock", "day": "Always day", "night": "Always night"},
+        "label": "Day or night (World themes)", "help": "Follow my clock shows day from 7 in the morning to 7 in the evening on this computer's clock. Picked next to the themes.",
     },
     "background": {
-        "type": "choice", "choices": ["waves", "aurora", "grid", "stars", "dots", "crt", "bokeh", "bitworld", "bitcity", "bitforest", "plain"], "default": "waves", "group": "Look",
-        "label": "Background", "help": "The picture behind the app. Waves drift slowly, Aurora glows, Grid is the retro one, Stars twinkle, Dots is calm, CRT is an old television, Bokeh is soft drifting lights, 1-bit World is a tiny pixel world with Martin and the clinic, Plain is flat (the easiest on a slow computer). It uses your theme's colours.",
+        "type": "choice", "choices": ["scene", "waves", "aurora", "grid", "stars", "dots", "crt", "bokeh", "bitworld", "bitcity", "bitforest", "plain"], "default": "waves", "group": "Look",
+        "label": "Background", "help": "The picture behind the app. World scene is the pixel picture of your World theme's place, by day or night. Waves drift slowly, Aurora glows, Grid is the retro one, Stars twinkle, Dots is calm, CRT is an old television, Bokeh is soft drifting lights, 1-bit World is a tiny pixel world with Martin and the clinic, Plain is flat (the easiest on a slow computer). It uses your theme's colours.",
     },
     "view": {
-        "type": "choice", "choices": ["shelf", "list"], "default": "shelf", "group": "Look",
+        "type": "choice", "choices": ["shelf", "list"], "default": "shelf", "group": "Look", "labels": {"shelf": "Shelf (big cards)", "list": "List (compact)"},
         "label": "Library view", "help": "Shelf shows big cards by console. List is denser and good for big libraries.",
     },
     "show_region": {

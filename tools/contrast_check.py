@@ -77,7 +77,9 @@ def check(url: str, pages=PAGES, min_normal=4.5, min_large=3.0, themes=("dark", 
         page.wait_for_timeout(1500)
         page.add_style_tag(content="*{animation:none!important;transition:none!important}")
         for theme in themes:
-            page.evaluate(f"document.documentElement.setAttribute('data-theme','{theme}')")
+            name_, _, when = theme.partition(":")             # "dark", "light", or a World theme like "meadow:day"
+            page.evaluate("([t,w])=>{S.settings=S.settings||{};if(w){S.settings.time_of_day=w;applyBg('scene')}applyTheme(t)}", [name_, when])
+            page.wait_for_timeout(300)
             for name in pages:
                 page.evaluate(f'nav("{name}")')
                 page.wait_for_timeout(1200)
@@ -109,7 +111,10 @@ def check(url: str, pages=PAGES, min_normal=4.5, min_large=3.0, themes=("dark", 
     return failures
 
 
-def main(pages=PAGES):
+WORLD = tuple(f"{b}:{t}" for b in ("meadow", "harbor", "ember", "frost", "dunes", "glimmer", "neon", "cloudtop") for t in ("day", "night"))
+
+
+def main(pages=PAGES, themes=("dark", "light")):
     base = Path(tempfile.mkdtemp())
     (base / "games" / "NES").mkdir(parents=True)
     (base / "games" / "NES" / "Alpha Quest (USA).nes").write_bytes(b"NES\x1a" + b"\0" * 64)
@@ -123,7 +128,7 @@ def main(pages=PAGES):
         while time.time() < end and "http://" not in line:
             line = proc.stdout.readline()
         url = re.search(r"http://\S+", line).group(0)
-        bad = check(url, pages=pages)
+        bad = check(url, pages=pages, themes=themes)
     finally:
         proc.kill()
     seen = set()

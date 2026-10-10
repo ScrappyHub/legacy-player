@@ -21,3 +21,12 @@ class ContrastTests(unittest.TestCase):
         tool = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(tool)
         self.assertEqual(0, tool.main(pages=["home", "library", "servers", "setup", "settings", "privacy"]))
+
+
+@unittest.skipUnless(READY, "Playwright and Pillow are needed")
+class WorldContrastTests(unittest.TestCase):
+    def test_every_world_place_is_readable_by_day_and_by_night(self):
+        spec = importlib.util.spec_from_file_location("contrast_check", TOOL)
+        tool = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(tool)
+        self.assertEqual(0, tool.main(pages=["home", "settings"], themes=tool.WORLD))

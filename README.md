@@ -27,7 +27,7 @@ or, through git, with the small `lp` command that comes with the repository:
 ```powershell
 git clone https://github.com/ScrappyHub/legacy-player
 cd legacy-player
-.\lp install            # newest release; or  .\lp install v0.7.39  for one exact version
+.\lp install            # newest release; or  .\lp install v0.7.40  for one exact version
 .\lp run                # later:  .\lp update   .\lp version   .\lp path   .\lp uninstall   .\lp help
 ```
 
@@ -47,6 +47,9 @@ SHA-256 hashes and carries a GitHub build attestation. See `docs/RELEASE.md`.
 - **Quick play:** hover a game's cover and it splits into Play and Online (host a room or join with a code).
 - **Play options:** before a game opens (or any time from "Play with options…"): full screen or a window, which screen,
   resolution, borderless, vsync, sharp pixels and the rest, plus "Optimize for my computer". Remember it per emulator or be asked.
+- **Legacy Player World themes:** eight original places (Martin's Meadow, Pixel Harbor, Ember Peaks, Frostfall, Mirage Dunes,
+  Glimmerwood, Neon Arcade, Cloudtop Isles), each with its own day and night colours and an animated 8-bit scene behind
+  the app. Day, Night, or Follow my clock (day from 7:00 to 19:00).
 - **Game cards:** in Console mode each game opens a card with region, revision, players, release date, makers and a
   description (looked up from Wikipedia/Wikidata only when you ask; you can write your own).
 - **Friends (optional):** a separate friends service with friend codes, who is online, room invites and messages. No accounts.

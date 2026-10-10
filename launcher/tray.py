@@ -12,6 +12,8 @@ import threading
 import time
 from pathlib import Path
 
+from . import world
+
 
 class NativeTray:
     """A tiny Shell_NotifyIcon wrapper. `menu()` returns [(command, label, enabled)] or None for a separator."""
@@ -272,7 +274,7 @@ class TrayController:
     def __init__(self, app, open_window) -> None:
         self.app, self.open_window = app, open_window
         self.native = NativeTray("Legacy Player", self.menu, self.command)
-        self.native.light = app.catalog.settings().get("theme") == "light"
+        self.native.light = world.looks_light(app.catalog.settings())
         self._state = {"running": False, "players": 0, "live": 0, "open_rooms": 0, "cert": False, "known": False, "shared": False}
         self._wake = threading.Event()
         app.on_server_change = self.poke         # a server started or stopped from the page or the overlay shows here at once
@@ -348,7 +350,7 @@ class TrayController:
         st = self._state
         room = app.room
         self.poke()                                    # so the next right-click is fresher still
-        self.native.light = app.catalog.settings().get("theme") == "light"   # the menu follows the app's theme
+        self.native.light = world.looks_light(app.catalog.settings())   # the menu follows the app's theme, day or night
         if st["running"]:
             line = "Server running  ·  " + self._plural(st["players"], "player") + "  ·  " + self._plural(st["live"], "room")
             if not st.get("shared"):

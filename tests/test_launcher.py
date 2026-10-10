@@ -92,7 +92,7 @@ class CatalogTests(unittest.TestCase):
             c = Catalog(Path(d))
             c.set_setting("theme", "light")
             with self.assertRaises(CatalogError):
-                c.set_setting("theme", "neon")
+                c.set_setting("theme", "not-a-theme")
             with self.assertRaises(CatalogError):
                 c.set_setting("server_port", 99999)
             with self.assertRaises(CatalogError):
@@ -658,7 +658,10 @@ class ThemeTests(unittest.TestCase):
         import re
         from launcher.catalog import SETTINGS_SCHEMA
         html = (Path(__file__).resolve().parents[1] / "launcher" / "ui" / "index.html").read_text(encoding="utf-8")
+        from launcher.world import BIOMES
         for name in SETTINGS_SCHEMA["theme"]["choices"]:
+            if name in BIOMES:            # World places: day and night colours are written from BIOMES (see tests/test_world.py)
+                continue
             self.assertTrue(re.search(r"\[data-theme=%s\]\{" % name, html) or name == "dark", name)
             if name not in {"dark"}:
                 self.assertIn(f"[data-theme={name}] .bg{{" if name != "light" else "[data-theme=light] .bg{", html, name)
@@ -669,6 +672,7 @@ class ThemePickerWiringTests(unittest.TestCase):
         import re
         from launcher.catalog import SETTINGS_SCHEMA
         html = (Path(__file__).resolve().parents[1] / "launcher" / "ui" / "index.html").read_text(encoding="utf-8")
-        self.assertGreaterEqual(html.count("themePicker()"), 3)
+        self.assertGreaterEqual(html.count("themePicker("), 3)
+        from launcher.world import BIOMES
         listed = re.findall(r'\["([a-z]+)","[A-Za-z]+","#', html[html.index("const THEMES="):html.index("function themePicker")])
-        self.assertEqual(sorted(listed), sorted(SETTINGS_SCHEMA["theme"]["choices"]))
+        self.assertEqual(sorted(listed + list(BIOMES)), sorted(SETTINGS_SCHEMA["theme"]["choices"]))
