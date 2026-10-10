@@ -42,7 +42,7 @@ def items(settings: dict, data: dict) -> list[dict]:
          "contacts": [friends_addr or "(no address set)"],
          "sends": "The name you show other players, your friend code and friends list, whether the app is open, the game you are playing or "
                   "hosting" + (", your room's invite and server code (to friends only)" if s.get("friends_share_room", True) else "")
-                  + ", and the messages you write. Never your address.",
+                  + ", the messages you write, and any report you make (to the people who run that service). Never your address.",
          "off_means": "No Friends page; you share server and invite codes yourself, as before."},
         {"id": "reports", "title": "Problem reports sent automatically", "setting": "error_reports", "on": report_mode == "auto",
          "signature": f"{report_mode}|{report_addr}" if report_mode == "auto" else "",

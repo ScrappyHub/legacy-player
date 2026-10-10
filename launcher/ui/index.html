@@ -642,7 +642,12 @@ label:has(>input[type=checkbox]:not(.switch input))>input,label:has(>input[type=
 .msg{max-width:78%;padding:7px 11px;border-radius:14px;background:var(--panel2);border:1px solid var(--line);font-size:.92rem;align-self:flex-start}
 .msg.mine{align-self:flex-end;background:color-mix(in srgb,var(--accent) 28%,transparent);border-color:transparent}
 .msg .t{display:block;font-size:.68rem;color:var(--mute);margin-top:2px}
+.msgrep{background:none;border:0;padding:0 0 0 8px;font:inherit;font-size:.68rem;color:var(--mute);cursor:pointer;text-decoration:underline;opacity:0;transition:opacity .15s}
+.msg:hover .msgrep,.msgrep:focus-visible{opacity:1}
 .code.mid{font-size:1.3rem;padding:8px 14px;letter-spacing:.14em}
+.dualcards{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px;align-items:stretch}
+.dualcards>.card{margin:0}.dualcards #netbox h3{font-size:.98rem;margin:6px 0}
+@media(max-width:900px){.dualcards{grid-template-columns:1fr}}
 .pvitem{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 18px;align-items:start}
 .pvitem .meta{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 12px;margin-top:8px;font-size:.88rem}.pvitem .meta .k{color:var(--mute)}
 .pvitem.look{border-color:var(--warn);box-shadow:0 0 0 2px color-mix(in srgb,var(--warn) 30%,transparent)}
@@ -890,14 +895,14 @@ function themePicker(compact){
 function avatarEl(id,size,cls){const a=AVATARS[id]||AVATARS.martin;return pixels(a.rows,size,"avatar "+(cls||""))}
 
 const S={tab:"home",console:null,q:"",fav:false,sort:"title",lib:null,settings:null,room:null,online:null,lastNotice:null,profile:null,netcheck:null,netBusy:false};
-const PRIMARY=[["home","Home"],["library","Library"],["console","Console mode"],["setup","Setup"],["together","Server Info"],["servers","Servers"]];
+const PRIMARY=[["home","Home"],["library","Library"],["console","Console mode"],["setup","Setup"],["servers","Servers"]];
 function primaryTabs(){return S.friendsOn?PRIMARY.concat([["friends","Friends"]]):PRIMARY}
 
-function renderNav(){const n=$("#nav");n.replaceChildren(...primaryTabs().map(([id,l])=>h("button",{class:S.tab===id?"on":"",onclick:()=>{S.tab=id;S.anchor=null;go()}},l+(id==="together"&&S.room?" ●":"")+(id==="friends"&&S.friendsBadge?" ("+S.friendsBadge+")":""))));renderWho();renderLive()}
+function renderNav(){const n=$("#nav");n.replaceChildren(...primaryTabs().map(([id,l])=>h("button",{class:S.tab===id?"on":"",onclick:()=>{S.tab=id;S.anchor=null;go()}},l+(id==="servers"&&S.room?" ●":"")+(id==="friends"&&S.friendsBadge?" ("+S.friendsBadge+")":""))));renderWho();renderLive()}
 function renderWho(){const w=$("#who");if(!w)return;const p=S.profile||{alias:"Player",avatar:"martin",player:"Player"};
  w.replaceChildren(avatarEl(p.avatar,26),h("span",{class:"nm"},p.player||p.alias))}
-async function go(){closeMenus();renderNav();const old=$("#main"),m=old.cloneNode(false);old.replaceWith(m);window.scrollTo(0,0);
- Promise.resolve(({home:viewHome,library:viewLibrary,together:viewTogether,servers:viewServers,console:viewConsole,setup:viewSetup,engines:viewEngines,controllers:viewControllers,saves:viewSaves,emulators:viewEmulators,settings:viewSettings,preferences:viewPreferences,credits:viewCredits,welcome:viewWelcome,help:viewHelp,storage:viewStorage,probe:viewProbe,profile:viewProfile,display:viewDisplay,friends:viewFriends,privacy:viewPrivacy})[S.tab](m)).then(()=>{if(S.tab==="home")homeArtTip()}).catch(e=>{console.error("page error",e);reportClientError(e&&e.message||e,"draw:"+S.tab,e&&e.stack);toast("Something went wrong drawing this page: "+(e&&e.message||e),"err")})}
+async function go(){if(S.tab==="together"){S.tab="servers";S.anchor=S.anchor||"rooms"}closeMenus();renderNav();const old=$("#main"),m=old.cloneNode(false);old.replaceWith(m);window.scrollTo(0,0);
+ Promise.resolve(({home:viewHome,library:viewLibrary,servers:viewServers,console:viewConsole,setup:viewSetup,engines:viewEngines,controllers:viewControllers,saves:viewSaves,emulators:viewEmulators,settings:viewSettings,preferences:viewPreferences,credits:viewCredits,welcome:viewWelcome,help:viewHelp,storage:viewStorage,probe:viewProbe,profile:viewProfile,display:viewDisplay,friends:viewFriends,privacy:viewPrivacy})[S.tab](m)).then(()=>{if(S.tab==="home")homeArtTip()}).catch(e=>{console.error("page error",e);reportClientError(e&&e.message||e,"draw:"+S.tab,e&&e.stack);toast("Something went wrong drawing this page: "+(e&&e.message||e),"err")})}
 function nav(tab,anchor){S.tab=tab;S.anchor=anchor||null;go()}
 
 /* ---------- menu bar ---------- */
@@ -905,7 +910,7 @@ function menuDefs(){return[
  ["Account",[["Your account: name, picture, theme and background",()=>nav("profile")],["Preferences (look, home, overlay, controller)",()=>nav("preferences")],["Settings (library, privacy, server)",()=>nav("settings")],["Privacy: what goes online",()=>nav("privacy")],"-",["Update everything",updateEverything],["Check for updates",checkUpdates],"-",["Exit Legacy Player",quitApp]]],
  ["Games",[["Library",()=>nav("library")],["Console mode",()=>nav("console")],["Rescan my games",()=>rescan()],"-",[S.showHidden?"Hide the hidden games again":"Show hidden games",()=>{S.showHidden=!S.showHidden;nav("library")}]]],
  ["Configure",[["Display and video",()=>nav("display")],["Play options (how games open)",()=>nav("display")],["Controllers",()=>nav("controllers")],["Saves and backups",()=>nav("saves")],["Storage by console",()=>nav("storage")],"-",["Emulators",()=>nav("emulators")],["Engines (get or update emulators)",()=>nav("engines")],["Steam and PC games",()=>pcManager()]]],
- ["Online",[...liveMenu(),["Server Info and network test",()=>nav("together")],["Servers: start, share, connect",()=>nav("servers")],...(S.friendsOn?[["Friends",()=>{S.friendTab="friends";nav("friends")}],["Inbox and messages",()=>{S.friendTab="inbox";nav("friends")}],["Friend requests",()=>{S.friendTab="requests";nav("friends")}],["Blocked players",()=>{S.friendTab="blocked";nav("friends")}]]:[["Friends (set up under Settings > Friends)",()=>nav("settings","friends")]])]],
+ ["Online",[...liveMenu(),["Servers: start, share, connect",()=>nav("servers")],["Server info and network test",()=>nav("servers","srvinfo")],["Rooms: host or join",()=>nav("servers","rooms")],...(S.friendsOn?[["Friends",()=>{S.friendTab="friends";nav("friends")}],["Inbox and messages",()=>{S.friendTab="inbox";nav("friends")}],["Friend requests",()=>{S.friendTab="requests";nav("friends")}],["Blocked players",()=>{S.friendTab="blocked";nav("friends")}]]:[["Friends (set up under Settings > Friends)",()=>nav("settings","friends")]])]],
  ["Tools",[["Update everything",updateEverything],["Doctor's office (Setup)",()=>nav("setup")],["Engines",()=>nav("engines")],["Preview the overlay",()=>act(()=>api("overlay_open",{preview:true}))],["Dolphin memory probe",()=>nav("probe")],["Emulators",()=>nav("emulators")],["Scan this computer",()=>{nav("engines");setTimeout(()=>runScan().then(v=>{if(v)go()}),250)}],["Credits",()=>nav("credits")]]],
  ["Help",[["How it works",()=>nav("help")],["How save files work",()=>nav("help","saves")],["Privacy",()=>nav("privacy")],["Uninstall Legacy Player...",()=>retireClinic()]]]]}
 function closeMenus(){document.querySelectorAll(".menu.open").forEach(x=>x.classList.remove("open"))}
@@ -1383,7 +1388,7 @@ async function getStarted(raw,box){
   const r=await act(()=>api("server_connect",{code:v}));if(!r)return;
   if(!r.connected){toast(r.message,"warn");return}
   toast("Connected to the server");S.onlineSeen=false;pingServer();autoNetTest(0);showJoin(box);return}
- if(/^[A-Za-z0-9]{5}-[A-Za-z0-9]{5}$/.test(v)){S.joinCode=v.toUpperCase();nav("together");return}
+ if(/^[A-Za-z0-9]{5}-[A-Za-z0-9]{5}$/.test(v)){S.joinCode=v.toUpperCase();nav("servers","rooms");return}
  toast("That does not look like a server code (starts with LP- or LP2-) or an invite code (like ABCDE-FGH12).","warn")}
 async function showJoin(box){
  const d=await act(()=>api("mp_browse"));if(!d)return;
@@ -1393,7 +1398,7 @@ async function showJoin(box){
    h("tbody",{},...d.rooms.map(r=>h("tr",{},h("td",{},h("b",{},r.title),r.label?h("div",{class:"small muted"},r.label):null),h("td",{},r.console_name),h("td",{},r.region||"–"),
     h("td",{class:r.emulator?"":"warn"},r.emulator||(r.you_have_it?"none set":"you do not have this game")),
     h("td",{class:r.full?"warn":"good"},r.players+" / "+r.max_players),h("td",{},String(r.waiting)),h("td",{},state(r.state)),
-    h("td",{},r.you_have_it?h("button",{class:"btn good",onclick:async()=>{const x=await act(()=>api("mp_join",{id:r.local_game_id,session_id:r.session_id,background:r.full}),r.full?"You are in line":"");if(x){S.room=x.room;S.waits=x.waits||[];nav("together");poll()}}},r.full?"Wait in line":"Join"):null)))))
+    h("td",{},r.you_have_it?h("button",{class:"btn good",onclick:async()=>{const x=await act(()=>api("mp_join",{id:r.local_game_id,session_id:r.session_id,background:r.full}),r.full?"You are in line":"");if(x){S.room=x.room;S.waits=x.waits||[];nav("servers","rooms");poll()}}},r.full?"Wait in line":"Join"):null)))))
   :h("p",{class:"muted"},"No public rooms right now. If your host gave you an invite code, enter it here."),
   h("p",{class:"small muted"},"Rooms show the game and how full they are, never who is inside. Private rooms need the host's invite code.")))}
 
@@ -1668,9 +1673,9 @@ async function quickOnline(g){
  const status=h("p",{class:"small "+(S.online?"muted":"warn")},S.online?"Connected to a server.":(S.settings&&S.settings.server_host==="127.0.0.1"&&S.settings.server_autostart!==false?"Your server is not running. Hosting a room starts it for you; to join a friend, paste their server code on the Servers page first.":"You are not connected to a server yet. Start yours or paste a friend's server code on the Servers page first."));
  const ov=h("div",{class:"modal",role:"dialog","aria-modal":"true"},h("div",{class:"modalbox"},h("h3",{style:"margin-top:0"},"Play "+g.title+" online"),
   h("p",{class:"small muted"},g.players?g.players.label+". "+g.players.note:""),status,
-  h("div",{class:"row",style:"margin:10px 0"},h("button",{class:"btn primary grow",onclick:async()=>{const r=await act(()=>api("mp_host",{id:g.id}));if(r){close();S.room=r.room;nav("together");poll()}}},"Host a room")),
+  h("div",{class:"row",style:"margin:10px 0"},h("button",{class:"btn primary grow",onclick:async()=>{const r=await act(()=>api("mp_host",{id:g.id}));if(r){close();S.room=r.room;nav("servers","rooms");poll()}}},"Host a room")),
   h("div",{class:"small muted",style:"margin:8px 0 4px"},"or join a friend's room"),
-  h("div",{class:"row"},code,h("button",{class:"btn good",onclick:async()=>{if(!code.value.trim()){toast("Paste the invite code first","warn");return}const r=await act(()=>api("mp_join",{id:g.id,invite_code:code.value.trim()}));if(r){close();S.room=r.room;nav("together");poll()}}},"Join")),
+  h("div",{class:"row"},code,h("button",{class:"btn good",onclick:async()=>{if(!code.value.trim()){toast("Paste the invite code first","warn");return}const r=await act(()=>api("mp_join",{id:g.id,invite_code:code.value.trim()}));if(r){close();S.room=r.room;nav("servers","rooms");poll()}}},"Join")),
   h("div",{class:"row",style:"justify-content:flex-end;margin-top:12px"},!S.online?h("button",{class:"btn",onclick:()=>{close();nav("servers")}},"Servers"):null,h("button",{class:"btn",onclick:close},"Cancel"))));
  document.body.append(ov);code.focus()}
 function consoleName(id){const c=(S.lib&&S.lib.consoles||[]).find(x=>x.id===id);return c?c.name:id}
@@ -1704,8 +1709,8 @@ async function openGame(id){
    h("label",{class:"small"},"Players ",h("select",{"aria-label":"Number of players in this game",onchange:async e=>{const r=await act(()=>api("game_meta",{id:g.id,players:e.target.value}));if(r){toast("Saved");}}},
     h("option",{value:"",selected:!g.own_players},"Automatic"),...[1,2,3,4,5,6,7,8].map(n=>h("option",{value:String(n),selected:g.own_players===String(n)},String(n)))))),
   g.netplay_launch?h("p",{class:"small"},g.netplay_launch.ready?h("span",{class:"good"},"Online play: ready"+(g.netplay_launch.experimental?" (experimental)":"")):h("span",{class:"muted"},"Play Together: "+g.netplay_launch.reason),g.netplay_launch.note?h("div",{class:"muted"},g.netplay_launch.note):null):null,
-  h("div",{class:"row"},h("button",{class:"btn primary",onclick:async()=>{const r=await act(()=>api("mp_host",{id}));if(r){S.room=r.room;S.tab="together";close();go();poll()}}},"Host a room"),
-    h("button",{class:"btn",onclick:()=>{close();S.tab="together";S.joinGame=id;go()}},"Join with a code")),
+  h("div",{class:"row"},h("button",{class:"btn primary",onclick:async()=>{const r=await act(()=>api("mp_host",{id}));if(r){S.room=r.room;S.tab="servers";S.anchor="rooms";close();go();poll()}}},"Host a room"),
+    h("button",{class:"btn",onclick:()=>{close();S.tab="servers";S.anchor="rooms";S.joinGame=id;go()}},"Join with a code")),
   h("h3",{},whyInline("Controller for this console",controllerWhy())),
   h("p",{class:"small"},g.controller.label+": "+g.controller.buttons.slice(0,6).map(b=>b.name+" → "+b.physical.split(" (")[0]).join(", ")+"…"),
   h("button",{class:"btn",onclick:()=>{close();S.tab="controllers";S.ctrl=g.console;go()}},"Edit or test controller"),
@@ -1719,20 +1724,8 @@ async function openGame(id){
 function controllerWhy(){return"Every pad is read in a standard layout. Each console has its own buttons, so Legacy Player maps your pad to that console automatically. You can change any mapping in Controllers."}
 
 /* ---------- Play Together ---------- */
-async function viewTogether(m){
- const st=await pingServer();
- m.append(h("h2",{},"Server Info"),
-  h("div",{class:"why"},"A room is a private lobby on a server you or a friend runs. People join with a short invite code. Nobody else can see it."));
- const mine=await api("server_control",{action:"status",share:false}).catch(()=>({running:false}));
- const roomNow=(await api("mp_state").catch(()=>({room:null}))).room;
- const remote=S.settings&&S.settings.server_host!=="127.0.0.1";
- const pill=(ok,text)=>h("span",{class:"badge "+(ok?"good":"")},(ok?"● ":"○ "),text);
- m.append(h("div",{class:"panel"},h("div",{class:"row"},
-   pill(!!roomNow,roomNow?"In a room: "+roomNow.game+" ("+roomNow.members.length+(roomNow.max_players?"/"+roomNow.max_players:"")+" players)":"Not in a room"),
-   pill(!!mine.running,mine.running?"Your server is running":"Your server is not running"),
-   pill(st.online,st.online?["Connected to ",remote?ipSpan(S.settings.server_host):"your own server"]:"No server answering")),
-  h("div",{class:"row",style:"margin-top:8px"},h("button",{class:"btn",onclick:()=>{S.tab="servers";go()}},"Open Servers")," ",h("span",{class:"small muted"},"Start, share or connect to a server there."))));
- if(!roomNow){const net=h("div",{class:"card",id:"netbox",style:"margin-top:12px"});m.append(net);drawNetCheck(net);if(!(S.netcheck&&S.netcheck.at))api("network_last").then(x=>{if(x.at){S.netcheck=x;redrawNet()}}).catch(()=>{})}
+/* Rooms: the room you are in, the lines you wait in, and hosting or joining one. Part of the Servers page. */
+async function roomsSection(m){
  S.allGames=(await api("library",{})).games;
  const s=await api("mp_state");S.room=s.room;S.waits=s.waits||[];
  if(s.notice)toast(s.notice,s.level);(s.wait_events||[]).forEach(e=>toast(e.text,e.level));
@@ -1918,16 +1911,16 @@ async function leaveRoom(){const r=S.room;if(!r)return;const host=r.role==="host
  if(host){let mine=null;try{mine=await api("server_control",{action:"status"})}catch(e){}
   if(mine&&mine.running&&(!S.settings||S.settings.server_host==="127.0.0.1")){
    if(await ask("Your server is still running. Close the server too? Friends cannot connect until you start it again. Cancel keeps it running; it uses almost nothing while it waits.","Stop my server too"))await act(()=>api("server_control",{action:"stop"}),"Server stopped")}}
- if(S.tab==="together"||S.tab==="servers")go()}
+ if(S.tab==="servers")go()}
 function autoJoin(){const r=S.room;if(!r||r.role!=="guest"||!r.start||!r.start.mine||S.autoJoined===r.start.id)return;
  const L=r.launch||{};if(!L.endpoint_kind||L.engine==="dolphin"||L.endpoint_kind==="direct"||!L.ready)return;
  S.autoJoined=r.start.id;api("mp_launch",{expose_address:false}).then(x=>toast("Opened "+x.launched+" and connected.")).catch(e=>{S.autoJoined=null;toast(e.message,"err")})}
 let pollTimer=null;
-function poll(){clearInterval(pollTimer);pollTimer=setInterval(async()=>{if(!S.room&&!(S.waits&&S.waits.length)&&S.tab!=="together"){return}
+function poll(){clearInterval(pollTimer);pollTimer=setInterval(async()=>{if(!S.room&&!(S.waits&&S.waits.length)&&S.tab!=="servers"){return}
  const s=await api("mp_state").catch(()=>null);if(!s)return;
- if(s.notice){toast(s.notice,s.level||"warn");S.room=null;renderNav();if(S.tab==="together")go();return}
+ if(s.notice){toast(s.notice,s.level||"warn");S.room=null;renderNav();if(S.tab==="servers")go();return}
  const had=!!S.room;S.room=s.room;S.waits=s.waits||[];(s.room?s.room.new_events:(s.wait_events||[])).forEach(e=>toast(e.text,e.level));
- renderNav();autoJoin();const box=$("#room");const ae=document.activeElement;if(box&&!(ae&&box.contains(ae)&&/SELECT|INPUT/.test(ae.tagName)))drawRoom(box);const wb=$("#waits");if(wb)drawWaits(wb);if(had&&!S.room&&S.tab==="together")go()},2000)}
+ renderNav();autoJoin();const box=$("#room");const ae=document.activeElement;if(box&&!(ae&&box.contains(ae)&&/SELECT|INPUT/.test(ae.tagName)))drawRoom(box);const wb=$("#waits");if(wb)drawWaits(wb);if(had&&!S.room&&S.tab==="servers")go()},2000)}
 
 
 /* ---------- Servers ---------- */
@@ -1941,8 +1934,24 @@ async function viewServers(m){
  const st=await pingServer();const cfg=await api("settings");S.settings=cfg.values;const V=cfg.values;
  m.append(h("h2",{},"Servers"),
   h("div",{class:"why"},"Playing online needs one server. Only ONE person hosts it; everyone else just joins with the host's server code. If a friend is hosting, paste their code in the first box below and press Connect. If you are the host, start your server further down and send your code to your friends."));
- // 0. right now: connection, who is in, and (small) the server code once it is running
- const live=h("div",{class:"card",id:"srvlive",style:"margin-top:14px"});m.append(live);
+ // 0. right now, side by side: your server (left) and server info with the network test (right)
+ const live=h("div",{class:"card",id:"srvlive"});
+ const info=h("div",{class:"card",id:"srvinfo"});
+ const dual=h("div",{class:"dualcards",style:"margin-top:14px"},live,info);m.append(dual);
+ const roomsWrap=h("div",{id:"rooms"});m.append(h("h3",{class:"sect",id:"roomshead"},"Rooms"),roomsWrap);
+ const drawInfo=async()=>{
+  const mine=await api("server_control",{action:"status",share:false}).catch(()=>({running:false}));
+  const remote=S.settings&&S.settings.server_host!=="127.0.0.1",rm=S.room;
+  const pill=(ok,text)=>h("span",{class:"badge "+(ok?"good":"")},(ok?"● ":"○ "),text);
+  const net=h("div",{id:"netbox"});
+  info.replaceChildren(h("div",{class:"row"},h("h3",{class:"grow",style:"margin:0"},"Server info")),
+   h("div",{class:"row",style:"margin:8px 0 4px;gap:6px"},
+    pill(!!rm,rm?"In a room: "+rm.game+" ("+rm.members.length+(rm.max_players?"/"+rm.max_players:"")+")":"Not in a room"),
+    pill(!!mine.running,mine.running?"Your server is running":"Your server is off"),
+    pill(!!S.online,S.online?["Connected to ",remote?ipSpan(S.settings.server_host):"your own server"]:"No server answering")),
+   net);
+  drawNetCheck(net);if(!(S.netcheck&&S.netcheck.at))api("network_last").then(x=>{if(x.at){S.netcheck=x;redrawNet()}}).catch(()=>{})};
+ drawInfo();
  const dur=sec=>sec<90?Math.round(sec)+" s":sec<5400?Math.round(sec/60)+" min":(sec/3600).toFixed(1)+" h";
  let codeShown=null;
  const fastStart=async share=>{const r=await act(()=>api("server_control",{action:share&&S.srvOnline?"restart":"start",share}));if(r){if(share)setTimeout(askFirewall,400);toast(r.message);codeShown=null;await drawLive()}};
@@ -1968,7 +1977,7 @@ async function viewServers(m){
     a.online&&a.shared&&codeShown?h("span",{class:"code small"},codeShown):null,
     a.online&&a.shared&&codeShown?h("button",{class:"btn small",onclick:()=>copyText(codeShown)},"Copy"):null,
     a.online&&a.shared&&codeShown?h("button",{class:"btn small",title:"Stops the old code working for new people",onclick:freshCode},"New code"):null,
-    h("button",{class:"btn small",onclick:()=>nav("together")},"Pick or change the game")));
+    h("button",{class:"btn small",onclick:()=>{const el=$("#roomshead");if(el)el.scrollIntoView({behavior:"smooth",block:"start"})}},S.room?"Go to my room":"Host or join a room")));
   return true}
  await drawLive();
  clearInterval(S.srvTimer);S.srvTimer=setInterval(async()=>{if(!(await drawLive()))clearInterval(S.srvTimer)},3000);
@@ -2042,11 +2051,11 @@ async function viewServers(m){
   h("p",{class:"small"},"Connected to: ",h("b",{},mine?"your own server (this computer)":h("span",{},ipSpan(V.server_host),":"+(V.server_remote_port||V.server_port))),mine?"":h("span",{class:"small muted"}," (encrypted, certificate checked)")),
   h("div",{class:"row"},code,h("button",{class:"btn good",onclick:async()=>{const r=await act(()=>api("server_connect",{code:code.value}));if(!r)return;toast(r.connected?"Connected to the server":r.message,r.connected?"":"warn");go();if(r.connected)autoNetTest(0)}},"Connect"),
    mine?null:h("button",{class:"btn",onclick:async()=>{await act(()=>api("server_connect",{local:true}),"Back to your own server");go()}},"Use my own server"))));
- m.insertBefore(joinCard,$("#srvlive")||null);
- // 4. rooms on the connected server
- const s2=await api("mp_state");S.room=s2.room;S.waits=s2.waits||[];
- const waitsBox=h("div",{id:"waits"});m.append(waitsBox);drawWaits(waitsBox);
- if(st.online){const bb=h("div",{id:"browse"});m.append(bb);drawBrowse(bb)}
+ m.insertBefore(joinCard,dual);
+ // 4. rooms: yours, the lines you wait in, hosting or joining, and the open rooms on this server
+ await roomsSection(roomsWrap);
+ if(st.online){const bb=h("div",{id:"browse"});roomsWrap.append(bb);drawBrowse(bb)}
+ if(S.anchor){const el=$("#"+(S.anchor==="rooms"?"roomshead":S.anchor));if(el)setTimeout(()=>el.scrollIntoView({behavior:"smooth",block:"start"}),120)}
 }
 
 /* ---------- Setup ---------- */
@@ -2530,7 +2539,7 @@ async function gameMenu(g,x,y){
  const items=[
   {label:"▶  Play",bold:true,fn:()=>playGame(g),disabled:!g.emulator,title:g.emulator?"":"No emulator is ready for this console. The doctor can help in his office."},
   {label:"Play with options… (screen, resolution, video)",fn:()=>launchGame(g,{options:true}),disabled:!g.emulator},
-  {label:"Play online (host a room)…",fn:()=>{S.joinGame=g.id;nav("together")}},
+  {label:"Play online (host a room)…",fn:()=>{S.joinGame=g.id;nav("servers","rooms")}},
   {label:"Game card",fn:()=>gameCard(g.id)},
   {label:"Details",fn:()=>openGame(g.id)},"-",
   {label:g.favorite?"Remove from favorites":"Add to favorites",fn:ok(()=>api("favorite",{id:g.id,favorite:!g.favorite}))},
@@ -2846,9 +2855,9 @@ function renderLive(){
     S.running?h("span",{class:"badge good"},"game running"):null,
     S.running?h("button",{class:"btn bad",title:"Stops the game right away, even if it asks \"are you sure?\". Unsaved progress is lost.",onclick:forceQuit},"Force quit game"):null,
     r.role==="host"&&r.invite_code?h("button",{class:"btn",title:"Copy the invite code for friends",onclick:()=>copyText(r.invite_code,"Invite code copied")},"Copy invite"):null,
-    S.tab==="together"?null:h("button",{class:"btn primary",onclick:()=>nav("together")},"Open room"),
+    S.tab==="servers"?null:h("button",{class:"btn primary",onclick:()=>nav("servers","rooms")},"Open room"),
     h("button",{class:"btn bad",onclick:leaveRoom},r.role==="host"?"Close":"Leave"))}
-  else if(i.kind==="wait"){bar.hidden=false;bar.replaceChildren(h("span",{class:"onair wait"},h("span",{class:"dot"}),"IN LINE"),h("span",{class:"lv"},i.text),h("span",{class:"grow"}),S.tab==="together"?null:h("button",{class:"btn",onclick:()=>nav("together")},"Open"))}
+  else if(i.kind==="wait"){bar.hidden=false;bar.replaceChildren(h("span",{class:"onair wait"},h("span",{class:"dot"}),"IN LINE"),h("span",{class:"lv"},i.text),h("span",{class:"grow"}),S.tab==="servers"?null:h("button",{class:"btn",onclick:()=>nav("servers","rooms")},"Open"))}
   else{bar.hidden=true;bar.replaceChildren()}}
  const sig=i.kind+"|"+(S.room?S.room.game:"");
  if(sig!==S.menuSig&&!document.querySelector(".menu.open")&&$("#menubar")&&$("#menubar").children.length){S.menuSig=sig;buildMenubar()}}
@@ -3159,6 +3168,24 @@ async function viewPrivacy(m){
  draw()}
 
 /* ================= Friends: the separate, optional friends service ================= */
+/* report a player, or one of their messages, to the moderators of the friends service */
+const REPORT_REASONS=[["harassment","Harassment or bullying"],["hate","Hate or slurs"],["threats","Threats"],["sexual","Sexual content"],["spam","Spam"],["scam","Scam or phishing"],["name","Offensive name"],["cheating","Cheating"],["other","Something else"]];
+function reportPlayer(who,after){return new Promise(res=>{let cat="";const close=v=>{ov.remove();res(v)};
+ const details=h("textarea",{rows:3,maxlength:800,style:"width:100%",placeholder:"What happened (optional, helps the moderators)"});
+ const block=h("input",{type:"checkbox",checked:true});
+ const cats=h("div",{class:"chips",style:"margin:8px 0"});
+ const drawCats=()=>cats.replaceChildren(...REPORT_REASONS.map(([id,l])=>h("button",{type:"button",class:"chip"+(cat===id?" on":""),"aria-pressed":String(cat===id),onclick:()=>{cat=id;drawCats()}},l)));drawCats();
+ const send=h("button",{class:"btn primary",onclick:async()=>{if(!cat){toast("Pick what it is about","warn");return}send.disabled=true;
+   const r=await act(()=>api("friends",{action:"report",player:who.id,category:cat,details:details.value,message:who.message||"",block:block.checked}));send.disabled=false;
+   if(r){toast("Thanks. The moderators of this friends service will look at it"+(block.checked?", and "+who.name+" is blocked.":"."));close(r);if(after)after(r)}}},"Send report");
+ const ov=h("div",{class:"modal",role:"dialog","aria-modal":"true",onclick:e=>{if(e.target===ov)close(null)}},h("div",{class:"modalbox",style:"max-width:560px"},
+  h("div",{class:"row"},h("h3",{class:"grow",style:"margin:0"},who.message?"Report this message":"Report "+who.name),h("button",{class:"btn","data-cancel":true,onclick:()=>close(null),"aria-label":"Close"},"✕")),
+  who.messageText?h("div",{class:"msg",style:"max-width:none;margin:10px 0"},who.messageText):null,
+  h("p",{class:"small muted",style:"margin:6px 0 0"},"Goes to the people who run this friends service (not to Legacy Player's makers). "+(who.message?"They see this message and the few before it, taken from the service's own copy, plus what you write.":"They see "+who.name+"'s name and code, and what you write.")+" "+who.name+" isn't told who reported them."),
+  cats,details,
+  h("label",{class:"small",style:"display:flex;gap:10px;margin-top:8px"},block,h("span",{},"Also block "+who.name+" (they can't message, invite or find you)")),
+  h("div",{class:"row",style:"justify-content:flex-end;gap:8px;margin-top:12px"},h("button",{class:"btn",onclick:()=>close(null)},"Cancel"),send)));
+ document.body.append(ov)})}
 async function viewFriends(m){
  let d=await act(()=>api("friends",{action:"status"}));if(!d)return;
  if(!d.enabled){m.append(h("h2",{},"Friends"),h("div",{class:"why"},"Friends is a separate, optional service: friend codes, who is online, one-click invites into a room, messages and blocking. Legacy Player works fully without it, and no account is made. Paste the address of a friends service a friend or the maintainers run under Settings > Friends and this page comes alive."),
@@ -3168,7 +3195,9 @@ async function viewFriends(m){
  const setTab=t=>{tab=S.friendTab=t;draw()};
  const take=r=>{if(r&&r.inbox){inbox=r.inbox;S.friendsBadge=badge(inbox);renderNav()}return r};
  const badge=x=>x?x.requests.length+x.invites.length+(x.unread||0):0;
- const refresh=async()=>{if(busy)return;busy=true;try{const r=await api("friends",{action:"poll"}).catch(()=>null);if(!r||!box.isConnected)return;d=r;if(!r.inbox){draw();return}take(r);
+ let problem="";
+ const refresh=async()=>{if(busy)return;busy=true;try{const r=await api("friends",{action:"poll"}).catch(e=>({error:e.message}));if(!box.isConnected)return;
+   if(r.error){problem=r.error;draw();return}problem="";d=r;if(!r.inbox){draw();return}take(r);
    if(sel&&tab==="inbox"){thread=await api("friends",{action:"thread",friend:sel}).catch(()=>null)}draw()}finally{busy=false}};
  const call=async(body,ok)=>{const r=await act(()=>api("friends",body),ok);take(r);if(r&&box.isConnected)draw();return r};
  const openChat=async id=>{sel=S.friendSel=id;tab=S.friendTab="inbox";thread=null;draw();thread=await api("friends",{action:"thread",friend:id}).catch(()=>null);const f=inbox&&inbox.friends.find(x=>x.id===id);if(f)f.unread=0;await refresh()};
@@ -3177,15 +3206,18 @@ async function viewFriends(m){
  const remove=async(id,name)=>{if(!await ask("Remove "+name+" from your friends? You can add each other again later with your codes.","Remove"))return;const r=await call({action:"remove",friend:id},name+" removed");if(r){if(sel===id){sel=S.friendSel=null;thread=null}draw()}};
  const joinInvite=async inv=>{if(inv.server_code){const r=await act(()=>api("server_connect",{code:inv.server_code}));if(!r)return;if(!r.connected){toast(r.message,"warn");return}}
   const games=(await api("library",{}).catch(()=>({games:[]}))).games;const want=(inv.game||"").toLowerCase();const g=games.find(x=>x.title.toLowerCase()===want)||games.find(x=>want&&x.title.toLowerCase().includes(want.slice(0,12)));
-  if(!g){toast("You need "+(inv.game||"that game")+" in your library to join. Add it, then press Rescan.","warn");S.joinCode=inv.invite_code;nav("together");return}
-  const x=await act(()=>api("mp_join",{id:g.id,invite_code:inv.invite_code}));if(x){S.room=x.room;api("friends",{action:"dismiss",from:inv.from}).catch(()=>{});nav("together");poll()}};
+  if(!g){toast("You need "+(inv.game||"that game")+" in your library to join. Add it, then press Rescan.","warn");S.joinCode=inv.invite_code;nav("servers","rooms");return}
+  const x=await act(()=>api("mp_join",{id:g.id,invite_code:inv.invite_code}));if(x){S.room=x.room;api("friends",{action:"dismiss",from:inv.from}).catch(()=>{});nav("servers","rooms");poll()}};
  const pres=on=>h("span",{class:"pres"+(on?" on":"")});
+ const report=async(id,name,message,messageText)=>{const r=await reportPlayer({id,name,message,messageText});if(r){take(r);if(r.inbox&&!r.inbox.friends.some(f=>f.id===sel)&&sel===id){sel=S.friendSel=null;thread=null}draw()}};
+ const modBanner=()=>inbox&&inbox.moderation?h("div",{class:"inbanner warn",role:"status"},"A moderator of this friends service paused your messages, invites and friend requests until "+new Date(inbox.moderation.muted_until*1000).toLocaleString()+(inbox.moderation.reason?": "+inbox.moderation.reason:".")+" You can still read messages and join friends' rooms."):null;
  const friendsTab=()=>{const me=inbox.me;
   const codeIn=h("input",{type:"text",placeholder:"Friend's code, e.g. MK7-4Q2X",maxlength:9,style:"width:220px","aria-label":"Friend's code",onkeydown:e=>{if(e.key==="Enter")addBtn.click()}});
   const addBtn=h("button",{class:"btn good",onclick:async()=>{if(!codeIn.value.trim()){toast("Type your friend's code first","warn");return}const r=await call({action:"request",code:codeIn.value});if(r){codeIn.value="";toast(r.inbox.friends.length&&r.already?"You are already friends":"Request sent. They see it under Requests.");draw()}}},"Add friend");
   return h("div",{class:"fr"},
    h("div",{},h("div",{class:"card"},h("div",{class:"row"},h("div",{class:"grow"},h("div",{class:"small muted"},"Your friend code"),h("span",{class:"code mid"},me.code)),h("button",{class:"btn",onclick:()=>copyText(me.code,"Friend code copied")},"Copy")),
-     h("p",{class:"small muted",style:"margin:8px 0 0"},"You appear as "+me.name+". "+(d.share_room?"Friends see the room you host and can join it.":"Friends only see that you are online (Settings > Friends).")),
+     h("p",{class:"small muted",style:"margin:8px 0 0"},"You appear as "+me.name+". "+(d.share_room?"Friends see the room you host and can join it.":"Friends only see that you are online (Settings > Friends).")+" Only friends can message or invite you."),
+     h("label",{class:"small",style:"display:flex;gap:10px;margin-top:8px"},h("input",{type:"checkbox",checked:inbox.requests_open!==false,onchange:async e=>{const r=await act(()=>api("settings",{key:"friends_requests_open",value:e.target.checked}));if(r){S.settings=r.values;toast(e.target.checked?"People with your code can send you requests":"New friend requests are turned off");refresh()}}}),h("span",{},"Let people with my code send me friend requests")),
      h("div",{class:"row",style:"margin-top:10px"},codeIn,addBtn),
      inbox.sent.length?h("p",{class:"small muted",style:"margin:8px 0 0"},"Waiting for an answer from: "+inbox.sent.map(x=>x.name).join(", ")):null),
     h("details",{class:"fold",style:"margin-top:12px"},h("summary",{class:"small muted"},"Leave the friends service"),h("div",{class:"card",style:"margin-top:6px"},h("p",{class:"small"},"Your code, friends, messages and block list on the service are deleted. Nothing else changes."),h("button",{class:"btn bad",onclick:async()=>{if(!await ask("Leave the friends service? Your code stops working and your friends there no longer see you.","Leave"))return;const x=await act(()=>api("friends",{action:"goodbye"}));if(x){sel=S.friendSel=null;d=x;inbox=null;draw()}}},"Leave")))),
@@ -3195,7 +3227,7 @@ async function viewFriends(m){
       f.online&&f.room?h("button",{class:"btn good small",onclick:()=>joinInvite({from:f.id,name:f.name,game:f.room.game,invite_code:f.room.invite_code,server_code:f.room.server_code})},"Join"):null,
       S.room&&S.room.role==="host"?h("button",{class:"btn small",title:"Send them your room's invite",onclick:()=>call({action:"invite",to:f.id},"Invite sent to "+f.name)},"Invite"):null,
       h("button",{class:"btn small",onclick:()=>openChat(f.id)},"Message"),
-      h("button",{class:"btn small",title:"More",onclick:e=>{e.stopPropagation();const r=e.target.getBoundingClientRect();ctxMenu(r.left,r.bottom+4,[{label:"Message",fn:()=>openChat(f.id)},{label:"Copy their name",fn:()=>copyText(f.name)},"-",{label:"Remove friend",fn:()=>remove(f.id,f.name)},{label:"Block",fn:()=>block(f.id,f.name)}])}},"⋯")))):
+      h("button",{class:"btn small",title:"More",onclick:e=>{e.stopPropagation();const r=e.target.getBoundingClientRect();ctxMenu(r.left,r.bottom+4,[{label:"Message",fn:()=>openChat(f.id)},{label:"Copy their name",fn:()=>copyText(f.name)},"-",{label:"Remove friend",fn:()=>remove(f.id,f.name)},{label:"Report…",fn:()=>report(f.id,f.name)},{label:"Block",fn:()=>block(f.id,f.name)}])}},"⋯")))):
      h("p",{class:"muted small"},"No friends yet. Swap codes with someone you know: they add yours, or you add theirs.")))};
  const inboxTab=()=>{const friend=sel&&(inbox.friends.find(f=>f.id===sel)||inbox.conversations.find(c=>c.id===sel));
   const convs=inbox.conversations;const noConv=inbox.friends.filter(f=>!convs.some(c=>c.id===f.id));
@@ -3204,7 +3236,7 @@ async function viewFriends(m){
   const isFriend=friend&&inbox.friends.some(f=>f.id===sel);
   return h("div",{},
    inbox.invites.length?h("div",{class:"card",style:"margin-bottom:12px"},h("h3",{style:"margin-top:0"},"Invited to play"),...inbox.invites.map(i=>h("div",{class:"frow"},h("div",{class:"grow"},h("div",{class:"nm"},i.name+" · "+(i.game||"a game")),h("div",{class:"st"},"Sent "+ago(i.at)+(i.server_code?" · on their server":""))),
-     h("button",{class:"btn primary small",onclick:()=>joinInvite(i)},"Join"),h("button",{class:"btn small",onclick:()=>call({action:"dismiss",from:i.from})},"Dismiss"),h("button",{class:"btn small bad",onclick:()=>block(i.from,i.name)},"Block")))):null,
+     h("button",{class:"btn primary small",onclick:()=>joinInvite(i)},"Join"),h("button",{class:"btn small",onclick:()=>call({action:"dismiss",from:i.from})},"Dismiss"),h("button",{class:"btn small",onclick:()=>report(i.from,i.name)},"Report"),h("button",{class:"btn small bad",onclick:()=>block(i.from,i.name)},"Block")))):null,
    h("div",{class:"fr"},
     h("div",{class:"card"},h("div",{class:"row"},h("h3",{class:"grow",style:"margin:0"},"Conversations"),inbox.unread?h("button",{class:"btn small",onclick:()=>call({action:"read_all"},"All marked read")},"Mark all read"):null),
      convs.length?h("div",{style:"margin-top:6px"},...convs.map(c=>h("div",{class:"conv"+(c.id===sel?" on":"")+(c.unread?" unread":""),role:"button",tabindex:0,onclick:()=>openChat(c.id),onkeydown:e=>{if(e.key==="Enter")openChat(c.id)}},
@@ -3212,22 +3244,24 @@ async function viewFriends(m){
      noConv.length?h("div",{style:"margin-top:10px"},h("div",{class:"small muted",style:"margin-bottom:4px"},"Start a conversation"),h("div",{class:"chips",style:"margin:0"},...noConv.map(f=>h("button",{class:"chip",onclick:()=>openChat(f.id)},f.name)))):null),
     friend?h("div",{class:"card"},h("div",{class:"row"},pres(friend.online),h("h3",{class:"grow",style:"margin:0"},friend.name),
        h("button",{class:"btn small",title:"Deletes this conversation from your inbox; they keep their copy",onclick:async()=>{if(!await ask("Delete your conversation with "+friend.name+"? Only your copy is deleted.","Delete"))return;const r=await call({action:"clear_thread",friend:sel},"Conversation deleted");if(r){thread=null;draw()}}},"Delete conversation"),
-       isFriend?h("button",{class:"btn small",onclick:()=>remove(sel,friend.name)},"Remove friend"):null,h("button",{class:"btn small bad",onclick:()=>block(sel,friend.name)},"Block")),
-      h("div",{class:"msgs"},...(thread&&thread.messages&&thread.messages.length?thread.messages.map(mm=>h("div",{class:"msg"+(mm.mine?" mine":"")},mm.text,h("span",{class:"t"},ago(mm.at)))):[h("p",{class:"small muted"},thread?"No messages yet. Say hi! Messages are kept for a week.":"Loading…")])),
+       isFriend?h("button",{class:"btn small",onclick:()=>remove(sel,friend.name)},"Remove friend"):null,h("button",{class:"btn small",onclick:()=>report(sel,friend.name)},"Report"),h("button",{class:"btn small bad",onclick:()=>block(sel,friend.name)},"Block")),
+      h("div",{class:"msgs"},...(thread&&thread.messages&&thread.messages.length?thread.messages.map(mm=>h("div",{class:"msg"+(mm.mine?" mine":"")},mm.text,h("span",{class:"t"},ago(mm.at),!mm.mine&&mm.id?h("button",{type:"button",class:"msgrep",title:"Report this message","aria-label":"Report this message",onclick:()=>report(sel,friend.name,mm.id,mm.text)},"Report"):null))):[h("p",{class:"small muted"},thread?"No messages yet. Say hi! Messages are kept for a week.":"Loading…")])),
       isFriend?h("div",{class:"row",style:"margin-top:8px"},msgIn,sendBtn):h("p",{class:"small muted"},"You are no longer friends, so you can't reply. Add each other again to keep talking.")):
      h("div",{class:"card"},h("p",{class:"muted"},"Pick a conversation, or start one with a friend.")))) };
  const requestsTab=()=>h("div",{class:"fr"},
   h("div",{class:"card"},h("h3",{style:"margin-top:0"},"Wants to be your friend"),inbox.requests.length?h("div",{},...inbox.requests.map(r=>h("div",{class:"frow"},h("span",{class:"nm grow"},r.name),
-    h("button",{class:"btn good small",onclick:()=>call({action:"decide",from:r.id,accept:true},"You and "+r.name+" are friends")},"Accept"),h("button",{class:"btn small",onclick:()=>call({action:"decide",from:r.id,accept:false},"Declined")},"Decline"),h("button",{class:"btn small bad",onclick:()=>block(r.id,r.name)},"Block")))):h("p",{class:"small muted"},"No requests waiting.")),
+    h("button",{class:"btn good small",onclick:()=>call({action:"decide",from:r.id,accept:true},"You and "+r.name+" are friends")},"Accept"),h("button",{class:"btn small",onclick:()=>call({action:"decide",from:r.id,accept:false},"Declined")},"Decline"),h("button",{class:"btn small",onclick:()=>report(r.id,r.name)},"Report"),h("button",{class:"btn small bad",onclick:()=>block(r.id,r.name)},"Block")))):h("p",{class:"small muted"},"No requests waiting.")),
   h("div",{class:"card"},h("h3",{style:"margin-top:0"},"You asked"),inbox.sent.length?h("div",{},...inbox.sent.map(r=>h("div",{class:"frow"},h("span",{class:"nm grow"},r.name),h("span",{class:"st"},"waiting"),h("button",{class:"btn small",title:"Withdraw the request",onclick:()=>call({action:"remove",friend:r.id},"Request withdrawn")},"Withdraw")))):h("p",{class:"small muted"},"Nothing waiting on others.")));
  const blockedTab=()=>h("div",{class:"card"},h("h3",{style:"margin-top:0"},"Blocked players"),
   h("p",{class:"small muted"},"Blocked players can't find you with your code, message you, invite you or see you online. They are not told. Unblocking does not make you friends again."),
-  inbox.blocked.length?h("div",{},...inbox.blocked.map(b=>h("div",{class:"frow"},h("span",{class:"nm grow"},b.name),h("button",{class:"btn small",onclick:()=>call({action:"unblock",player:b.id},b.name+" unblocked")},"Unblock")))):h("p",{class:"small muted"},"Nobody is blocked."));
+  inbox.blocked.length?h("div",{},...inbox.blocked.map(b=>h("div",{class:"frow"},h("span",{class:"nm grow"},b.name),h("button",{class:"btn small",onclick:()=>report(b.id,b.name)},"Report"),h("button",{class:"btn small",onclick:()=>call({action:"unblock",player:b.id},b.name+" unblocked")},"Unblock")))):h("p",{class:"small muted"},"Nobody is blocked."));
  const draw=()=>{
   if(!d.me||!d.me.id){box.replaceChildren(h("div",{class:"why"},"Friend codes, who is online, invites into a room, messages and blocking. Nobody else can see you. No account: this app gets one code."),h("div",{class:"card"},h("p",{},"Say hello to the friends service to get your friend code. It only learns the name you show other players."),h("div",{class:"row"},h("button",{class:"btn primary",onclick:async()=>{const r=await act(()=>api("friends",{action:"hello"}));if(r){d=r;toast("Your friend code is "+r.me.code);refresh()}}},"Say hello and get my code"),h("span",{class:"small muted"},"Service: "+d.server))));return}
+  if(problem&&(!inbox||/banned/i.test(problem))){box.replaceChildren(h("div",{class:"card"},h("p",{class:/banned/i.test(problem)?"bad":""},problem),
+    h("div",{class:"row"},h("button",{class:"btn",onclick:refresh},"Try again"),h("button",{class:"btn",onclick:()=>nav("settings","friends")},"Friends settings"))));return}
   if(!inbox){box.replaceChildren(h("div",{class:"card"},h("span",{class:"spin"}),"Reaching the friends service…"));return}
   const tb=(id,label,n)=>h("button",{class:"chip"+(tab===id?" on":""),"aria-pressed":String(tab===id),onclick:()=>setTab(id)},label,n?h("span",{class:"n"},n):null);
-  box.replaceChildren(h("div",{class:"ftabs",role:"tablist"},tb("friends","Friends",0),tb("inbox","Inbox",(inbox.unread||0)+inbox.invites.length),tb("requests","Requests",inbox.requests.length),tb("blocked","Blocked",0)),
+  box.replaceChildren(modBanner(),h("div",{class:"ftabs",role:"tablist"},tb("friends","Friends",0),tb("inbox","Inbox",(inbox.unread||0)+inbox.invites.length),tb("requests","Requests",inbox.requests.length),tb("blocked","Blocked",0)),
    ({friends:friendsTab,inbox:inboxTab,requests:requestsTab,blocked:blockedTab}[tab]||friendsTab)());
   const ms=box.querySelector(".msgs");if(ms)ms.scrollTop=ms.scrollHeight};
  draw();await refresh();if(sel&&tab==="inbox")openChat(sel);

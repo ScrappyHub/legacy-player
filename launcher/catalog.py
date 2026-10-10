@@ -139,6 +139,21 @@ SETTINGS_SCHEMA: dict[str, dict] = {
         "label": "Friends service address (optional)",
         "help": "A separate, optional service for friend codes, seeing who is online, room invites and short messages. Legacy Player works fully without it. Paste the https:// address of one a friend or the maintainers run (python -m server.social), and the Friends page appears. No account is made: your app gets a friend code to give out, nothing more.",
     },
+    "friends_requests_open": {
+        "type": "bool", "default": True, "group": "Friends",
+        "label": "Let people send me friend requests",
+        "help": "Someone needs your friend code to ask, and only friends can ever message or invite you. Turn off to stop new requests entirely; you can still add other people's codes yourself.",
+    },
+    "friends_filter": {
+        "type": "bool", "default": True, "group": "Friends",
+        "label": "Filter bad language in messages and names",
+        "help": "Hides common swear words (and the words you add below) with asterisks in messages, names and invites from other players. Only changes what you see.",
+    },
+    "friends_filter_words": {
+        "type": "text", "default": "", "optional": True, "max": 2000, "group": "Friends",
+        "label": "Extra words to filter",
+        "help": "Your own words to hide too, separated by commas. Disguises like l33t letters and s p a c e s are caught.",
+    },
     "friends_share_room": {
         "type": "bool", "default": True, "group": "Friends",
         "label": "Let friends see the room I am in and join it",

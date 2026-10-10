@@ -27,7 +27,7 @@ or, through git, with the small `lp` command that comes with the repository:
 ```powershell
 git clone https://github.com/ScrappyHub/legacy-player
 cd legacy-player
-.\lp install            # newest release; or  .\lp install v0.7.41  for one exact version
+.\lp install            # newest release; or  .\lp install v0.7.42  for one exact version
 .\lp run                # later:  .\lp update   .\lp version   .\lp path   .\lp uninstall   .\lp help
 ```
 
@@ -53,6 +53,9 @@ SHA-256 hashes and carries a GitHub build attestation. See `docs/RELEASE.md`.
 - **Game cards:** in Console mode each game opens a card with region, revision, players, release date, makers and a
   description (looked up from Wikipedia/Wikidata only when you ask; you can write your own).
 - **Friends (optional):** a separate friends service with friend codes, who is online, room invites and messages. No accounts.
+  Only friends can message you; requests need your code and can be switched off. Report a player or a single message,
+  block, and a word filter you can turn on or off (Settings > Friends). Whoever runs the service gets a moderation
+  console with time-outs, bans and a service-wide filter (`docs/HOSTING_PUBLIC_SERVER.md`).
 - **See a problem?** on the Home page sends a categorised report (scrubbed) to the maintainers' admin console.
 - **Games open where you want:** in front of Legacy Player, full screen or windowed, on the screen you pick (asked once per emulator,
   changeable under Display and video > Where games open).
@@ -61,7 +64,8 @@ SHA-256 hashes and carries a GitHub build attestation. See `docs/RELEASE.md`.
   "game running" in the app.
 - **Controllers:** pad and keyboard mapping per console, up to four players.
 - **Saves:** finds each emulator's save files, one-click backups and restores.
-- **Play together:** run your own server, or join a friend's.
+- **Play together:** everything is on the Servers page: join a friend's server, your server and Server info (with the
+  network test) side by side, and the rooms below.
   - Start the server with "Let friends connect". The app asks your router (UPnP) to open the port, adds the Windows
     Firewall rule, and puts your public address in a short server code (`LP-...`). Friends paste the code to connect.
   - Rooms have invite codes, approval, a waiting line and open rooms. Game traffic is encrypted between players.

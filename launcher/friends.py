@@ -69,8 +69,12 @@ class FriendsClient:
         self.catalog.save()
         return {"code": out["code"], "name": out["name"]}
 
-    def heartbeat(self, name: str, status: str = "", room: dict | None = None) -> dict:
-        return self._call({"op": "heartbeat", **self._auth(), "name": name, "status": status, "room": room})
+    def heartbeat(self, name: str, status: str = "", room: dict | None = None, requests_open: bool | None = None) -> dict:
+        return self._call({"op": "heartbeat", **self._auth(), "name": name, "status": status, "room": room, "requests_open": requests_open})
+
+    def report(self, player: str, category: str, details: str = "", message: str = "", block: bool = False) -> dict:
+        return self._call({"op": "report", **self._auth(), "player": player, "category": category, "details": details,
+                           "message": message, "block": bool(block)})
 
     def request(self, code: str) -> dict:
         return self._call({"op": "request", **self._auth(), "code": code})

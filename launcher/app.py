@@ -808,7 +808,40 @@ class LauncherApp:
         return {"invite_code": code, "game": room.get("game", ""), "server_code": self._server_code_for_friends(),
                 "players": len(session.get("participants") or room.get("members") or []), "max_players": room.get("max_players") or 0}
 
+    def _friends_filtered(self, out: dict) -> dict:
+        """With the player's filter on, other people's words reach the page with filtered words hidden."""
+        st = self.catalog.settings()
+        if not st.get("friends_filter", True):
+            return out
+        from server.social import textfilter
+        extra = textfilter.clean_words(st.get("friends_filter_words", ""))
+        m = lambda t: textfilter.mask(t, extra) if isinstance(t, str) else t
+        inbox = out.get("inbox")
+        if isinstance(inbox, dict):
+            for key in ("friends", "requests", "sent", "blocked", "conversations"):
+                for row in inbox.get(key) or []:
+                    row["name"] = m(row.get("name"))
+                    if "last" in row:
+                        row["last"] = m(row["last"])
+                    if isinstance(row.get("room"), dict):
+                        row["room"]["game"] = m(row["room"].get("game"))
+                    if "status" in row:
+                        row["status"] = m(row["status"])
+            for inv in inbox.get("invites") or []:
+                inv["name"], inv["game"] = m(inv.get("name")), m(inv.get("game"))
+        for msg in out.get("messages") or []:
+            if not msg.get("mine"):
+                msg["text"] = m(msg.get("text"))
+        if "name" in out and isinstance(out.get("messages"), list):
+            out["name"] = m(out["name"])
+        out["filtered"] = True
+        return out
+
     def api_friends(self, body: dict) -> dict:
+        out = self._api_friends(body)
+        return self._friends_filtered(out) if isinstance(out, dict) else out
+
+    def _api_friends(self, body: dict) -> dict:
         """Everything the Friends page does. action: status | hello | poll | request | decide | remove | invite | dismiss | message |
         thread | goodbye. The service is optional: with no address set, status says so and nothing else works."""
         action = str(body.get("action") or "status")
@@ -824,7 +857,12 @@ class LauncherApp:
                 if not f.identity():
                     return {**base, "inbox": None}
                 status = "playing " + self.running["title"] if self._running_now() else ("in a room" if self.room else "")
-                return {**base, "inbox": f.heartbeat(self.catalog.settings()["display_name"], status, self._room_for_friends())}
+                return {**base, "inbox": f.heartbeat(self.catalog.settings()["display_name"], status, self._room_for_friends(),
+                                                     bool(self.catalog.settings().get("friends_requests_open", True)))}
+            if action == "report":
+                r = f.report(str(body.get("player") or ""), str(body.get("category") or ""), str(body.get("details") or ""),
+                             str(body.get("message") or ""), bool(body.get("block")))
+                return {**base, "reported": True, "inbox": {k: v for k, v in r.items() if k not in ("ok", "report")}}
             if action == "request":
                 return {**base, "inbox": f.request(str(body.get("code") or ""))}
             if action == "decide":

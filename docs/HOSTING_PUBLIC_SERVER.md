@@ -46,6 +46,36 @@ behind https like the receiver; players paste its address under Settings > Frien
 stores names, codes, friend lists, presence and messages (a week); never addresses or game traffic. Idle players are
 forgotten after 60 days, and a player can leave at any time (everything about them is deleted).
 
+### Who can reach whom
+Only mutual friends can message or invite each other. Everyone else can only send a friend request, and only with the
+player's friend code; a player can close requests altogether (Friends > "Let people with my code send me friend
+requests"). Requests (20 an hour), code guesses (60 an hour), messages (20 a minute) and reports (20 a day) are limited
+per player. Blocking hides a player from the blocker completely.
+
+### Moderation console
+```
+python -m server.social --dir social --port 8791 --admin-token <a long random secret>
+```
+(or set `LP_SOCIAL_ADMIN_TOKEN`). Open `https://<your friends address>/admin?token=<secret>`. Without a token there is no
+console (every `/admin` request answers 401).
+
+- **Reports:** players report a player or a single message, with a category (harassment, hate, threats, spam, scam,
+  sexual content, offensive name, cheating, other) and optional details. The console shows the reported message and
+  the few before it **from the service's own copy**, so a report cannot put words in someone's mouth. The reported player
+  is never told who reported them.
+- **Time out** (1 hour, 24 hours, 7 days, 30 days): the player can still sign in and see friends but cannot message,
+  invite or send requests; they see the reason and when it ends. **End time-out** lifts it.
+- **Ban:** the player is shut out (they see the reason), removed from everyone's friends, requests and invites, and is never
+  forgotten by the idle clean-up. **Unban** lets them back with an empty friends list.
+- **Word filter:** off by default. When on, the service refuses messages and names containing filtered words (a built-in
+  list of common profanity plus your own words, one per line). Each player also has their own filter in Settings >
+  Friends (on by default) that hides those words as `****` in what they see; it works whether or not the service filters.
+- **Log:** every moderator action, newest first, kept in `players.json` with the rest.
+
+Limit worth knowing: there are no accounts and no addresses are kept, so a banned player can say hello again as a new
+player with a new code. They start with no friends, and nobody can be messaged without accepting them first, so the
+damage is small; report and block again if it happens.
+
 ## Notes
 - A server code can carry an IPv4 address (short `LP-` code) or an IPv6 address / host name (longer `LP2-` code with a checksum). A host name means the address can change without a new code.
 - Rotating the code (Make a fresh code) stops the old one working for new players only.
