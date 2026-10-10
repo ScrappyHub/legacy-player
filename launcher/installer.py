@@ -104,6 +104,15 @@ class EngineInstaller:
         self.api_base, self.hosts, self.allow_http = api_base, hosts, allow_http
         self.lock = threading.Lock()
         self.job = {"state": "idle", "engine": None, "step": "", "percent": 0, "log": [], "error": None, "path": None}
+        self.on_done = None          # called (no arguments) each time an engine finishes, so the app looks for programs again
+
+    def _finished(self) -> None:
+        fn = self.on_done
+        if fn is not None:
+            try:
+                fn()
+            except Exception:
+                pass
 
     def snapshot(self) -> dict:
         with self.lock:
@@ -128,7 +137,7 @@ class EngineInstaller:
             if self.job["state"] == "running":
                 raise InstallError("Another download is running.")
             self.job = {"state": "running", "engine": engine_id, "step": "Asking GitHub for the latest release",
-                        "percent": 0, "log": [], "error": None, "path": None}
+                        "percent": 0, "log": [], "error": None, "path": None, "page": None}
         if run_inline:
             self._run(engine_id, spec)
         else:
@@ -145,7 +154,7 @@ class EngineInstaller:
             if self.job["state"] == "running":
                 raise InstallError("Another download is running.")
             self.job = {"state": "running", "engine": todo[0], "step": f"Fetching {len(todo)} engines", "percent": 0,
-                        "log": [], "error": None, "path": None}
+                        "log": [], "error": None, "path": None, "page": None}
 
         def run_all() -> None:
             failures = []
@@ -159,6 +168,7 @@ class EngineInstaller:
                 self._set(state="error", step="Finished with problems", error="; ".join(failures)[:600])
             else:
                 self._set(state="done", step="All engines installed", percent=100)
+            self._finished()
         if run_inline:
             run_all()
         else:
@@ -170,8 +180,10 @@ class EngineInstaller:
             release = latest_release(spec["source"]["repo"], self.api_base, self.hosts, self.allow_http)
             asset = pick_asset(release["assets"], spec["source"]["asset"])
             if asset is None:
-                raise InstallError(f"The latest {spec['name']} release ({release['tag']}) has no Windows package this app recognises. "
-                                   f"Get it from {spec['source'].get('page') or release['page']}.")
+                names = ", ".join(a["name"] for a in release["assets"][:8]) or "no files at all"
+                self._set(page=spec["source"].get("page") or release["page"] or f"https://github.com/{spec['source']['repo']}/releases")
+                raise InstallError(f"The latest {spec['name']} release ({release['tag']}) has no Windows package this app recognises "
+                                   f"(it offers: {names}). Open the release page and download it yourself, then add its folder under Emulators.")
             if asset["size"] > MAX_ASSET_BYTES:
                 raise InstallError("That package is larger than expected, so it was refused.")
             self._log(f"{spec['name']} {release['tag']}: {asset['name']} ({asset['size'] // (1024 * 1024)} MB) from {spec['source']['repo']}")
@@ -236,3 +248,6 @@ class EngineInstaller:
             self._log(f"Stopped: {exc}")
         except Exception as exc:
             self._set(error=f"Unexpected problem: {type(exc).__name__}", step="Stopped", **({"state": "error"} if final else {}))
+        finally:
+            if final:
+                self._finished()

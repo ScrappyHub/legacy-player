@@ -25,7 +25,7 @@ class SteamArtTests(unittest.TestCase):
         (cache / "111_library_600x900.jpg").parent.mkdir(parents=True, exist_ok=True)
         (cache / "111_library_600x900.jpg").write_bytes(JPG)
         (cache / "222" / "abcd" / "library_600x900.jpg").write_bytes(JPG)
-        (cache / "333_library_600x900.jpg").write_bytes(b"x" * 700_000)
+        (cache / "333_library_600x900.jpg").write_bytes(b"x" * 2_000_000)
         env = {"STEAM_ROOT": str(root)}
         self.assertEqual(JPG, pcgames.steam_art("111", env))
         self.assertEqual(JPG, pcgames.steam_art("222", env))
@@ -85,3 +85,39 @@ class BackgroundTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SteamHiddenAdoptedTests(unittest.TestCase):
+    """A game hidden inside Steam starts hidden here; the player's own choice in Legacy Player wins afterwards."""
+    def setUp(self):
+        self.app = LauncherApp(Path(tempfile.mkdtemp()))
+        self.hidden = {"111"}
+        p1 = mock.patch("launcher.app.pcgames.library_entries", return_value=[dict(e) for e in ENTRIES])
+        p2 = mock.patch("launcher.app.pcgames.steam_hidden", side_effect=lambda env=None: set(self.hidden))
+        p3 = mock.patch("launcher.app.pcgames.steam_art", side_effect=lambda appid, env=None: JPG if appid == "111" else None)
+        for p in (p1, p2, p3):
+            p.start()
+            self.addCleanup(p.stop)
+
+    def test_steam_hidden_games_start_hidden_and_get_steams_picture(self):
+        self.app.rescan()
+        lib = self.app.api_library({})
+        self.assertNotIn("steam-111", [g["id"] for g in lib["games"]])
+        hidden = self.app.api_library({"hidden": True})["games"]
+        self.assertEqual(["steam-111"], [g["id"] for g in hidden])
+        self.assertEqual("steam", hidden[0]["hidden_by"])
+        self.assertTrue(hidden[0]["steam_hidden"])
+        self.assertTrue(hidden[0]["cover"])                       # Steam's own picture was used without a click
+        pc = self.app.api_pc_games({"action": "list"})
+        self.assertEqual({"steam-111": "steam", "epic-abc": ""}, {g["id"]: g["hidden_by"] for g in pc["games"]})
+        # the player shows it here: that choice sticks even though Steam still hides it
+        self.app.api_pc_games({"action": "hide", "ids": ["steam-111"], "hidden": False})
+        self.app.rescan()
+        self.assertIn("steam-111", [g["id"] for g in self.app.api_library({})["games"]])
+        # un-hidden in Steam later: a game Steam had hidden comes back by itself
+        self.app.api_game_meta({"id": "epic-abc", "hidden": True})
+        self.assertEqual("you", self.app.api_game_meta({"id": "epic-abc"})["hidden_by"])
+        self.hidden = set()
+        self.app.catalog.set_game_meta("steam-111", hidden=True, hidden_by="steam")
+        self.app.rescan()
+        self.assertIn("steam-111", [g["id"] for g in self.app.api_library({})["games"]])

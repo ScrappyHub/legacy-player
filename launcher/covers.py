@@ -121,7 +121,7 @@ class CoverFetcher:
 
 
 # --- covers the player picks themselves -----------------------------------------------------------------------------
-CUSTOM_MAX = 600_000
+CUSTOM_MAX = 1_600_000
 _MAGIC = ((b"\x89PNG\r\n\x1a\n", "png"), (b"\xff\xd8\xff", "jpg"), (b"GIF8", "gif"))
 CONTENT_TYPES = {"png": "image/png", "jpg": "image/jpeg", "gif": "image/gif", "webp": "image/webp"}
 
@@ -150,7 +150,7 @@ def set_custom_cover(cache: Path, game_id: str, data: bytes) -> Path:
     if kind is None:
         raise ValueError("That is not a picture Legacy Player can show (use PNG, JPG, GIF or WEBP).")
     if len(data) > CUSTOM_MAX:
-        raise ValueError("That picture is too big. Pictures up to about 600 KB work.")
+        raise ValueError("That picture is too big. Pictures up to about 1.5 MB work.")
     clear_custom_cover(cache, game_id)
     folder = Path(cache) / "custom"
     folder.mkdir(parents=True, exist_ok=True)

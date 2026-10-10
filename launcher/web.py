@@ -21,7 +21,7 @@ def _same(a: str, b: str) -> bool:
     return secrets.compare_digest(str(a).encode("utf-8"), str(b).encode("utf-8"))
 
 
-QUIT_FAREWELL_SECONDS = 6.0               # how long the window keeps answering so it can say goodbye
+QUIT_FAREWELL_SECONDS = 3.0               # how long the window keeps answering so it can say goodbye (less if it is already gone)
 WINDOW_TITLE_MARK = "Legacy Player \u2014"      # every app window's title starts like this (the overlay's does not)
 
 
@@ -217,6 +217,14 @@ def serve(app: LauncherApp, port: int = 8780, open_browser: bool = True, opener=
         except Exception:
             pass
 
+    def winplace_window_open() -> bool:
+        """Is an app window on screen at all? (Off Windows there is no way to tell, so assume yes.)"""
+        try:
+            from . import winplace
+            return sys.platform != "win32" or winplace.window_exists(WINDOW_TITLE_MARK)
+        except Exception:
+            return True
+
     def show_existing() -> bool:
         """The app window is already on screen (maybe minimised or behind others): bring it forward instead of opening another."""
         try:
@@ -262,8 +270,10 @@ def serve(app: LauncherApp, port: int = 8780, open_browser: bool = True, opener=
                 time.sleep(1.0)
                 now = time.time()
                 if app.quit_requested:
-                    # let the open window see "quitting" and wave goodbye, then close it ourselves and stop
-                    if now - getattr(app, "quit_at", 0.0) < QUIT_FAREWELL_SECONDS:
+                    # let the open window see "quitting" and wave goodbye, then close it ourselves and stop. When the window
+                    # is already gone (tray, or it said bye) there is nobody to wait for: stop right away.
+                    gone = app.tray_mode or bool(app.bye_at) or not winplace_window_open()
+                    if not gone and now - getattr(app, "quit_at", 0.0) < QUIT_FAREWELL_SECONDS:
                         continue
                     close_app_windows()
                     httpd.shutdown()

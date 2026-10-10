@@ -33,7 +33,7 @@ from . import overlay as overlaymod
 from . import procs
 from . import controllers, emulators, engines, pads, savefolders, saves
 from .installer import EngineInstaller, InstallError, latest_release, pick_asset
-from . import updateall, dolphinpads, dolphinpaths, privatelink, firewall, gamefinder, gameinfo, portmap, pcgames, punch, reach, winplace, keyboard, memprobe, netcheck, reports, selfuninstall, sysinfo
+from . import friends as friendsmod, gamecard, updateall, dolphinpads, dolphinpaths, privatelink, firewall, gamefinder, gameinfo, portmap, pcgames, punch, reach, winplace, keyboard, memprobe, netcheck, reports, selfuninstall, sysinfo
 from .covers import (CONTENT_TYPES, CoverFetcher, SYSTEMS as COVER_SYSTEMS, clear_custom_cover, cover_path,
                      custom_cover, set_custom_cover)
 from .pcscan import PcScan
@@ -181,9 +181,12 @@ class LauncherApp:
         self.tray_mode = False   # the window is closed but the app keeps running in the tray
         self._net_running = False
         self.covers = CoverFetcher(self.data_dir / "covers")
+        self.cards = gamecard.CardLookups(self.data_dir / "gamecards")
+        self.friends = friendsmod.FriendsClient(self.catalog)
         self.setup = Setup(self.data_dir, self._retroarch_path,
                            lambda path: self.catalog.set_mapping("emulator_paths", "retroarch", path))
         self.installer = EngineInstaller(self.data_dir / "emulators")
+        self.installer.on_done = self._forget_emulators      # a freshly installed engine shows up at once, not after the cache expires
         self.pcscan = PcScan({k: v["exes"] for k, v in emulators.EMULATORS.items()},
                              lambda: [Path(r) for r in self.catalog.data["roots"]] + [Path(f) for f in self.catalog.data.get("emulator_folders", [])],
                              matcher=emulators.program_for, archive_matcher=emulators.archive_for, after=self._find_games_after_scan)
@@ -215,6 +218,7 @@ class LauncherApp:
         started = time.time()
         with self._scan_lock:                     # one disk walk at a time
             result = scan(roots, DEFAULT_EXCLUDES) if roots else {"games": [], "skipped": {"unrecognized": 0, "duplicates": 0}}
+            adopted = self._adopt_pc_games(pc)
             with self.api_lock:
                 self.games = {g.id: g.as_dict() for g in result["games"]}
                 self.games.update({g["id"]: g for g in pc})
@@ -222,18 +226,55 @@ class LauncherApp:
                 self.catalog.data["last_rescan"] = time.time()
                 self.catalog.save()
                 self._cache_path().write_text(json.dumps({"games": list(self.games.values()), "skipped": self.skipped}), encoding="utf-8")
-                return {"games": len(self.games), "skipped": self.skipped, "seconds": round(time.time() - started, 2)}
+                return {"games": len(self.games), "skipped": self.skipped, "seconds": round(time.time() - started, 2),
+                        "pc_games": len(pc), "steam_pictures": adopted["seeded"]}
+
+    def _pc_env(self) -> dict:
+        """The environment the Steam and Epic readers see: the real one, plus the Steam folder the player typed, if any."""
+        env = dict(os.environ)
+        folder = str(self.catalog.settings().get("steam_folder") or "").strip().strip('"')
+        if folder:
+            env["STEAM_ROOT"] = folder
+        return env
 
     def _pc_entries(self) -> list[dict]:
-        """Installed Steam and Epic games (names only), unless the player turned that off."""
+        """Installed Steam and Epic games (names only), unless the player turned that off. A game the player hid inside
+        Steam is marked, so the library can respect that choice."""
         if not self.catalog.settings().get("show_pc_games", True):
             return []
         st = self.catalog.settings()
         try:
-            return [g for g in pcgames.library_entries()
-                    if (g["root"] == "steam" and st.get("show_steam_games", True)) or (g["root"] == "epic" and st.get("show_epic_games", True))]
+            env = self._pc_env()
+            out = [g for g in pcgames.library_entries(env)
+                   if (g["root"] == "steam" and st.get("show_steam_games", True)) or (g["root"] == "epic" and st.get("show_epic_games", True))]
+            hidden = pcgames.steam_hidden(env) if any(g["root"] == "steam" for g in out) else set()
+            for g in out:
+                g["steam_hidden"] = g["root"] == "steam" and g["path"].rsplit("/", 1)[-1] in hidden
+            return out
         except Exception:                     # a launcher with odd files must never stop the scan
             return []
+
+    def _adopt_pc_games(self, pc: list[dict]) -> dict:
+        """After a scan: a game hidden inside Steam starts hidden here too (until the player says otherwise), and Steam's
+        own picture of each game is used when the game has none. Only local files are read; nothing is downloaded."""
+        seeded, hidden = 0, 0
+        metas = self.catalog.data["game_meta"]
+        for g in pc:
+            meta = metas.get(g["id"], {})
+            if g.get("steam_hidden") and g["id"] not in metas:
+                self.catalog.set_game_meta(g["id"], hidden=True, hidden_by="steam")
+                hidden += 1
+            elif not g.get("steam_hidden") and meta.get("hidden_by") == "steam":
+                self.catalog.set_game_meta(g["id"], hidden=False, hidden_by="")      # un-hidden in Steam since
+            if g["root"] == "steam" and custom_cover(self.covers.cache, g["id"]) is None:
+                try:
+                    data = pcgames.steam_art(g["path"].rsplit("/", 1)[-1], self._pc_env())
+                    if data:
+                        set_custom_cover(self.covers.cache, g["id"], data)
+                        seeded += 1
+                except (ValueError, OSError):
+                    pass
+        return {"seeded": seeded, "hidden": hidden}
 
     def _find_games_after_scan(self, roots, stop, progress) -> dict:
         """Part of the full scan: find the folders that hold the player's games and add them to the library by itself, so nobody
@@ -318,7 +359,9 @@ class LauncherApp:
         return {
             "emulator": emulator, "cover": shown is not None, "custom_cover": own is not None,
             "cover_v": int(shown.stat().st_mtime) if shown else 0,
-            "hidden": bool(meta.get("hidden")), "own_title": bool(meta.get("title")), "own_emulator": meta.get("emulator", ""),
+            "hidden": bool(meta.get("hidden")), "hidden_by": meta.get("hidden_by", ""), "steam_hidden": bool(game.get("steam_hidden")),
+            "own_title": bool(meta.get("title")), "own_emulator": meta.get("emulator", ""),
+            "card": {k: meta.get(k, "") for k in ("description", "release", "version", "developer", "publisher", "genre")},
             "args": meta.get("args", ""), "note": meta.get("note", ""),
             "players": gameinfo.players_for(game["console"], meta.get("title") or game["title"], meta.get("players", "")),
             "own_players": meta.get("players", ""),
@@ -537,12 +580,23 @@ class LauncherApp:
             raise AppError("Unknown choice.") from exc
 
     def api_report_send_all(self, body: dict) -> dict:
-        if self.reports.mode() == "off":
-            raise AppError("Problem reports are off. Turn them on in Settings > Privacy first.")
+        """Everything waiting was approved by the player (the mode, or a report they wrote), so it may go whatever the mode is."""
+        if not self.reports.pending():
+            raise AppError("Nothing is waiting to be sent.")
         return self.reports.send_all()
 
     def api_report_clear(self, body: dict) -> dict:
         return {"removed": self.reports.discard(None)}
+
+    def api_report_file(self, body: dict) -> dict:
+        """'See a problem?' on the Home page: the player's own report, with a category and their words."""
+        try:
+            out = self.reports.file(str(body.get("category") or "other"), str(body.get("text") or ""), bool(body.get("include_recent", True)))
+        except ValueError as exc:
+            raise AppError(str(exc)) from exc
+        out["pending"] = len(self.reports.pending())
+        out["connected"] = bool(self.reports.url())
+        return out
 
     def api_report_client_error(self, body: dict) -> dict:
         """A problem the window itself ran into (the page threw while drawing). Only text; rate limited and cleaned."""
@@ -633,8 +687,10 @@ class LauncherApp:
         return {"will_write": bool(text), "notes": notes, "settings_folder": str(user) if user else None,
                 "enabled": self.catalog.settings()["dolphin_manage_pads"]}
 
-    def _retroarch_extra(self, console_id: str, exe: str, netplay: bool = False, fullscreen: bool | None = None) -> list[str]:
-        """Extra RetroArch arguments: managed save folders and any custom pad bindings."""
+    def _retroarch_extra(self, console_id: str, exe: str, netplay: bool = False, fullscreen: bool | None = None,
+                         video: dict | None = None, res: str = "", borderless: bool | None = None) -> list[str]:
+        """Extra RetroArch arguments: managed save folders, any custom pad bindings and the display choices (the console's
+        own, overridden by what the player picked in the Play options box for this one start)."""
         lines: list[str] = ["netplay_public_announce = \"false\""] if netplay else []  # private rooms stay private
         for player in range(1, pads.MAX_PLAYERS + 1):
             key = self.catalog.data["player_pads"].get(str(player))
@@ -643,11 +699,19 @@ class LauncherApp:
                 lines += pads.retroarch_pad_config(profile, player)[0]
         lines += keyboard.retroarch_lines(self.catalog.data.get("keyboard"))
         v = self._video_for(console_id)
+        for k, val in (video or {}).items():
+            if k in VIDEO_FIELDS and isinstance(val, bool):
+                v[k] = val
         if fullscreen is not None:
             v["fullscreen"] = fullscreen
         lines += [f'video_fullscreen = "{str(v["fullscreen"]).lower()}"', f'video_scale_integer = "{str(v["integer"]).lower()}"',
                   f'video_force_aspect = "{str(v["keep_shape"]).lower()}"', f'video_smooth = "{str(v["smooth"]).lower()}"',
                   f'video_vsync = "{str(v["vsync"]).lower()}"']
+        m = re.fullmatch(r"(\d{3,5})x(\d{3,5})", str(res or ""))
+        if m:                                                   # a fixed full-screen mode; "" keeps the desktop's own
+            lines += [f'video_fullscreen_x = "{m.group(1)}"', f'video_fullscreen_y = "{m.group(2)}"', 'video_windowed_fullscreen = "false"']
+        elif borderless is not None:
+            lines += [f'video_windowed_fullscreen = "{str(bool(borderless)).lower()}"']
         try:
             cfg = savefolders.retroarch_append_config(self.data_dir, self._save_root(), console_id, exe, lines)
         except (OSError, ValueError) as exc:
@@ -720,6 +784,121 @@ class LauncherApp:
             "emulator_choices": self._emulator_choices(console.id),
         }
 
+    # friends (the separate, optional friends service) ----------------------------------------------------------
+    def _server_code_for_friends(self) -> str:
+        """The code a friend needs to reach the server my room is on: my own shared server's code, or the one I joined with."""
+        from . import servercode
+        s = self.catalog.settings()
+        try:
+            if s["server_host"] == "127.0.0.1":
+                return str(self.api_server_code({}).get("code") or "") if s.get("server_tls") else ""
+            return servercode.encode(s["server_host"], int(s.get("server_remote_port") or s["server_port"]), str(s.get("server_fingerprint") or ""),
+                                     str(s.get("server_access_key") or ""))
+        except Exception:
+            return ""
+
+    def _room_for_friends(self) -> dict | None:
+        room = self.room
+        if not room or not self.catalog.settings().get("friends_share_room", True):
+            return None
+        code = room.get("invite_code")
+        if not code:                                     # only the host holds the invite code; guests share nothing joinable
+            return None
+        session = room.get("session") or {}
+        return {"invite_code": code, "game": room.get("game", ""), "server_code": self._server_code_for_friends(),
+                "players": len(session.get("participants") or room.get("members") or []), "max_players": room.get("max_players") or 0}
+
+    def api_friends(self, body: dict) -> dict:
+        """Everything the Friends page does. action: status | hello | poll | request | decide | remove | invite | dismiss | message |
+        thread | goodbye. The service is optional: with no address set, status says so and nothing else works."""
+        action = str(body.get("action") or "status")
+        f = self.friends
+        base = {"enabled": f.enabled(), "server": f.server(), "me": {k: v for k, v in f.identity().items() if k != "secret"},
+                "share_room": bool(self.catalog.settings().get("friends_share_room", True))}
+        if action == "status":
+            return base
+        try:
+            if action == "hello":
+                return {**base, "hello": f.hello(self.catalog.settings()["display_name"]), "me": {k: v for k, v in f.identity().items() if k != "secret"}}
+            if action == "poll":
+                if not f.identity():
+                    return {**base, "inbox": None}
+                status = "playing " + self.running["title"] if self._running_now() else ("in a room" if self.room else "")
+                return {**base, "inbox": f.heartbeat(self.catalog.settings()["display_name"], status, self._room_for_friends())}
+            if action == "request":
+                return {**base, "inbox": f.request(str(body.get("code") or ""))}
+            if action == "decide":
+                return {**base, "inbox": f.decide(str(body.get("from") or ""), bool(body.get("accept")))}
+            if action == "remove":
+                return {**base, "inbox": f.remove(str(body.get("friend") or ""))}
+            if action == "invite":
+                room = self._room_for_friends()
+                if not room:
+                    raise AppError("Host a room first (and keep 'Let friends see the room I am in' on); the invite carries its code.")
+                f.invite(str(body.get("to") or ""), room["invite_code"], room["game"], room["server_code"])
+                return {**base, "ok": True}
+            if action == "dismiss":
+                return {**base, "inbox": f.dismiss_invite(str(body.get("from") or ""))}
+            if action == "message":
+                return {**base, **f.message(str(body.get("to") or ""), str(body.get("text") or ""))}
+            if action == "thread":
+                return {**base, **f.thread(str(body.get("friend") or ""))}
+            if action == "goodbye":
+                f.goodbye()
+                return {**base, "me": {}}
+        except friendsmod.FriendsError as exc:
+            raise AppError(str(exc)) from exc
+        raise AppError("Unknown friends action.")
+
+    # the game card ------------------------------------------------------------------------------------------
+    def api_game_card(self, body: dict) -> dict:
+        """Everything the card shows for one game, each fact labelled with where it came from. action: get (default),
+        lookup (ask Wikipedia/Wikidata once, internet access and a confirmation needed), save (the player's own text),
+        forget (drop what was looked up)."""
+        game = self._game(body)
+        action = str(body.get("action") or "get")
+        console = BY_ID[game["console"]]
+        if action == "save":
+            fields = {k: str(body.get(k) or "") for k in ("description", "release", "version", "developer", "publisher", "genre", "players") if k in body}
+            try:
+                self.catalog.set_game_meta(game["id"], **fields)
+            except CatalogError as exc:
+                raise AppError(str(exc)) from exc
+        elif action == "forget":
+            self.cards.forget(game["id"])
+        elif action == "lookup":
+            if not self.catalog.settings()["allow_internet"]:
+                raise AppError("Internet access is off. Turn on 'Allow internet downloads' in Settings first.")
+            if not body.get("consent"):
+                raise AppError("Please confirm: this game's name and console are sent to Wikipedia to look it up.")
+            self.cards.start(game["id"], self._meta(game).get("title") or game["title"], console.name)
+        meta = self._meta(game)
+        looked = self.cards.cached(game["id"]) or {}
+        found = looked.get("fields") or {}
+        local = gamecard.local_card(game, meta)
+        public = self._public(game)
+        out = {"id": game["id"], "title": public["title"], "console": console.id, "console_name": console.name, "cover": public["cover"],
+               "cover_v": public["cover_v"], "size_mb": public["size_mb"], "plays": public["plays"], "last_played": public["last_played"],
+               "emulator": public["emulator"], "launch": self.launch_check(game), "favorite": public["favorite"], "netplay": console.netplay,
+               "file": Path(game["path"]).name if game["console"] != "pc" else "", "store": game.get("root") if game["console"] == "pc" else "",
+               "region": local["region"], "file_tags": local["file_tags"], "players": public["players"], "own_players": public["own_players"],
+               "lookup": self.cards.state(game["id"]), "looked_up_at": looked.get("at"), "source": looked.get("source", ""),
+               "allow_internet": bool(self.catalog.settings()["allow_internet"]), "fields": {}}
+        for key in ("description", "release", "version", "developer", "publisher", "genre"):
+            if meta.get(key):
+                out["fields"][key] = {"value": meta[key], "source": "you"}
+            elif key == "version" and local["version"]:
+                out["fields"][key] = {"value": local["version"], "source": "file"}
+            elif found.get(key):
+                out["fields"][key] = {"value": found[key], "source": "wikipedia" if key == "description" else "wikidata"}
+            else:
+                out["fields"][key] = {"value": "", "source": ""}
+        if not meta.get("players") and found.get("max_players") and public["players"]["source"] == "console":
+            n = int(found["max_players"])
+            out["players"] = {**public["players"], "max": max(1, min(8, n)), "source": "wikidata", "shareable": n >= 2,
+                              "label": gameinfo._label(n, public["players"]["mode"]), "note": "From Wikidata. Set it yourself if it is wrong."}
+        return out
+
     def _emulator_choices(self, console_id: str) -> list[dict]:
         found = self._emulators()
         return [{"id": e, "name": emulators.EMULATORS[e]["name"], "installed": bool(found.get(e, {}).get("path"))}
@@ -736,6 +915,59 @@ class LauncherApp:
         key = str(key or "")
         return next((m for m in winplace.list_monitors() if str(m["index"]) == key), None) if key else None
 
+    def _play_prefs(self, eid: str) -> dict:
+        """What the player chose in the Play options box for this emulator: resolution, borderless, and whether to ask again."""
+        store = self.catalog.data.setdefault("play_prefs", {})
+        return store.setdefault(eid, {})
+
+    def _optimize_for(self, console_id: str, eid: str, monitor: dict | None) -> dict:
+        """A sensible set of choices for this computer, from what the doctor read about it. Honest and modest: it never
+        changes the emulator's own graphics settings, only what Legacy Player passes on start-up."""
+        specs = getattr(self, "_specs", None) or {}
+        gpu = " ".join(g.get("name", "") for g in specs.get("gpus", [])).lower()
+        ram = specs.get("ram_gb") or 0
+        threads = specs.get("threads") or 0
+        integrated = bool(gpu) and not re.search(r"nvidia|geforce|rtx|gtx|radeon rx|radeon pro|arc a|arc b", gpu)
+        weak = (ram and ram < 8) or (threads and threads < 4) or (integrated and (not ram or ram < 16))
+        choice = {"mode": "fullscreen", "borderless": True, "res": "", "vsync": True, "integer": False, "keep_shape": True, "smooth": False}
+        why = ["Full screen, as a borderless window: no display-mode switch, so alt-tab and the overlay stay quick."]
+        if weak:
+            why.append("This computer is on the lighter side, so vsync stays on for a steady picture and no extra filtering is added.")
+        else:
+            why.append("Vsync on for a tear-free picture; the game keeps its own shape with crisp pixels.")
+        if monitor and monitor.get("w") and monitor.get("h"):
+            why.append(f"The game fills your {monitor['w']}x{monitor['h']} screen.")
+        if eid != "retroarch":
+            why = [f"{emulators.EMULATORS.get(eid, {}).get('name', eid)} keeps its own graphics settings; Legacy Player can only ask it to start full screen."]
+        return {"choice": choice, "why": why, "weak": bool(weak), "integrated": integrated}
+
+    def api_play_options(self, body: dict) -> dict:
+        """What the Play options box shows before a game starts: the emulator, screens, the console's display choices,
+        the resolutions the main screen supports, and a recommendation for this computer. Nothing is changed."""
+        game = self._game(body)
+        check = self.launch_check(game)
+        if not check["ready"]:
+            raise AppError(check["reason"])
+        eid = check["emulator_id"]
+        prefs, play = self._display_prefs(), self._play_prefs(eid)
+        monitors = winplace.list_monitors()
+        key = prefs["monitor"]
+        mon = self._monitor_for(key) or next((m for m in monitors if m.get("primary")), monitors[0] if monitors else None)
+        video = self._video_for(game["console"]) if game["console"] != "pc" else {}
+        applies = list(VIDEO_FIELDS) if eid == "retroarch" else (["fullscreen"] if emulators.EMULATORS.get(eid, {}).get("fullscreen") else [])
+        res = []
+        if mon and mon.get("w") and mon.get("h"):
+            for w, h in ((mon["w"], mon["h"]), (3840, 2160), (2560, 1440), (1920, 1080), (1600, 900), (1280, 720)):
+                if w <= mon["w"] and h <= mon["h"] and f"{w}x{h}" not in res:
+                    res.append(f"{w}x{h}")
+        return {"id": game["id"], "title": self._public(game)["title"], "emulator": check["emulator"], "emulator_id": eid,
+                "pc": game["console"] == "pc", "console": game["console"], "console_name": BY_ID[game["console"]].name,
+                "mode": prefs["modes"].get(eid, "ask"), "monitor": key, "monitors": monitors,
+                "video": video, "applies": applies, "fields": {k: VIDEO_FIELDS[k]["label"] for k in VIDEO_FIELDS},
+                "res": play.get("res", ""), "resolutions": res, "borderless": play.get("borderless", True),
+                "flag": emulators.fullscreen_status(eid) if eid in emulators.EMULATORS else "none",
+                "recommended": self._optimize_for(game["console"], eid, mon), "specs_known": getattr(self, "_specs", None) is not None}
+
     def _display_choice(self, eid: str, console: str, body: dict) -> tuple[str | None, str, bool]:
         """(mode, monitor key, must_ask). `display` in the request is the player's answer to the question."""
         prefs = self._display_prefs()
@@ -745,6 +977,15 @@ class LauncherApp:
             if chosen.get("remember"):
                 prefs["modes"][eid] = chosen["mode"]
                 prefs["monitor"] = monitor
+                play = self._play_prefs(eid)
+                play["res"] = str(chosen.get("res") or "") if re.fullmatch(r"\d{3,5}x\d{3,5}", str(chosen.get("res") or "")) else ""
+                play["borderless"] = bool(chosen.get("borderless", True))
+                video = chosen.get("video")
+                if isinstance(video, dict) and console in BY_ID:          # the switches become this console's own choices
+                    store = self.catalog.data.setdefault("video", {}).setdefault(console, {})
+                    for k, v in video.items():
+                        if k in VIDEO_FIELDS and isinstance(v, bool):
+                            store[k] = v
                 self.catalog.save()
             return chosen["mode"], monitor, False
         stored = prefs["modes"].get(eid)
@@ -825,6 +1066,11 @@ class LauncherApp:
             return {"needs_display": {"emulator": check["emulator"], "emulator_id": eid, "title": game["title"], "monitor": monitor,
                                       "monitors": winplace.list_monitors(), "flag": emulators.fullscreen_status(eid)}}
         fullscreen = mode == "fullscreen"
+        chosen = body.get("display") if isinstance(body.get("display"), dict) else {}
+        play = self._play_prefs(eid)
+        video = chosen.get("video") if isinstance(chosen.get("video"), dict) else None
+        res = str(chosen.get("res") if "res" in chosen else play.get("res", "") or "")
+        borderless = bool(chosen.get("borderless")) if "borderless" in chosen else play.get("borderless")
         _, info = self._emulator_for(game["console"], prefer=self._meta(game).get("emulator"))
         try:
             if eid == "retroarch":
@@ -832,7 +1078,8 @@ class LauncherApp:
                     raise AppError("RetroArch has no core set up for this console.")
                 core = find_core(info["path"], game["console"])
                 command = build_solo_command(info["path"], core, game["path"],
-                                             self._retroarch_extra(game["console"], info["path"], fullscreen=fullscreen) + self._user_args(game))
+                                             self._retroarch_extra(game["console"], info["path"], fullscreen=fullscreen, video=video,
+                                                                   res=res if fullscreen else "", borderless=borderless) + self._user_args(game))
                 pid = emulators.launch_command(command)
             else:
                 if eid == "dolphin":
@@ -979,12 +1226,17 @@ class LauncherApp:
 
     # engines (the owned shell's view of emulators) -----------------------------------
     def _engines_payload(self) -> dict:
+        job = self.installer.snapshot()
+        if job["state"] != "running" and getattr(self, "_last_job_state", None) == "running":
+            self._forget_emulators()                 # the download just finished: look at the folder again right now
+        self._last_job_state = job["state"]
         found = self._emulators()
         rows = []
         for engine_id, spec in engines.ENGINES.items():
             info = found.get(engine_id, {})
             rows.append({
                 "id": engine_id, "name": spec["name"], "consoles": spec["consoles"], "license": spec["license"],
+                "console_names": [BY_ID[c].name if c in BY_ID else c for c in spec["consoles"]],
                 "path": info.get("path"), "source": info.get("source"), "official": spec["source"],
                 "can_download": spec["source"]["kind"] == "github", "bios": spec.get("bios"),
             })
@@ -997,7 +1249,7 @@ class LauncherApp:
             eid, info = self._emulator_for(c.id, found)
             consoles.append({"id": c.id, "name": c.name, "ready": bool(eid), "via": info["name"] if info else None})
         return {"engines": rows, "bios": bios, "consoles": consoles, "allow_internet": self.catalog.settings()["allow_internet"],
-                "install_folder": str(self.data_dir / "emulators"), "job": self.installer.snapshot(),
+                "install_folder": str(self.data_dir / "emulators"), "job": job,
                 "last_scan": self.catalog.data.get("last_scan")}
 
     def api_engines(self, body: dict) -> dict:
@@ -1094,14 +1346,14 @@ class LauncherApp:
             known = {g["id"] for g in pc}
             for gid in ids:
                 if gid in known:
-                    self.catalog.set_game_meta(gid, hidden=bool(body.get("hidden", True)))
+                    self.catalog.set_game_meta(gid, hidden=bool(body.get("hidden", True)), hidden_by="you")   # the player decided, either way
             metas = self.catalog.data["game_meta"]
         seeded = imported = 0
         if action == "seed_covers":
             for g in pc:
                 if g["root"] != "steam" or (custom_cover(self.covers.cache, g["id"]) and not body.get("overwrite")):
                     continue
-                data = pcgames.steam_art(g["path"].rsplit("/", 1)[-1])
+                data = pcgames.steam_art(g["path"].rsplit("/", 1)[-1], self._pc_env())
                 if data:
                     try:
                         set_custom_cover(self.covers.cache, g["id"], data)
@@ -1125,15 +1377,23 @@ class LauncherApp:
                 except (ValueError, OSError):
                     pass
         s = self.catalog.settings()
+        try:
+            diag = pcgames.steam_diagnostics(self._pc_env())
+        except Exception:
+            diag = {"found": False, "root": "", "libraries": [], "manifests": 0, "games": 0}
         return {"show": s.get("show_pc_games", True), "steam": s.get("show_steam_games", True), "epic": s.get("show_epic_games", True),
-                "seeded": seeded, "imported": imported,
+                "seeded": seeded, "imported": imported, "steam_info": diag,
                 "games": [{"id": g["id"], "title": g["title"], "store": g["root"], "hidden": bool(metas.get(g["id"], {}).get("hidden")),
+                           "hidden_by": metas.get(g["id"], {}).get("hidden_by", ""), "steam_hidden": bool(g.get("steam_hidden")),
                            "cover": custom_cover(self.covers.cache, g["id"]) is not None} for g in sorted(pc, key=lambda x: x["sort_title"])]}
 
     def api_game_meta(self, body: dict) -> dict:
         """Per-game choices: name, hidden, emulator, launch options, note."""
         game = self._game(body)
-        fields = {k: body[k] for k in ("title", "hidden", "emulator", "args", "note", "players") if k in body}
+        fields = {k: body[k] for k in ("title", "hidden", "emulator", "args", "note", "players",
+                                       "description", "release", "version", "developer", "publisher", "genre") if k in body}
+        if "hidden" in fields:
+            fields["hidden_by"] = "you"            # the player decided; a Steam-hidden game shown here stays shown
         if fields.get("emulator") and fields["emulator"] not in emulators.EMULATORS:
             raise AppError("That emulator is not one Legacy Player knows.")
         try:
@@ -1408,6 +1668,7 @@ class LauncherApp:
     def api_credits(self, body: dict) -> dict:
         found = self._emulators()
         rows = [{"id": eid, "name": spec["name"], "consoles": spec["consoles"], "license": spec["license"],
+                 "console_names": [BY_ID[c].name if c in BY_ID else c for c in spec["consoles"]],
                  "homepage": engines.HOMEPAGES.get(eid, spec["source"].get("url", "")),
                  "redistributable": eid not in engines.NOT_REDISTRIBUTABLE, "path": found.get(eid, {}).get("path")}
                 for eid, spec in engines.ENGINES.items()]
@@ -2510,7 +2771,7 @@ class LauncherApp:
 
     # window lifetime (used by the packaged app so it quits when its window closes) ----------
     # calls that need no global lock: quick reads, or slow work that only touches its own cache
-    UNLOCKED = frozenset({"force_quit", "server_activity", "notices", "overlay", "overlay_open", "overlay_state", "overlay_capture_pad", "game_window", "router_test", "firewall_allow", "ping", "bye", "status", "specs", "server_status", "network_last", "notices", "server_control", "rescan", "scan_everything"})
+    UNLOCKED = frozenset({"force_quit", "server_activity", "notices", "overlay", "overlay_open", "overlay_state", "overlay_capture_pad", "game_window", "router_test", "firewall_allow", "ping", "bye", "status", "specs", "server_status", "network_last", "notices", "server_control", "rescan", "scan_everything", "friends"})
 
     def api_ping(self, body: dict) -> dict:
         self.last_ping, self.bye_at, self.tray_mode = time.time(), 0.0, False
@@ -2745,7 +3006,7 @@ class LauncherApp:
         return {"ok": True}
 
     def api_bye(self, body: dict) -> dict:
-        self.bye_at = time.time() + 5  # a reload pings again within seconds and cancels this
+        self.bye_at = time.time() + 3  # a reload pings again right away and cancels this
         return {"ok": True}
 
     def window_closed(self, now: float, grace: float = 180.0, started: float = 0.0) -> bool:

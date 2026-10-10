@@ -576,6 +576,61 @@ label:has(>input[type=checkbox]:not(.switch input))>input,label:has(>input[type=
 .card .row>label.grow+input[type=number]{width:120px}
 .fieldrow .fld input[type=text],.fieldrow .fld select{width:100%;max-width:380px}
 .btn{min-height:var(--field-h)}
+/* ---------- scrollbars that match the app (every theme), and bars you can drag ---------- */
+*{scrollbar-width:thin;scrollbar-color:color-mix(in srgb,var(--accent) 55%,transparent) transparent}
+::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--accent) 45%,transparent);border-radius:8px;border:2px solid transparent;background-clip:padding-box}
+::-webkit-scrollbar-thumb:hover{background:color-mix(in srgb,var(--accent) 75%,transparent);background-clip:padding-box;border:2px solid transparent}
+::-webkit-scrollbar-corner{background:transparent}
+.shelf,.conbar,.estrip{cursor:grab;scroll-behavior:smooth}.shelf.dragging,.conbar.dragging,.estrip.dragging{cursor:grabbing;scroll-behavior:auto;user-select:none}
+.shelf.dragging *,.conbar.dragging *,.estrip.dragging *{pointer-events:none}
+.conwrap{position:relative;display:flex;align-items:center;gap:6px;margin:4px 0 8px}
+.conwrap .conbar{flex:1;min-width:0;margin:0;padding:8px 2px 12px;scrollbar-width:thin}
+.conarrow{flex:none;width:38px;height:38px;border-radius:50%;border:1px solid var(--line);background:var(--solid);color:var(--text);font-size:1.1rem;cursor:pointer;display:grid;place-items:center;transition:transform .12s,border-color .15s,opacity .15s}
+.conarrow:hover{border-color:var(--accent);transform:scale(1.08)}.conarrow:disabled{opacity:.25;cursor:default;transform:none}
+.confade{position:absolute;top:0;bottom:0;width:44px;pointer-events:none;z-index:1;transition:opacity .2s}
+.confade.l{left:44px;background:linear-gradient(90deg,color-mix(in srgb,var(--bg) 80%,transparent),transparent)}.confade.r{right:44px;background:linear-gradient(270deg,color-mix(in srgb,var(--bg) 80%,transparent),transparent)}
+.confade.off{opacity:0}
+/* ---------- the game card (Console mode) ---------- */
+.gcard{display:grid;grid-template-columns:200px minmax(0,1fr);gap:22px;align-items:start}
+@media(max-width:700px){.gcard{grid-template-columns:1fr}}
+.gcard .cv.prop{width:200px}
+.gchead{display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap}.gchead h2{margin:0;font-size:1.45rem;line-height:1.2}
+.gcbadges{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 10px}
+.gcfacts{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 14px;margin:8px 0 10px;align-items:baseline}
+.gcfacts .k{color:var(--mute);font-size:.84rem;white-space:nowrap}.gcfacts .v{min-width:0;word-break:break-word}
+.src{display:inline-block;font-size:.66rem;letter-spacing:.06em;text-transform:uppercase;padding:1px 7px;border-radius:999px;border:1px solid var(--line);color:var(--mute);margin-left:6px;vertical-align:middle}
+.src.you{color:var(--accent2);border-color:var(--accent2)}.src.wikipedia,.src.wikidata{color:var(--link);border-color:var(--link)}
+.gcdesc{margin:6px 0 10px;line-height:1.55;max-height:170px;overflow:auto;padding-right:6px}
+.gcedit{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin:10px 0}
+.gcedit input,.gcedit select{width:100%}.gcedit .wide{grid-column:1/-1}
+.gcactions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+/* ---------- Play options, before a game starts ---------- */
+.popt{display:grid;grid-template-columns:minmax(0,1fr) minmax(220px,.8fr);gap:18px}
+@media(max-width:640px){.popt{grid-template-columns:1fr}}
+.poptrow{display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--line)}
+.poptrow .vt{flex:1;min-width:0;display:flex;flex-direction:column}.poptrow.off{opacity:.5}
+.poptrow select{max-width:220px}
+.rec{border:1px solid color-mix(in srgb,var(--accent2) 60%,var(--line));background:color-mix(in srgb,var(--accent2) 10%,transparent);border-radius:12px;padding:10px 12px}
+.rec ul{margin:6px 0 0;padding-left:18px}.rec li{font-size:.84rem;color:var(--mute)}
+/* ---------- See a problem? ---------- */
+.seeissue{margin-left:auto;background:none;border:0;color:var(--text);cursor:pointer;font:inherit;font-size:.9rem;font-weight:600;padding:4px 8px;border-radius:8px;text-decoration:underline;text-underline-offset:3px}
+.seeissue:hover{background:var(--panel2)}
+.cats{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin:10px 0}
+.cat{display:flex;flex-direction:column;gap:2px;text-align:left;padding:10px 12px;border-radius:12px;border:1px solid var(--line);background:var(--panel2);color:var(--text);cursor:pointer;font:inherit}
+.cat:hover{border-color:var(--accent)}.cat.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 18%,transparent);box-shadow:0 0 0 2px var(--ring)}
+.cat b{font-size:.92rem}.cat span{font-size:.76rem;color:var(--mute)}
+/* ---------- Friends ---------- */
+.fr{display:grid;grid-template-columns:minmax(280px,1fr) minmax(300px,1.3fr);gap:16px;align-items:start}
+@media(max-width:860px){.fr{grid-template-columns:1fr}}
+.frow{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)}.frow .nm{font-weight:650}.frow .st{font-size:.82rem;color:var(--mute)}
+.frow .pres{width:10px;height:10px;border-radius:50%;background:#6b7390;flex:none}.frow .pres.on{background:var(--accent2);box-shadow:0 0 8px var(--accent2)}
+.frow .unread{font-size:.7rem;background:var(--accent);color:#fff;border-radius:999px;padding:1px 7px;font-weight:700}
+.msgs{display:flex;flex-direction:column;gap:6px;max-height:50vh;overflow:auto;padding:6px 2px}
+.msg{max-width:78%;padding:7px 11px;border-radius:14px;background:var(--panel2);border:1px solid var(--line);font-size:.92rem;align-self:flex-start}
+.msg.mine{align-self:flex-end;background:color-mix(in srgb,var(--accent) 28%,transparent);border-color:transparent}
+.msg .t{display:block;font-size:.68rem;color:var(--mute);margin-top:2px}
+.code.mid{font-size:1.3rem;padding:8px 14px;letter-spacing:.14em}
 </style>
 </head>
 <body>
@@ -647,7 +702,7 @@ const $=(s,r=document)=>r.querySelector(s);
 function h(tag,attrs,...kids){const e=document.createElement(tag);for(const[k,v]of Object.entries(attrs||{})){if(k==="class")e.className=v;else if(k.startsWith("on"))e.addEventListener(k.slice(2),v);else if(v===true)e.setAttribute(k,"");else if(v!==false&&v!=null)e.setAttribute(k,v)}
  for(const c of kids.flat()){if(c==null||c===false)continue;e.append(c.nodeType?c:document.createTextNode(String(c)))}return e}
 /* A thin shimmer bar at the top and a hopping Martin show the app is working. Quiet background polls do not trigger it. */
-let pending=0,busyT=null;const QUIET=new Set(["ping","mp_state","status","scan_pc","server_status","notices","pads","bye","network_last","setup_status","specs","keyboard","home","server_control"]);
+let pending=0,busyT=null;const QUIET=new Set(["ping","mp_state","status","scan_pc","server_status","notices","pads","bye","network_last","setup_status","specs","keyboard","home","server_control","friends","game_card"]);
 async function api(name,body={}){const loud=!QUIET.has(name);if(loud){pending++;if(pending===1)busyT=setTimeout(()=>document.body.classList.add("busy"),200)}
  try{const r=await fetch("/api/"+name,{method:"POST",headers:{"Content-Type":"application/json","X-LP-Token":TOKEN},body:JSON.stringify(body)});
   const j=await r.json();if(!r.ok)throw new Error(j.error||"Request failed");return j}
@@ -661,23 +716,47 @@ function stepify(root){(root||document).querySelectorAll("input[type=number]:not
  inp.addEventListener("keydown",e=>{if(e.key==="ArrowUp"){e.preventDefault();bump(1)}else if(e.key==="ArrowDown"){e.preventDefault();bump(-1)}})})}
 new MutationObserver(()=>stepify()).observe(document.documentElement,{childList:true,subtree:true});
 function toast(text,level){const t=h("div",{class:"toast "+(level||"")},text);$("#toasts").append(t);setTimeout(()=>t.remove(),level==="warn"?9000:5000)}
-async function displayModal(nd){return new Promise(res=>{const done=v=>{ov.remove();res(v)};
- let mode="fullscreen";const mons=nd.monitors||[];let mon=nd.monitor||"";
- const remember=h("input",{type:"checkbox",id:"dispRem"});
- const mk=(v,t,sub)=>{const b=h("button",{type:"button","aria-pressed":String(mode===v),class:"btn"+(mode===v?" primary":""),onclick:()=>{mode=v;[...row.children].forEach(c=>{c.classList.toggle("primary",c.dataset.v===mode);c.setAttribute("aria-pressed",String(c.dataset.v===mode))})}},h("b",{},t),h("div",{class:"small"},sub));b.dataset.v=v;return b};
- const row=h("div",{class:"row",style:"gap:8px;margin:10px 0"},mk("fullscreen","Full screen","Fills the screen"),mk("windowed","Windowed","A normal window"));
- const sel=mons.length>1?h("select",{"aria-label":"Which screen","data-mon":"1",onchange:e=>{mon=e.target.value}},h("option",{value:""},"Automatic"),...mons.map(m=>h("option",{value:String(m.index),selected:String(m.index)===String(mon)},m.label))):null;
- const ov=h("div",{class:"modal",role:"dialog","aria-modal":"true","aria-labelledby":"dispTitle"},h("div",{class:"modalbox"},h("h3",{id:"dispTitle",style:"margin-top:0"},"How should "+(nd.title||"this game")+" open?"),
-  h("p",{class:"small muted"},"In "+nd.emulator+"."),row,sel?h("label",{class:"small"},"On which screen? ",sel):null,
-  h("label",{class:"small",style:"display:block;margin:8px 0"},remember," Remember for "+nd.emulator+" (change any time in Display)"),
-  h("div",{class:"row",style:"justify-content:flex-end;gap:8px"},h("button",{class:"btn",onclick:()=>done(null)},"Cancel"),h("button",{class:"btn primary qgo",onclick:()=>done({mode,monitor:mon,remember:remember.checked})},"Play"))));
- document.body.append(ov);ov.querySelector(".qgo").focus()})}
+/* Play options: how this game opens, asked before it starts (or on request). Everything here is what Legacy Player passes to the
+   emulator on start-up; the emulator's own graphics menu is untouched. */
+async function playOptionsModal(o){return new Promise(res=>{const done=v=>{ov.remove();res(v)};
+ const rec=o.recommended||{choice:{},why:[]};
+ const st={mode:o.mode==="ask"||!o.mode?(rec.choice.mode||"fullscreen"):o.mode,monitor:o.monitor||"",res:o.res||"",borderless:o.borderless!==false,video:{...(o.video||{})},remember:false};
+ const ra=o.emulator_id==="retroarch",applies=new Set(o.applies||[]);
+ const body=h("div",{});
+ const seg=(cur,opts,on)=>h("div",{class:"segmented",role:"radiogroup"},...opts.map(([v,l])=>h("button",{type:"button",role:"radio","aria-checked":String(cur===v),class:cur===v?"on":"",onclick:()=>on(v)},l)));
+ const sw=(label,help,get,set,dis)=>{const inp=h("input",{type:"checkbox",role:"switch",checked:!!get(),disabled:!!dis,"aria-label":label,onchange:e=>{set(e.target.checked);draw()}});
+  return h("label",{class:"poptrow"+(dis?" off":"")},h("div",{class:"vt"},h("b",{},label),h("span",{class:"small muted"},help)),h("span",{class:"switch"},inp,h("i",{})))};
+ const draw=()=>{
+  const mon=(o.monitors||[]).find(m=>String(m.index)===String(st.monitor))||(o.monitors||[]).find(m=>m.primary)||null;
+  const left=h("div",{},
+   h("div",{class:"poptrow"},h("div",{class:"vt"},h("b",{},"Window"),h("span",{class:"small muted"},st.mode==="fullscreen"?"Fills the screen.":"A normal window you can move and resize.")),seg(st.mode,[["fullscreen","Full screen"],["windowed","Windowed"]],v=>{st.mode=v;draw()})),
+   (o.monitors||[]).length>1?h("div",{class:"poptrow"},h("div",{class:"vt"},h("b",{},"Screen"),h("span",{class:"small muted"},"Which monitor the game opens on.")),h("select",{"aria-label":"Screen",onchange:e=>{st.monitor=e.target.value;draw()}},h("option",{value:""},"Automatic"),...o.monitors.map(m=>h("option",{value:String(m.index),selected:String(m.index)===String(st.monitor)},m.label)))):
+    h("div",{class:"poptrow"},h("div",{class:"vt"},h("b",{},"Screen"),h("span",{class:"small muted"},mon?mon.label+(mon.w?" · "+mon.w+"×"+mon.h:""):"One screen."))),
+   ra?sw("Borderless full screen","No display-mode switch: alt-tab and the overlay stay instant. Off lets you pick a fixed resolution.",()=>st.borderless,v=>{st.borderless=v;if(v)st.res=""},st.mode!=="fullscreen"):null,
+   ra?h("div",{class:"poptrow"+(st.mode!=="fullscreen"||st.borderless?" off":"")},h("div",{class:"vt"},h("b",{},"Resolution"),h("span",{class:"small muted"},st.borderless?"Borderless uses your desktop's resolution.":"A fixed full-screen mode; the desktop's own is the safest.")),
+     h("select",{"aria-label":"Resolution",disabled:st.mode!=="fullscreen"||st.borderless,onchange:e=>{st.res=e.target.value}},h("option",{value:"",selected:!st.res},"Desktop ("+(mon&&mon.w?mon.w+"×"+mon.h:"native")+")"),...(o.resolutions||[]).map(r=>h("option",{value:r,selected:st.res===r},r.replace("x","×"))))):null,
+   ...["vsync","integer","keep_shape","smooth"].filter(k=>applies.has(k)).map(k=>sw(VIDEO_TITLE[k]||o.fields[k],VIDEO_PLAIN[k]||"",()=>st.video[k],v=>{st.video[k]=v})),
+   !ra&&!o.pc?h("p",{class:"small muted",style:"margin:10px 0 0"},o.emulator+" keeps its own graphics settings (resolution, vsync, scaling) in its own menu; Legacy Player can only "+(applies.has("fullscreen")?"ask it to start full screen and place its window.":"place its window.")):null);
+  const right=h("div",{},
+   h("div",{class:"rec"},h("div",{class:"row"},h("b",{class:"grow"},"For this computer"),h("button",{class:"btn small",disabled:!o.specs_known,title:o.specs_known?"":"Still reading this computer…",onclick:()=>{Object.assign(st,{mode:rec.choice.mode||st.mode,borderless:rec.choice.borderless!==false,res:rec.choice.res||""});["vsync","integer","keep_shape","smooth"].forEach(k=>{if(k in rec.choice&&applies.has(k))st.video[k]=rec.choice[k]});toast("Set to what suits this computer");draw()}},"Optimize for my computer")),
+    o.specs_known?h("ul",{},...rec.why.map(t=>h("li",{},t))):h("div",{class:"small muted",style:"margin-top:6px"},h("span",{class:"spin"}),"Reading your processor, memory and graphics card…")),
+   h("label",{class:"small",style:"display:flex;gap:10px;align-items:flex-start;margin-top:14px"},h("input",{type:"checkbox",checked:st.remember,onchange:e=>{st.remember=e.target.checked}}),h("span",{},"Remember this for "+o.emulator+" and stop asking ",h("span",{class:"muted"},"(change any time under Configure > Display and video)"))));
+  body.replaceChildren(h("div",{class:"popt"},left,right))};
+ const ov=h("div",{class:"modal",role:"dialog","aria-modal":"true","aria-labelledby":"poTitle"},h("div",{class:"modalbox wide",style:"max-width:760px"},
+  h("div",{class:"row",style:"margin-bottom:4px"},h("div",{class:"grow"},h("h3",{id:"poTitle",style:"margin:0"},"Play "+(o.title||"this game")),h("div",{class:"small muted"},"In "+o.emulator+". These choices are passed on start-up; nothing inside the emulator is changed.")),h("button",{class:"btn","data-cancel":true,onclick:()=>done(null),"aria-label":"Cancel"},"✕")),
+  body,
+  h("div",{class:"row",style:"justify-content:flex-end;gap:8px;margin-top:14px"},h("button",{class:"btn",onclick:()=>done(null)},"Cancel"),h("button",{class:"btn primary qgo",onclick:()=>done({mode:st.mode,monitor:st.monitor,remember:st.remember,res:st.mode==="fullscreen"&&!st.borderless?st.res:"",borderless:st.borderless,video:st.video})},"▶ Play"))));
+ draw();document.body.append(ov);ov.querySelector(".qgo").focus();
+ if(!o.specs_known){api("specs").then(()=>api("play_options",{id:o.id})).then(n=>{if(!ov.isConnected)return;o.recommended=n.recommended;o.specs_known=n.specs_known;Object.assign(rec,n.recommended);draw()}).catch(()=>{})}})}
+async function playOptionsFor(g){const o=await act(()=>api("play_options",{id:g.id}));if(!o)return null;return playOptionsModal(o)}
 async function forceQuit(){
  if(!S.running||!await ask("Force quit "+S.running.title+"? It stops right away and anything you have not saved is lost.","Force quit"))return;
  const r=await act(()=>api("force_quit"));if(r){S.running=null;toast("Stopped "+r.stopped);go()}}
-async function launchGame(g){
- let r=await act(()=>api("launch",{id:g.id,interactive:true}));
- if(r&&r.needs_display){const c=await displayModal(r.needs_display);if(!c)return null;r=await act(()=>api("launch",{id:g.id,display:c}))}
+async function launchGame(g,opts){opts=opts||{};
+ let r=null;
+ if(opts.options){const c=await playOptionsFor(g);if(!c)return null;r=await act(()=>api("launch",{id:g.id,display:c}))}
+ else{r=await act(()=>api("launch",{id:g.id,interactive:true}));
+  if(r&&r.needs_display){const c=await playOptionsFor(g);if(!c)return null;r=await act(()=>api("launch",{id:g.id,display:c}))}}
  if(r){S.running={title:r.launched};toast("Opening "+r.launched+" in "+r.emulator+"…")}
  return r}
 function ask(text,yes){return new Promise(res=>{const done=v=>{ov.remove();res(v)};const ov=h("div",{class:"modal",role:"dialog","aria-modal":"true"},h("div",{class:"modalbox"},h("p",{},text),h("div",{class:"row",style:"justify-content:flex-end;gap:8px"},h("button",{class:"btn",onclick:()=>done(false)},"Cancel"),h("button",{class:"btn primary",onclick:()=>done(true)},yes||"OK"))));document.body.append(ov);ov.querySelector(".primary").focus()})}
@@ -766,19 +845,21 @@ function avatarEl(id,size,cls){const a=AVATARS[id]||AVATARS.martin;return pixels
 
 const S={tab:"home",console:null,q:"",fav:false,sort:"title",lib:null,settings:null,room:null,online:null,lastNotice:null,profile:null,netcheck:null,netBusy:false};
 const PRIMARY=[["home","Home"],["library","Library"],["console","Console mode"],["setup","Setup"],["together","Server Info"],["servers","Servers"]];
+function primaryTabs(){return S.friendsOn?PRIMARY.concat([["friends","Friends"]]):PRIMARY}
 
-function renderNav(){const n=$("#nav");n.replaceChildren(...PRIMARY.map(([id,l])=>h("button",{class:S.tab===id?"on":"",onclick:()=>{S.tab=id;S.anchor=null;go()}},l+(id==="together"&&S.room?" ●":""))));renderWho();renderLive()}
+function renderNav(){const n=$("#nav");n.replaceChildren(...primaryTabs().map(([id,l])=>h("button",{class:S.tab===id?"on":"",onclick:()=>{S.tab=id;S.anchor=null;go()}},l+(id==="together"&&S.room?" ●":"")+(id==="friends"&&S.friendsBadge?" ("+S.friendsBadge+")":""))));renderWho();renderLive()}
 function renderWho(){const w=$("#who");if(!w)return;const p=S.profile||{alias:"Player",avatar:"martin",player:"Player"};
  w.replaceChildren(avatarEl(p.avatar,26),h("span",{class:"nm"},p.player||p.alias))}
 async function go(){closeMenus();renderNav();const old=$("#main"),m=old.cloneNode(false);old.replaceWith(m);window.scrollTo(0,0);
- Promise.resolve(({home:viewHome,library:viewLibrary,together:viewTogether,servers:viewServers,console:viewConsole,setup:viewSetup,engines:viewEngines,controllers:viewControllers,saves:viewSaves,emulators:viewEmulators,settings:viewSettings,preferences:viewPreferences,credits:viewCredits,welcome:viewWelcome,help:viewHelp,storage:viewStorage,probe:viewProbe,profile:viewProfile,display:viewDisplay})[S.tab](m)).then(()=>{if(S.tab==="home")homeArtTip()}).catch(e=>{console.error("page error",e);reportClientError(e&&e.message||e,"draw:"+S.tab,e&&e.stack);toast("Something went wrong drawing this page: "+(e&&e.message||e),"err")})}
+ Promise.resolve(({home:viewHome,library:viewLibrary,together:viewTogether,servers:viewServers,console:viewConsole,setup:viewSetup,engines:viewEngines,controllers:viewControllers,saves:viewSaves,emulators:viewEmulators,settings:viewSettings,preferences:viewPreferences,credits:viewCredits,welcome:viewWelcome,help:viewHelp,storage:viewStorage,probe:viewProbe,profile:viewProfile,display:viewDisplay,friends:viewFriends})[S.tab](m)).then(()=>{if(S.tab==="home")homeArtTip()}).catch(e=>{console.error("page error",e);reportClientError(e&&e.message||e,"draw:"+S.tab,e&&e.stack);toast("Something went wrong drawing this page: "+(e&&e.message||e),"err")})}
 function nav(tab,anchor){S.tab=tab;S.anchor=anchor||null;go()}
 
 /* ---------- menu bar ---------- */
 function menuDefs(){return[
  ["Account",[["Your account: name, picture, theme and background",()=>nav("profile")],["Preferences (look, home, overlay, controller)",()=>nav("preferences")],["Settings (library, privacy, server)",()=>nav("settings")],"-",["Update everything",updateEverything],["Check for updates",checkUpdates],"-",["Exit Legacy Player",quitApp]]],
- ["Games",[["Library",()=>nav("library")],["Console mode",()=>nav("console")],["Storage by console",()=>nav("storage")],["Display and video",()=>nav("display")],["Controllers",()=>nav("controllers")],["Saves and backups",()=>nav("saves")],"-",["Steam and PC games",()=>pcManager()],["Rescan my games",()=>rescan()]]],
- ["Online",[...liveMenu(),["Server Info and network test",()=>nav("together")],["Servers: start, share, connect",()=>nav("servers")]]],
+ ["Games",[["Library",()=>nav("library")],["Console mode",()=>nav("console")],["Rescan my games",()=>rescan()],"-",[S.showHidden?"Hide the hidden games again":"Show hidden games",()=>{S.showHidden=!S.showHidden;nav("library")}]]],
+ ["Configure",[["Display and video",()=>nav("display")],["Play options (how games open)",()=>nav("display")],["Controllers",()=>nav("controllers")],["Saves and backups",()=>nav("saves")],["Storage by console",()=>nav("storage")],"-",["Emulators",()=>nav("emulators")],["Engines (get or update emulators)",()=>nav("engines")],["Steam and PC games",()=>pcManager()]]],
+ ["Online",[...liveMenu(),["Server Info and network test",()=>nav("together")],["Servers: start, share, connect",()=>nav("servers")],...(S.friendsOn?[["Friends",()=>nav("friends")]]:[["Friends (set up under Settings > Friends)",()=>nav("settings","friends")]])]],
  ["Tools",[["Update everything",updateEverything],["Doctor's office (Setup)",()=>nav("setup")],["Engines",()=>nav("engines")],["Preview the overlay",()=>act(()=>api("overlay_open",{preview:true}))],["Dolphin memory probe",()=>nav("probe")],["Emulators",()=>nav("emulators")],["Scan this computer",()=>{nav("engines");setTimeout(()=>runScan().then(v=>{if(v)go()}),250)}],["Credits",()=>nav("credits")]]],
  ["Help",[["How it works",()=>nav("help")],["How save files work",()=>nav("help","saves")],["Privacy",()=>nav("help","privacy")],["Uninstall Legacy Player...",()=>retireClinic()]]]]}
 function closeMenus(){document.querySelectorAll(".menu.open").forEach(x=>x.classList.remove("open"))}
@@ -815,16 +896,21 @@ async function pcManager(){
  let folder="";
  const draw=()=>{
   const list=d.games.length?h("div",{class:"unlist",style:"max-height:260px"},...d.games.map(g=>{const cb=h("input",{type:"checkbox"});cb.checked=g.hidden;cb.onchange=()=>call({action:"hide",ids:[g.id],hidden:cb.checked});
-    return h("label",{class:"unrow rrow"},cb,h("div",{class:"grow"},h("b",{},g.title),h("span",{class:"small muted"}," · "+(g.store==="steam"?"Steam":"Epic")+(g.cover?" · has a picture":""))),h("span",{class:"small muted"},g.hidden?"hidden":""))})):h("p",{class:"muted small"},d.show?"No Steam or Epic games found on this computer.":"Steam and Epic games are switched off.");
+    const why=g.hidden?(g.hidden_by==="steam"?"hidden (you hid it in Steam)":"hidden"):(g.steam_hidden?"shown here, hidden in Steam":"");
+    return h("label",{class:"unrow rrow"},cb,h("div",{class:"grow"},h("b",{},g.title),h("span",{class:"small muted"}," · "+(g.store==="steam"?"Steam":"Epic")+(g.cover?" · has a picture":" · no picture yet"))),h("span",{class:"small muted"},why))})):h("p",{class:"muted small"},d.show?"No Steam or Epic games found on this computer.":"Steam and Epic games are switched off.");
+  const si=d.steam_info||{};
+  const diag=h("div",{class:"small muted",style:"margin:4px 0 8px"},!si.found?"Steam was not found on this computer (it looks where Windows says Steam is, then in Program Files). If Steam lives somewhere else, paste its folder under Settings > Library > Steam folder, then Rescan.":
+   "Steam at "+si.root+" · "+si.manifests+" installed game"+(si.manifests===1?"":"s")+" listed across "+si.libraries.length+" librar"+(si.libraries.length===1?"y":"ies")+(si.games!==si.manifests?" ("+si.games+" that count as games)":"")+". Games you hid inside Steam start hidden here too; tick them to show them anyway.");
   const inp=h("input",{type:"text",placeholder:"Folder with pictures named like the games",value:folder,style:"width:min(340px,100%)","aria-label":"Folder of pictures",oninput:e=>{folder=e.target.value}});
   body.replaceChildren(
    h("p",{class:"small muted"},"Legacy Player only reads which games are installed. Hide the ones you do not want on your shelf; they stay installed and you can show them again here."),
+   diag,
    h("div",{class:"row",style:"margin:6px 0"},sw("Show Steam and Epic games","show_pc_games",d.show),sw("Steam","show_steam_games",d.steam),sw("Epic","show_epic_games",d.epic)),
    h("div",{class:"row",style:"margin:6px 0"},h("button",{class:"btn small",onclick:()=>call({action:"hide",all:true,hidden:true})},"Hide all"),h("button",{class:"btn small",onclick:()=>call({action:"hide",all:true,hidden:false})},"Show all"),
     h("button",{class:"btn small",onclick:()=>call({action:"hide",store:"steam",hidden:true})},"Hide Steam"),h("button",{class:"btn small",onclick:()=>call({action:"hide",store:"epic",hidden:true})},"Hide Epic")),
    list,
    h("h3",{style:"margin:12px 0 4px"},"Pictures"),
-   h("p",{class:"small muted"},"Steam keeps a picture of every game on this computer; Legacy Player can copy those (nothing is downloaded). Epic does not keep any, so use your own pictures. You can also set one game's picture from its page."),
+   h("p",{class:"small muted"},"Steam keeps a picture of every game on this computer, and Legacy Player copies those by itself each time it scans (nothing is downloaded). Press the button to look again, for example after Steam has downloaded new pictures. Epic does not keep any, so use your own pictures. You can also set one game's picture from its page."),
    h("div",{class:"row"},h("button",{class:"btn primary",onclick:async()=>{const r=await call({action:"seed_covers"});if(r)toast(r.seeded?"Used Steam's own pictures for "+r.seeded+" games.":"No new Steam pictures were found.",r.seeded?"":"warn")}},"Use Steam's own pictures")),
    h("div",{class:"row",style:"margin-top:8px"},inp,h("button",{class:"btn",onclick:async()=>{if(!folder.trim()){toast("Type the folder first","warn");return}const r=await call({action:"import_folder",path:folder.trim()});if(r)toast(r.imported?"Imported "+r.imported+" pictures.":"No picture matched a game name.",r.imported?"":"warn")}},"Import pictures")),
    h("div",{class:"row",style:"justify-content:flex-end;margin-top:12px"},h("button",{class:"btn primary",onclick:close},"Done")))};
@@ -958,7 +1044,7 @@ function farewell(){if(S.saidBye)return;S.saidBye=true;document.title="Legacy Pl
  const coin=pixelsC([".YYYY.","YOOOOY","YOYYOY","YOYYOY","YOOOOY",".YYYY."],34,"lcoin",{Y:"#f5c542",O:"#c98f10"});
  const box=h("div",{class:"lcat"},martin(150),h("div",{class:"lcollar"},h("span",{class:"lbell"})),paw,coin);
  document.body.append(h("div",{class:"bye",role:"status","aria-live":"polite"},box,h("h2",{},"Bye bye!"),h("p",{class:"muted"},"Martin says see you soon. Legacy Player is closing.")));
- setTimeout(()=>{try{window.close()}catch(e){}},3200)}
+ setTimeout(()=>{try{window.close()}catch(e){}},2000)}
 
 /* ---------- network test runs by itself so Server Info already knows where you stand ---------- */
 async function pollNet(){S.netBusy=true;redrawNet();
@@ -1033,7 +1119,8 @@ async function viewHome(m){
   ["Your games stay yours","It only reads your folders. Nothing is copied or sent anywhere, no games or BIOS files are included, and a game is only removed when you choose Uninstall and confirm.","#0aa57a","#2bd1b0",AVATARS.gem],
   ["Play together, privately","Run a small server on your own computer, share a short code and play in a room. Other players never see your address.","#d9468f","#ff8a5c",AVATARS.rocket],
   ["Made to feel like a console","Plug in a pad, map it once and drive everything from the couch in Console mode. Your saves are backed up for you.","#7b4dff","#4fc3ff",AVATARS.star]];
- m.append(h("h3",{},"What Legacy Player is"),h("div",{class:"flashes"},...cards.map(([t,x,a,b,av])=>h("div",{class:"flash",style:`--c1:${a};--c2:${b}`},pixels(av.rows,40),h("h3",{},t),h("p",{},x)))));
+ m.append(h("div",{class:"row",style:"margin-top:18px"},h("h3",{style:"margin:0"},"What Legacy Player is"),h("button",{type:"button",class:"seeissue",title:"Tell the people who make Legacy Player about a problem or an idea",onclick:reportProblem},"See an issue or a problem?")),
+  h("div",{class:"flashes",style:"margin-top:10px"},...cards.map(([t,x,a,b,av])=>h("div",{class:"flash",style:`--c1:${a};--c2:${b}`},pixels(av.rows,40),h("h3",{},t),h("p",{},x)))));
  const shelf=(title,list,empty)=>h("div",{},h("h3",{},title),list.length?h("div",{class:"shelf"},...list.map(g=>card(g))):h("p",{class:"muted small"},empty));
  S.lib=S.lib||await api("library",{});
  m.append(shelf("Recent games",d.recent,"Play something and it shows up here."));
@@ -1270,36 +1357,6 @@ function viewHelp(m){
   sec("privacy","Privacy","Legacy Player never sends anything about you, your computer or your games anywhere. Addresses are hidden behind a little eye until you press it. Matches go through the server relay by default so players never learn each other's address. Scans read names only. Downloads and update checks happen only when you press a button and have allowed internet access in Settings."));
  if(S.anchor){const el=$("#h-"+S.anchor);if(el)setTimeout(()=>el.scrollIntoView({behavior:"smooth",block:"start"}),60)}
 }
-/* ---------- cover art ---------- */
-function coverEl(g,cls){
- if(g.cover)return h("img",{class:"cv "+(cls||""),src:"/cover/"+encodeURIComponent(g.id)+".png?t="+encodeURIComponent(TOKEN),alt:"",loading:"lazy"});
- const init=consoleName(g.console).replace(/[^A-Z0-9]/g,"")||consoleName(g.console).slice(0,3).toUpperCase();
- return h("div",{class:"cv blank "+(cls||""),"data-c":g.console},h("span",{},init.slice(0,4)))}
-async function fetchCovers(){
- if(!await ask("Get cover art? Legacy Player asks thumbnails.libretro.com (the picture library RetroArch uses) for each game's box art by its name. Only game names are sent. Pictures are kept on this computer and it runs in the background.","Get cover art"))return;
- const first=await act(()=>api("covers",{action:"start",consent:true}));if(!first)return;
- const id="covtoast";let v=first;
- while(v.state==="running"){const old=$("#"+id);if(old)old.remove();$("#toasts").append(h("div",{class:"toast",id})) ;$("#"+id).append(h("span",{class:"spin"}),"Getting cover art… "+v.done+" of "+v.total+" ("+v.found+" found)");
-  await new Promise(r=>setTimeout(r,1500));v=await api("covers",{}).catch(()=>({state:"error"}))}
- const old=$("#"+id);if(old)old.remove();
- toast(v.state==="done"?"Cover art finished: "+v.found+" new, "+v.have+" in total.":"Cover art stopped.",v.found?"":"warn");go()}
-
-/* ---------- Display and video ---------- */
-async function viewDisplay(m){
- const d=await api("video");const F=Object.entries(d.fields);
- const eff=(v)=>v?"On":"Off";const def=k=>d.defaults[k]!==undefined?d.defaults[k]:d.base[k];
- const defRow=h("div",{},...F.map(([k,f])=>h("div",{style:"margin:8px 0"},h("label",{},h("input",{type:"checkbox",checked:(d.defaults[k]!==undefined?d.defaults[k]:d.base[k]),onchange:async e=>{await act(()=>api("video",{scope:"all",key:k,value:e.target.checked}),"Saved");go()}})," "+f.label),h("div",{class:"small muted"},f.help))));
- const cell=(c,k)=>{const own=c.own[k];return h("select",{"aria-label":c.name+" "+k,onchange:async e=>{const v=e.target.value;await act(()=>api("video",{scope:c.id,key:k,value:v===""?null:v==="1"}));go()}},
-   h("option",{value:"",selected:own===undefined},"Default ("+eff(def(k))+")"),h("option",{value:"1",selected:own===true},"On"),h("option",{value:"0",selected:own===false},"Off"))};
- m.append(h("h2",{},"Display and video"),
-  h("div",{class:"why"},"Pick how games should look once, here. Legacy Player applies it every time it opens a game: fully for RetroArch, and the start-up full-screen option for the emulators that have one. Where an emulator keeps its own graphics settings (resolution, shaders, 3D scaling), you set those inside the emulator once and it remembers; the table says which is which."),
-  h("div",{class:"card"},h("h3",{style:"margin-top:0"},"For every console"),defRow),
-  h("div",{class:"card",style:"margin-top:14px"},h("h3",{style:"margin-top:0"},whyInline("One console different?","Pick On or Off for a console to override the choice above for just that console. Default follows the choice above.")),
-   h("div",{style:"overflow-x:auto"},h("table",{},h("thead",{},h("tr",{},h("th",{},"Console"),...F.map(([k,f])=>h("th",{},f.label)),h("th",{},"Controls"))),
-    h("tbody",{},...d.consoles.map(c=>h("tr",{},h("td",{},h("b",{},c.name),h("div",{class:"small muted"},c.how)),...F.map(([k])=>h("td",{},c.emulator?cell(c,k):h("span",{class:"muted small"},"–"))),
-     h("td",{},h("button",{class:"btn",onclick:()=>{S.ctrl=c.id;nav("controllers")}},c.pad_layout_customized?"Custom layout":"Open")))))))));
-}
-
 /* ---------- Saves: backups ---------- */
 function backupsCard(B){
  const inp=h("input",{type:"text",value:B.custom?B.folder:"",placeholder:B.folder,style:"min-width:min(480px,100%)"});
@@ -1341,8 +1398,6 @@ async function viewLibrary(m){
  drawChips(d);drawGrid(d);
  m.append(h("div",{class:"libfoot"},coverBtn(),h("button",{class:"btn",title:"Hide Steam and Epic games, or add their pictures",onclick:pcManager},"Steam and PC games"),h("span",{class:"small muted"},"Box art is looked up by game name. If a game has none, right-click it to find or add a picture.")));
 }
-function drawChips(d){drawCols(d);const c=$("#chips");c.replaceChildren(h("button",{class:"chip"+(S.console?"":" on"),onclick:()=>{S.console=null;go()}},"All",h("small",{},d.total)),
- ...d.consoles.map(k=>h("button",{class:"chip"+(S.console===k.id?" on":""),title:k.netplay_note,onclick:()=>{S.console=k.id;go()}},k.name,h("small",{},k.count))))}
 async function refreshGrid(){const d=S.lib=await api("library",{console:S.console,q:S.q,favorites:S.fav,sort:S.sort,collection:S.collection,hidden:S.showHidden});drawGrid(d)}
 function drawGrid(d){const w=$("#gridwrap");if(!w)return;
  const list=(S.settings&&S.settings.view)==="list";
@@ -1395,7 +1450,7 @@ async function openGame(id){
  const dr=h("aside",{class:"drawer",role:"dialog","aria-label":g.title},
   h("div",{class:"row"},h("h2",{class:"grow"},g.title),h("button",{class:"btn",onclick:close,"aria-label":"Close"},"✕")),
   h("div",{class:"muted"},g.console_name+(g.region?" · "+g.region:"")+" · "+g.size_mb+" MB"),
-  h("div",{class:"row",style:"margin:12px 0"},launchBtn,h("button",{class:"btn",onclick:async()=>{const r=await act(()=>api("favorite",{id,favorite:!g.favorite}));if(r){g.favorite=r.favorite;toast(r.favorite?"Added to favorites":"Removed from favorites");refreshGrid()}}},"★ Favorite")),
+  h("div",{class:"row",style:"margin:12px 0"},launchBtn,h("button",{class:"btn",disabled:!g.launch.ready,title:"Screen, full screen or windowed, resolution and video options for this start",onclick:()=>launchGame({id:id,title:g.title},{options:true})},"Play with options…"),h("button",{class:"btn",onclick:()=>{close();gameCard(id)}},"Game card"),h("button",{class:"btn",onclick:async()=>{const r=await act(()=>api("favorite",{id,favorite:!g.favorite}));if(r){g.favorite=r.favorite;toast(r.favorite?"Added to favorites":"Removed from favorites");refreshGrid()}}},"★ Favorite")),
   g.launch.ready?h("p",{class:"small muted"},"Will open in "+g.launch.emulator+"."):h("p",{class:"small bad"},g.launch.reason),
   h("h3",{},whyInline("Playing with friends",
     "Online play works by sending each player's button presses to everyone and running the game in lockstep. How well that works depends on the console and on a per-game 'game pack'. Nothing is faked: the label below is the honest status.")),
@@ -1419,7 +1474,6 @@ async function openGame(id){
 function controllerWhy(){return"Every pad is read in a standard layout. Each console has its own buttons, so Legacy Player maps your pad to that console automatically. You can change any mapping in Controllers."}
 
 /* ---------- Play Together ---------- */
-async function pingServer(){const r=await api("server_status").catch(()=>({online:false}));S.online=r.online;$("#srvdot").className="dot"+(r.online?" on":"");$("#srvtxt").textContent=r.online?"multiplayer server online":"multiplayer server offline";if(r.online&&!S.onlineSeen){S.onlineSeen=true;autoNetTest(S.netcheck&&S.netcheck.server&&S.netcheck.server.ok?1200:0)}return r}
 async function viewTogether(m){
  const st=await pingServer();
  m.append(h("h2",{},"Server Info"),
@@ -1541,7 +1595,7 @@ function startBox(rm,host,box){
 function drawRoom(box){const r=S.room;if(!r){box.replaceChildren();return}
  const rm=r;const host=rm.role==="host";
  const members=h("table",{},h("tbody",{},...rm.members.map(p=>h("tr",{},h("td",{},p.name+(p.me?" (you)":"")),h("td",{class:"muted"},p.role),h("td",{},p.ready?h("span",{class:"good"},"ready"):h("span",{class:"muted"},"not ready")),
-   h("td",{},host&&!p.me?h("button",{class:"btn bad",onclick:async()=>{const reason=prompt("Reason (optional)","")||"removed by host";const x=await act(()=>api("mp_kick",{target:p.name,reason}));if(x){S.room=x.room;drawRoom(box)}}},"Remove"):null)))));
+   h("td",{},host&&!p.me?h("button",{class:"btn bad",onclick:async()=>{const reason=await askText("Remove "+p.name+" from the room. Reason (optional, they will see it)","","e.g. AFK, wrong game version");if(reason===null)return;const x=await act(()=>api("mp_kick",{target:p.name,reason:reason||"removed by host"}));if(x){S.room=x.room;drawRoom(box)}}},"Remove"):null)))));
  box.replaceChildren(h("div",{class:"panel"},
   h("div",{class:"row"},h("h3",{class:"grow"},rm.game+" · "+consoleName(rm.console)),rm.max_players?h("span",{class:"badge",title:"Players in the room / the room's limit"},rm.members.length+" / "+rm.max_players+" players"):null,h("span",{class:"badge"},rm.state)),
   rm.queue?h("div",{class:"panel"},h("b",{},"The room is full. You are number "+rm.queue.position+" in line."),
@@ -1565,7 +1619,7 @@ function drawRoom(box){const r=S.room;if(!r){box.replaceChildren();return}
   h("div",{class:"row",style:"margin-top:12px"},
    host?h("button",{class:"btn",title:"Checks that everyone has the same game and region",onclick:async()=>{const x=await act(()=>api("mp_lock"),"Everyone has a matching game");if(x){S.room=x.room;drawRoom(box)}}},"Check everyone matches"):null,
    h("button",{class:"btn primary",onclick:async()=>{const x=await act(()=>api("mp_ready"));if(x){S.room=x.room;drawRoom(box)}}},"I'm ready"),
-   h("button",{class:"btn bad",onclick:async()=>{await act(()=>api("mp_leave"));S.room=null;go()}},host?"Close room":"Leave")),
+   h("button",{class:"btn bad",onclick:leaveRoom},host?"Close room":"Leave")),
   h("h3",{},whyInline("Start the match","This opens RetroArch with its built-in netplay. The host starts first and everyone else connects to the host's address. Legacy Player handles the room, the code and the address; RetroArch keeps the game in sync. Everyone needs RetroArch with the same core, and the same game file version.")),
   launchBox(rm,host),
   (rm.launch&&rm.launch.steps&&rm.launch.steps.length)?h("div",{class:"card"},h("h3",{},"How to play this together"),h("p",{class:"small muted"},rm.launch.reason),h("ol",{class:"small"},...rm.launch.steps.map(t=>h("li",{},t)))):null,
@@ -1612,6 +1666,14 @@ function launchBox(rm,host){
   h("div",{class:"row",style:"margin-top:6px"},go,L.ready?null:h("span",{class:"small muted"},L.reason||""),waitingForCode&&L.ready?h("span",{class:"small muted"},"Waiting for the host to share a Dolphin host code…"):null,(dolphin&&!host&&L.endpoint_kind)?h("span",{class:"small good"},"The host shared a way to connect. Press Open Dolphin."):null),
   steps,codeRow,
   host?h("p",{class:"small muted"},dolphin?"Dolphin's NetPlay is started inside Dolphin; these steps are filled in for you. Everyone needs the same Dolphin version and the same game file. The traversal server is Dolphin's own, so game traffic is not run through Legacy Player.":"Same home network: use the address above. Over the internet, use a VPN such as Tailscale or ZeroTier, or forward the port. The match traffic itself is not encrypted, so a VPN is the safer choice."):null)}
+/* Leaving or closing a room, from anywhere. A host who closes the room is asked whether the server should go too. */
+async function leaveRoom(){const r=S.room;if(!r)return;const host=r.role==="host";
+ if(!await ask(host?"Close the room? Everyone in it is disconnected.":"Leave the room?",host?"Close room":"Leave"))return;
+ const x=await act(()=>api("mp_leave"));if(x===undefined)return;S.room=null;renderNav();
+ if(host){let mine=null;try{mine=await api("server_control",{action:"status"})}catch(e){}
+  if(mine&&mine.running&&(!S.settings||S.settings.server_host==="127.0.0.1")){
+   if(await ask("Your server is still running. Close the server too? Friends cannot connect until you start it again. Cancel keeps it running; it uses almost nothing while it waits.","Stop my server too"))await act(()=>api("server_control",{action:"stop"}),"Server stopped")}}
+ if(S.tab==="together"||S.tab==="servers")go()}
 function autoJoin(){const r=S.room;if(!r||r.role!=="guest"||!r.start||!r.start.mine||S.autoJoined===r.start.id)return;
  const L=r.launch||{};if(!L.endpoint_kind||L.engine==="dolphin"||L.endpoint_kind==="direct"||!L.ready)return;
  S.autoJoined=r.start.id;api("mp_launch",{expose_address:false}).then(x=>toast("Opened "+x.launched+" and connected.")).catch(e=>{S.autoJoined=null;toast(e.message,"err")})}
@@ -1769,7 +1831,7 @@ async function viewSupplies(m){
     h("p",{class:"small muted"},"Downloads come only from "+st.source+". Installs go into "+st.install_folder+" and need no admin rights. Nothing is run afterwards."),
     !st.can_auto_install_retroarch&&!st.retroarch.installed?h("p",{class:"small"},st.manual_retroarch):null,
     job.state!=="idle"?h("div",{style:"margin-top:8px"},
-     h("div",{class:"small"},(running?"Working: ":job.state==="done"?"Done. ":"Stopped. ")+job.step+(running?" ("+job.percent+"%)":"")),
+     h("div",{class:"small"},jobLine(job)),
      job.state==="error"?h("div",{class:"bad small"},job.error):null,
      h("div",{class:"feed",style:"margin-top:6px"},...job.log.slice().reverse().map(t=>h("div",{},t)))):null));
   return job.state;
@@ -1890,6 +1952,12 @@ async function viewSaves(m){
 
 /* ---------- Engines (the owned shell) ---------- */
 
+/* One line that says what a download or install job is doing, without saying "Stopped" twice. */
+function jobLine(job){const step=(job.step||"").trim();
+ if(job.state==="running")return"Working: "+(step||"starting")+(job.percent?" ("+job.percent+"%)":"");
+ if(job.state==="done")return step&&!/^done\b/i.test(step)?"Done: "+step:"Done.";
+ if(job.state==="error")return /^stopped\b/i.test(step)||!step?"Stopped. Nothing was changed.":"Stopped while "+step.charAt(0).toLowerCase()+step.slice(1)+". Nothing was changed.";
+ return step}
 /* One scan for every "Scan this computer" button: runs in the background, shows progress, then uses what it found. */
 async function runScan(noAsk){
  if(!noAsk&&!await ask("Scan this computer for emulator programs? It reads folder and file names only. It changes nothing, sends nothing and does not use the internet.","Scan"))return null;
@@ -1949,7 +2017,7 @@ async function viewEngines(m){
     h("div",{class:"chips"},...d.consoles.map(c=>h("span",{class:"chip"+(c.ready?" on":""),title:c.ready?"Plays with "+c.via:"No emulator found for this console yet"},c.name+(c.ready?" · "+c.via:""))))),
    h("div",{class:"card",style:"margin-top:12px"},h("table",{},h("thead",{},h("tr",{},h("th",{},"Engine"),h("th",{},"Consoles"),h("th",{},"Status"),h("th",{},"Official source"))),h("tbody",{},...d.engines.map(e=>h("tr",{},
      h("td",{},h("b",{},e.name),h("div",{class:"small muted"},e.license)),
-     h("td",{class:"small"},e.consoles.map(consoleName).join(", ")),
+     h("td",{class:"small"},(e.console_names||e.consoles.map(consoleName)).join(", ")),
      h("td",{},e.path?h("span",{class:"good"},"✓ "+e.path):h("span",{class:"muted"},"not found")),
      h("td",{},e.can_download?h("button",{class:"btn",disabled:running,title:"github.com/"+e.official.repo,onclick:async()=>{
         if(!d.allow_internet){toast("Turn on 'Allow internet downloads' in Settings first","warn");return}
@@ -1957,8 +2025,9 @@ async function viewEngines(m){
         if(await act(()=>api("engines_install",{engine:e.id,confirm:true}))){draw();poll()}}},e.path?"Update from GitHub":"Get from GitHub")
       :h("a",{href:e.official.url,target:"_blank",rel:"noopener noreferrer",title:e.official.note||""},"Official page"),
       h("div",{style:"margin-top:4px"},h("button",{class:"btn",onclick:()=>showSource(e)},"Source details")))))))),
-   job.state!=="idle"?h("div",{class:"card",style:"margin-top:12px"},h("div",{class:"small"},(running?"Working: ":job.state==="done"?"Done. ":"Stopped. ")+job.step+(running?" ("+job.percent+"%)":"")),
-     job.error?h("div",{class:"bad small"},job.error):null,h("div",{class:"feed",style:"margin-top:6px"},...job.log.slice().reverse().map(t=>h("div",{},t)))):null,
+   job.state!=="idle"?h("div",{class:"card",style:"margin-top:12px"},h("div",{class:"row"},h("b",{class:"grow small"},jobLine(job)),
+      job.page&&job.error?h("button",{class:"btn small",title:job.page,onclick:async()=>{const r=await api("open_url",{url:job.page}).catch(()=>null);if(!r)window.open(job.page,"_blank","noopener")}},"Open the release page"):null),
+     job.error?h("div",{class:"bad small",style:"margin-top:4px"},job.error):null,h("div",{class:"feed",style:"margin-top:6px"},...job.log.slice().reverse().map(t=>h("div",{},t)))):null,
    h("details",{class:"fold card",style:"margin-top:12px",open:!!S.biosOpen,ontoggle:e=>{S.biosOpen=e.target.open}},
     h("summary",{},h("b",{},whyInline("BIOS and firmware","Some consoles need a copy of their own system software to run. Those files belong to the console makers, so Legacy Player never downloads them: it finds the copies you dumped from hardware you own and tells you which are missing.")),
      h("span",{class:"badge "+(d.bios.some(b=>b.found.length)?"good":"")},d.bios.filter(b=>b.found.length).length+" of "+d.bios.length+" found"),h("span",{class:"small muted"},"click to open")),
@@ -1971,55 +2040,13 @@ async function viewEngines(m){
  const first=await draw();if(first==="running")poll();
 }
 
-/* ---------- Console mode (big screen, pad-driven) ---------- */
-async function viewConsole(m){
- const d=await api("library",{sort:S.sort});S.lib=d;
- const real=d.consoles.filter(c=>c.count);const consoles=real.length>1?[{id:"all",name:"All",count:d.games.length},...real]:real;
- const E=await api("emulators").catch(()=>({consoles:[]}));const emu=id=>E.consoles.find(c=>c.id===id)||{options:[]};
- let ci=Math.max(0,consoles.findIndex(c=>c.id===S.console)),gi=0;
- const wrap=h("div",{class:"tv"});
- m.append(wrap);
- const gamesOf=c=>c.id==="all"?d.games:d.games.filter(g=>g.console===c.id);
- const render=()=>{
-  const c=consoles[ci];const games=c?gamesOf(c):[];gi=Math.min(gi,Math.max(0,games.length-1));
-  wrap.replaceChildren(
-   h("div",{class:"tvbar"},...consoles.map((x,i)=>h("span",{class:"chip"+(i===ci?" on":""),onclick:()=>{ci=i;gi=0;render()}},x.name))),
-   (c&&c.id!=="all"&&emu(c.id).options.length)?h("div",{class:"row small",style:"margin:6px 0"},h("label",{},"Emulator for "+c.name+": ",
-     h("select",{"aria-label":"Emulator for "+c.name,onchange:async e=>{const r=await act(()=>api("console_emulator",{console:c.id,emulator:e.target.value||null}));if(r){E.consoles=r.consoles;const f=await api("library",{sort:S.sort});d.games=f.games;render()}}},
-      h("option",{value:""},"Automatic"),...emu(c.id).options.map(o=>h("option",{value:o.id,selected:emu(c.id).chosen===o.id},o.name+(o.installed?"":" (not found)"))))),
-     h("span",{class:"muted"},"This only changes which program opens "+c.name+" games.")):null,
-   consoles.length?h("div",{class:"tvgrid"},...games.map((g,i)=>h("div",{class:"tvcard"+(i===gi?" sel":""),"data-gid":g.id,onclick:()=>{gi=i;render()},ondblclick:()=>play(g)},coverEl(g,"tv"),h("div",{class:"tvtitle"},g.title),h("div",{class:"small muted"},[g.region,consoleName(g.console),g.emulator||"no emulator"].filter(Boolean).join(" · "))))):h("p",{class:"muted"},"No games yet. Add your games folder in Library."),
-   h("p",{class:"small muted tvhelp"},"D-pad or arrows: move · A / Enter: play · Shoulder buttons or [ ]: change console · B / Esc: back to Library"));
-  const sel=wrap.querySelector(".tvcard.sel");if(sel)sel.scrollIntoView({block:"nearest"});
- };
- const play=g=>launchGame(g);
- const move=(dx,dy)=>{const c=consoles[ci];if(!c)return;const games=gamesOf(c);const cols=Math.max(1,Math.floor((wrap.clientWidth-20)/180));
-  gi=Math.max(0,Math.min(games.length-1,gi+dx+dy*cols));render()};
- const key=e=>{if(S.tab!=="console"){document.removeEventListener("keydown",key);return}
-  const map={ArrowLeft:()=>move(-1,0),ArrowRight:()=>move(1,0),ArrowUp:()=>move(0,-1),ArrowDown:()=>move(0,1),
-   Enter:()=>{const c=consoles[ci];const games=c?gamesOf(c):[];if(games[gi])play(games[gi])},
-   "[":()=>{ci=(ci-1+consoles.length)%consoles.length;gi=0;render()},"]":()=>{ci=(ci+1)%consoles.length;gi=0;render()},Escape:()=>{S.tab="library";go()}};
-  if(map[e.key]){e.preventDefault();map[e.key]()}};
- document.addEventListener("keydown",key);
- let last={},held=0;
- clearInterval(S.tvTimer);S.tvTimer=setInterval(()=>{if(S.tab!=="console"){clearInterval(S.tvTimer);return}
-  const p=livePads()[0];if(!p)return;const prof=(S.P&&S.P.profiles[padKey(p)])||null;const lit=litSlots(p,prof);
-  const edge=s=>{const now=lit.has(s);const was=!!last[s];last[s]=now;return now&&!was};
-  if(edge(14))move(-1,0);if(edge(15))move(1,0);if(edge(12))move(0,-1);if(edge(13))move(0,1);
-  if(edge(0)){const c=consoles[ci];const games=c?gamesOf(c):[];if(games[gi])play(games[gi])}
-  if(edge(4)){ci=(ci-1+consoles.length)%consoles.length;gi=0;render()}if(edge(5)){ci=(ci+1)%consoles.length;gi=0;render()}
-  if(edge(1)){S.tab="library";go()}},50);
- if(!S.P)S.P=await api("pads").catch(()=>null);
- render();
-}
-
 /* ---------- Credits ---------- */
 async function viewCredits(m){
  const d=await api("credits");
  m.append(h("h2",{},"Credits and licenses"),
   h("div",{class:"why"},"Legacy Player is the shell: library, controllers, saves, rooms, invites, encryption and the installer. The emulation itself is the work of the projects below, used under their licenses and unchanged. Thank them, and if you fetch an engine through this app it comes from that project's own release page, or from a mirror you choose."),
   h("div",{class:"card"},h("table",{},h("thead",{},h("tr",{},h("th",{},"Engine"),h("th",{},"Consoles"),h("th",{},"License"),h("th",{},"Project"),h("th",{},"Mirror"))),h("tbody",{},...d.engines.map(e=>h("tr",{},
-   h("td",{},h("b",{},e.name),e.path?h("div",{class:"small good"},"installed"):h("div",{class:"small muted"},"not installed")),h("td",{class:"small"},e.consoles.map(consoleName).join(", ")),
+   h("td",{},h("b",{},e.name),e.path?h("div",{class:"small good"},"installed"):h("div",{class:"small muted"},"not installed")),h("td",{class:"small"},(e.console_names||e.consoles.map(consoleName)).join(", ")),
    h("td",{class:"small"},e.license,e.redistributable===false?h("div",{class:"muted"},"not bundled: license forbids redistribution"):null),
    h("td",{},h("a",{href:e.homepage,target:"_blank",rel:"noopener noreferrer"},e.homepage.replace("https://",""))),
    h("td",{},d.mirror?h("a",{href:d.mirror.url,target:"_blank",rel:"noopener noreferrer",title:d.mirror.note},d.mirror.name):null)))))),
@@ -2089,7 +2116,7 @@ function settingGroups(m,s,groups,wanted){
  for(const[g,items]of Object.entries(groups).filter(([g])=>wanted(g)).sort((a,b)=>(a[0]==="You"?-1:0)-(b[0]==="You"?-1:0))){
   m.append(h("div",{class:"card",style:"margin-top:14px"},h("h3",{},g),...items.map(([k,sp])=>{
    let ctl;const v=s.values[k];
-   const save=async val=>{const r=await act(()=>api("settings",{key:k,value:val}));if(r){S.settings=r.values;if(k==="theme")document.documentElement.dataset.theme=val;if(k==="background")applyBg(val);if(k==="view"||k==="show_region")toast("Saved");if(k==="display_name"){S.profile=await api("profile");renderWho()}if(k==="auto_network_test"&&val)autoNetTest(300)}};
+   const save=async val=>{const r=await act(()=>api("settings",{key:k,value:val}));if(r){S.settings=r.values;if(k==="theme")document.documentElement.dataset.theme=val;if(k==="background")applyBg(val);if(k==="view"||k==="show_region")toast("Saved");if(k==="display_name"){S.profile=await api("profile");renderWho()}if(k==="auto_network_test"&&val)autoNetTest(300);if(k==="friends_server"){S.friendsOn=/^https:\/\//.test(val)||/^http:\/\/(127\.0\.0\.1|localhost)/.test(val);renderNav();buildMenubar();if(S.friendsOn)toast("The Friends page is on. Open it to get your friend code.")}}};
    if(sp.type==="bool")ctl=h("input",{type:"checkbox",checked:v,onchange:e=>save(e.target.checked)});
    else if(k==="theme")ctl=themePicker();
    else if(sp.type==="choice")ctl=h("select",{onchange:e=>save(e.target.value)},...sp.choices.map(c=>h("option",{value:c,selected:c===v},(sp.labels&&sp.labels[c])||c)));
@@ -2107,17 +2134,18 @@ async function viewSettings(m){
  m.append(h("div",{class:"card"},h("h3",{},whyInline("Library folders","These folders are read-only. Saves, emulators and BIOS folders inside them are skipped when listing games.")),
   ...roots.roots.map(r=>h("div",{class:"row"},h("code",{class:"grow"},r),h("button",{class:"btn bad",onclick:async()=>{await act(()=>api("roots",{roots:roots.roots.filter(x=>x!==r)}));go()}},"Remove"))),
   h("div",{class:"row",style:"margin-top:8px"},rootIn,h("button",{class:"btn primary",onclick:async()=>{if(!rootIn.value.trim())return;const r=await act(()=>api("roots",{roots:[...roots.roots,rootIn.value.trim()]}));if(r){await act(()=>api("rescan"),"Library scanned");go()}}},"Add and scan"))));
+ settingGroups(m,s,groups,g=>!PREF_GROUPS.has(g));
  const rep=await api("report_status",{});
- const repMsg=h("div",{class:"small muted"},rep.mode==="off"?"Problem reports are off. Nothing is saved or sent.":rep.pending?rep.pending+" waiting on this computer.":"Nothing waiting.");
- m.append(h("div",{class:"card",style:"margin-top:14px"},h("h3",{},whyInline("Problem reports","When something fails, Legacy Player can send the maintainers a cleaned-up report so it gets fixed without you filing a ticket. It is off until you choose. Names, IP addresses, server and invite codes and folder paths are removed first.")),
+ const repMsg=h("div",{class:"small muted"},rep.mode==="off"?"Automatic problem reports are off. Nothing is saved or sent unless you write one yourself from the Home page.":rep.pending?rep.pending+" waiting on this computer.":"Nothing waiting.");
+ m.append(h("div",{class:"card",id:"reports",style:"margin-top:14px"},h("h3",{},whyInline("Problem reports","When something fails, Legacy Player can send the maintainers a cleaned-up report so it gets fixed without you filing a ticket. It is off until you choose (Privacy, above). You can also write one yourself: Home > See an issue or a problem? Names, IP addresses, server and invite codes and folder paths are removed first.")),
   repMsg,
-  !rep.connected?h("div",{class:"small muted"},"No report address is set yet, so reports stay on this computer. Set one under Privacy > Report address."):null,
+  !rep.connected?h("div",{class:"small muted"},"No report address is set yet, so reports stay on this computer. Set one under Privacy > Send reports to."):null,
   h("div",{class:"row",style:"flex-wrap:wrap;gap:8px;margin-top:8px"},
-   h("button",{class:"btn",disabled:rep.mode==="off"||!rep.pending,onclick:async()=>{const r=await act(()=>api("report_send_all"));if(r){toast(r.sent?r.sent+" sent":"Nothing sent. Check the report address, or try again later.");go()}}},"Send what's waiting"),
+   h("button",{class:"btn",onclick:reportProblem},"Write a report"),
+   h("button",{class:"btn",disabled:!rep.pending||!rep.connected,onclick:async()=>{const r=await act(()=>api("report_send_all"));if(r){toast(r.sent?r.sent+" sent":"Nothing sent. Check the report address, or try again later.");go()}}},"Send what's waiting"),
    h("button",{class:"btn",disabled:!rep.pending,onclick:async()=>{const l=await api("report_list");if(!l.reports.length)return;const r=await api("report_preview",{id:l.reports[0].id});copyText(r.text);toast("Copied the newest report")}},"Copy the newest report"),
    h("button",{class:"btn bad",disabled:!rep.pending,onclick:async()=>{if(await ask("Delete the reports waiting on this computer?","Delete")){await act(()=>api("report_clear"));go()}}},"Delete waiting reports"))));
-
- settingGroups(m,s,groups,g=>!PREF_GROUPS.has(g));
+ if(S.anchor){const el=$("#"+S.anchor)||[...m.querySelectorAll("h3")].find(x=>x.textContent.trim().toLowerCase()===String(S.anchor).toLowerCase())?.closest(".card");if(el)setTimeout(()=>el.scrollIntoView({behavior:"smooth",block:"start"}),80)}
 }
 
 async function viewPreferences(m){
@@ -2168,6 +2196,33 @@ async function showReport(p){
    p.mode==="off"?h("button",{class:"btn",onclick:()=>decide("auto")},"Send, and always send automatically"):null,
    h("button",{class:"btn primary",onclick:()=>decide("send")},"Send this report"))));
  document.body.append(ov);ov.querySelector(".primary").focus()}
+/* "See an issue or a problem?": the player tells the maintainers in their own words, with a category, after reading what is sent */
+const PROBLEM_CATEGORIES=[["game-wont-start","A game won't start","Play does nothing, or the emulator complains"],["emulator","Emulator trouble","Not found, wrong one opens, crashes"],["controller","Controller or keyboard","Mapping, not detected, wrong buttons"],["display","Display or video","Window, screen, full screen, tearing"],["online-play","Playing together","Rooms, invites, joining, matches"],["server","My server","Starting, codes, firewall, router"],["library-scan","Library or scanning","Games missing, wrong console, covers"],["steam-pc-games","Steam or PC games","Missing, pictures, hidden games"],["saves","Saves and backups","Folders, restore, lost progress"],["download-update","Downloads and updates","Engines, cores, the app itself"],["looks-wrong","Something looks wrong","Layout, text, colours, a typo"],["suggestion","An idea","Something Legacy Player should do"],["other","Something else",""]];
+async function reportProblem(){
+ if(document.querySelector(".modal.problem"))return;
+ let cat="",sending=false;const close=()=>ov.remove();
+ const text=h("textarea",{rows:4,maxlength:2000,style:"width:100%",placeholder:"What happened, and what you expected. Steps to see it again help a lot."});
+ const recent=h("input",{type:"checkbox",checked:true});
+ const status=await api("report_status",{}).catch(()=>({connected:false}));
+ const cats=h("div",{class:"cats"});
+ const drawCats=()=>cats.replaceChildren(...PROBLEM_CATEGORIES.map(([id,t,sub])=>h("button",{type:"button",class:"cat"+(cat===id?" on":""),"aria-pressed":String(cat===id),onclick:()=>{cat=id;drawCats();text.focus()}},h("b",{},t),sub?h("span",{},sub):null)));
+ drawCats();
+ const send=h("button",{class:"btn primary",onclick:async()=>{if(sending)return;
+   if(!cat){toast("Pick what it is about first","warn");return}
+   if(!text.value.trim()&&cat!=="looks-wrong"){toast("Say a few words about what you saw","warn");return}
+   sending=true;send.disabled=true;send.textContent="Sending…";
+   const r=await act(()=>api("report_file",{category:cat,text:text.value,include_recent:recent.checked}));
+   sending=false;send.disabled=false;send.textContent="Send";
+   if(!r)return;close();
+   toast(r.sent?"Thank you. Your report was sent.":(r.connected?"Could not send it right now; it is kept on this computer and goes out later (Settings > Problem reports).":"Kept on this computer: this copy of Legacy Player has no report address yet. You can copy it under Settings > Problem reports."),r.sent?"":"warn")}},"Send");
+ const ov=h("div",{class:"modal problem",role:"dialog","aria-modal":"true","aria-labelledby":"prTitle",onclick:e=>{if(e.target===ov)close()}},h("div",{class:"modalbox wide",style:"max-width:720px"},
+  h("div",{class:"row"},h("h3",{id:"prTitle",class:"grow",style:"margin:0"},"See an issue or a problem?"),h("button",{class:"btn","data-cancel":true,onclick:close,"aria-label":"Close"},"✕")),
+  h("p",{class:"small muted",style:"margin:6px 0 2px"},"Tell the people who make Legacy Player. Pick what it is about, then describe it. Your words go with the app and Windows version and the last few actions' names; never your name, address, folders or codes."),
+  cats,text,
+  h("label",{class:"small",style:"display:flex;gap:10px;align-items:flex-start;margin-top:8px"},recent,h("span",{},"Include the names of my last few actions in the app (for example \u201claunch\u201d, \u201cmp_host\u201d), which helps find the cause")),
+  status.connected?null:h("p",{class:"small warn",style:"margin:8px 0 0"},"This copy has no report address set, so the report is kept on this computer; you can copy it from Settings > Problem reports and paste it into a GitHub issue."),
+  h("div",{class:"row",style:"justify-content:flex-end;gap:8px;margin-top:12px"},h("button",{class:"btn",onclick:close},"Cancel"),send)));
+ document.body.append(ov);setTimeout(()=>cats.querySelector("button").focus(),0)}
 function reportClientError(message,where,stack){try{api("report_client_error",{message:String(message||"").slice(0,400),page:S.tab,where:where||"",stack:String(stack||"").slice(0,1500)}).catch(()=>{})}catch(e){}}
 window.addEventListener("error",e=>reportClientError(e.message,"window",e.error&&e.error.stack));
 window.addEventListener("unhandledrejection",e=>{const r=e.reason;reportClientError(r&&r.message||r,"promise",r&&r.stack)});
@@ -2229,7 +2284,9 @@ async function gameMenu(g,x,y){
  const ok=fn=>async()=>{const r=await act(fn);if(r!==undefined)refreshAfter()};
  const items=[
   {label:"▶  Play",bold:true,fn:()=>playGame(g),disabled:!g.emulator,title:g.emulator?"":"No emulator is ready for this console. The doctor can help in his office."},
+  {label:"Play with options… (screen, resolution, video)",fn:()=>launchGame(g,{options:true}),disabled:!g.emulator},
   {label:"Play online (host a room)…",fn:()=>{S.joinGame=g.id;nav("together")}},
+  {label:"Game card",fn:()=>gameCard(g.id)},
   {label:"Details",fn:()=>openGame(g.id)},"-",
   {label:g.favorite?"Remove from favorites":"Add to favorites",fn:ok(()=>api("favorite",{id:g.id,favorite:!g.favorite}))},
   {label:"Add to collection",sub:[...cols.map(c=>({label:c.name,check:(g.collections||[]).includes(c.name),fn:ok(()=>api("collections",{action:(g.collections||[]).includes(c.name)?"remove":"add",name:c.name,id:g.id}))})),cols.length?"-":null,
@@ -2299,7 +2356,7 @@ function drawCols(d){const c=$("#colchips");if(!c||!d)return;const cols=d.collec
   ...cols.map(k=>h("button",{class:"chip"+(S.collection===k.name?" on":""),title:"Right-click to delete this collection",onclick:()=>{S.collection=S.collection===k.name?null:k.name;go()},
     oncontextmenu:e=>{e.preventDefault();ctxMenu(e.clientX,e.clientY,[{label:"Delete collection “"+k.name+"”",fn:async()=>{if(await ask("Delete the collection “"+k.name+"”? The games stay in your library.","Delete")){await act(()=>api("collections",{action:"delete",name:k.name}));if(S.collection===k.name)S.collection=null;go()}}}])}},k.name,h("small",{},k.count))),
   h("button",{class:"chip",onclick:newCollection},"+ New"),
-  d.hidden_total||S.showHidden?h("button",{class:"chip"+(S.showHidden?" on":""),title:"Games you hid from the library",onclick:()=>{S.showHidden=!S.showHidden;go()}},"Hidden",h("small",{},d.hidden_total)):null)}
+  S.showHidden?h("span",{class:"badge warn",style:"align-self:center",title:"You are looking at the games you hid. Games > Show hidden games switches back."},"Showing "+d.hidden_total+" hidden game"+(d.hidden_total===1?"":"s")):null)}
 
 /* ---- Properties ---- */
 async function gameProps(id){
@@ -2537,7 +2594,7 @@ function renderLive(){
     S.running?h("button",{class:"btn bad",title:"Stops the game right away, even if it asks \"are you sure?\". Unsaved progress is lost.",onclick:forceQuit},"Force quit game"):null,
     r.role==="host"&&r.invite_code?h("button",{class:"btn",title:"Copy the invite code for friends",onclick:()=>copyText(r.invite_code,"Invite code copied")},"Copy invite"):null,
     S.tab==="together"?null:h("button",{class:"btn primary",onclick:()=>nav("together")},"Open room"),
-    h("button",{class:"btn bad",onclick:async()=>{if(!await ask(r.role==="host"?"Close the room? Everyone is disconnected.":"Leave the room?",r.role==="host"?"Close room":"Leave"))return;await act(()=>api("mp_leave"));S.room=null;renderNav();if(S.tab==="together")go()}},r.role==="host"?"Close":"Leave"))}
+    h("button",{class:"btn bad",onclick:leaveRoom},r.role==="host"?"Close":"Leave"))}
   else if(i.kind==="wait"){bar.hidden=false;bar.replaceChildren(h("span",{class:"onair wait"},h("span",{class:"dot"}),"IN LINE"),h("span",{class:"lv"},i.text),h("span",{class:"grow"}),S.tab==="together"?null:h("button",{class:"btn",onclick:()=>nav("together")},"Open"))}
   else{bar.hidden=true;bar.replaceChildren()}}
  const sig=i.kind+"|"+(S.room?S.room.game:"");
@@ -2612,6 +2669,22 @@ function drawChips(d){drawCols(d);const c=$("#chips");
   ...d.consoles.map(k=>h("button",{class:"chip conmini"+(S.console===k.id?" on":""),style:conStyle(k.id),title:k.netplay_note,onclick:()=>{S.console=k.id;go()}},h("span",{class:"cico"},conSprite(k.id,22)),k.name,h("small",{},k.count))))}
 
 /* ================= Console mode ================= */
+/* a row that scrolls sideways: arrow buttons at both ends, the mouse wheel scrolls it, and it can be dragged */
+function sideScroller(bar,cls){const wrap=h("div",{class:cls||"conwrap"});
+ const left=h("button",{type:"button",class:"conarrow","aria-label":"Scroll left",onclick:()=>bar.scrollBy({left:-Math.max(200,bar.clientWidth*.7),behavior:"smooth"})},"‹");
+ const right=h("button",{type:"button",class:"conarrow","aria-label":"Scroll right",onclick:()=>bar.scrollBy({left:Math.max(200,bar.clientWidth*.7),behavior:"smooth"})},"›");
+ const fl=h("div",{class:"confade l"}),fr=h("div",{class:"confade r"});
+ const upd=()=>{const max=bar.scrollWidth-bar.clientWidth-1;left.disabled=bar.scrollLeft<=1;right.disabled=bar.scrollLeft>=max;fl.classList.toggle("off",left.disabled);fr.classList.toggle("off",right.disabled);const none=max<=1;left.style.display=right.style.display=none?"none":"";fl.style.display=fr.style.display=none?"none":""};
+ bar.addEventListener("scroll",upd,{passive:true});new ResizeObserver(upd).observe(bar);requestAnimationFrame(upd);
+ bar.addEventListener("wheel",e=>{if(Math.abs(e.deltaY)>Math.abs(e.deltaX)&&bar.scrollWidth>bar.clientWidth){e.preventDefault();bar.scrollBy({left:e.deltaY,behavior:"auto"})}},{passive:false});
+ wrap.append(left,fl,bar,fr,right);return wrap}
+/* hold the mouse down on a row of cards and drag: it scrolls; a plain click still clicks the card */
+document.addEventListener("pointerdown",e=>{if(e.button!==0)return;const bar=e.target.closest&&e.target.closest(".shelf,.conbar,.estrip");if(!bar||bar.scrollWidth<=bar.clientWidth)return;
+ const x0=e.clientX,s0=bar.scrollLeft;let moved=false;
+ const mv=ev=>{const dx=ev.clientX-x0;if(!moved&&Math.abs(dx)>6){moved=true;bar.classList.add("dragging")}if(moved)bar.scrollLeft=s0-dx};
+ const up=()=>{document.removeEventListener("pointermove",mv);document.removeEventListener("pointerup",up);document.removeEventListener("pointercancel",up);
+  if(moved){bar.classList.remove("dragging");const eat=ev=>{ev.stopPropagation();ev.preventDefault()};bar.addEventListener("click",eat,{capture:true,once:true});setTimeout(()=>bar.removeEventListener("click",eat,{capture:true}),50)}};
+ document.addEventListener("pointermove",mv);document.addEventListener("pointerup",up);document.addEventListener("pointercancel",up)});
 async function viewConsole(m){
  const d=await api("library",{sort:S.sort});S.lib=d;
  const real=d.consoles.filter(c=>c.count);const consoles=real.length>1?[{id:"all",name:"All",count:d.games.length,maker:"Every console"},...real]:real;
@@ -2634,38 +2707,102 @@ async function viewConsole(m){
    (c.id!=="all"&&emu(c.id).options.length)?h("label",{class:"bemu small"},"Opens with ",h("select",{"aria-label":"Emulator for "+c.name,onchange:async e=>{const r=await act(()=>api("console_emulator",{console:c.id,emulator:e.target.value||null}));if(r){E.consoles=r.consoles;const f=await api("library",{sort:S.sort});d.games=f.games;render()}}},
       h("option",{value:""},"Automatic"),...emu(c.id).options.map(o=>h("option",{value:o.id,selected:emu(c.id).chosen===o.id},o.name+(o.installed?"":" (not found)"))))):null);
   swap=false;
+  const bar=h("div",{class:"conbar"},...consoles.map((x,i)=>conChip(x.id,x.name==="All"?"All":x.name,x.count,i===ci,()=>{ci=i;gi=0;swap=true;S.console=x.id==="all"?null:x.id;render()})));
   wrap.replaceChildren(
-   h("div",{class:"conbar"},...consoles.map((x,i)=>conChip(x.id,x.name==="All"?"All":x.name,x.count,i===ci,()=>{ci=i;gi=0;swap=true;S.console=x.id==="all"?null:x.id;render()}))),
+   sideScroller(bar),
    banner,
-   games.length?h("div",{class:"tvgrid"},...games.map((g,i)=>h("div",{class:"tvcard"+(i===gi?" sel":""),"data-gid":g.id,style:`--d:${Math.min(i,14)*35}ms;${conStyle(g.console)}`,onclick:()=>{gi=i;render()},ondblclick:()=>play(g)},
+   games.length?h("div",{class:"tvgrid"},...games.map((g,i)=>h("div",{class:"tvcard"+(i===gi?" sel":""),"data-gid":g.id,tabindex:0,role:"button",title:"Click for the game's card · double-click to play",style:`--d:${Math.min(i,14)*35}ms;${conStyle(g.console)}`,
+     onclick:()=>{gi=i;render();gameCard(g.id)},ondblclick:e=>{e.preventDefault();play(g)},onkeydown:e=>{if(e.key==="Enter"){e.stopPropagation();gi=i;gameCard(g.id)}}},
      c.id==="all"?h("span",{class:"tvcon",title:consoleName(g.console)},conSprite(g.console,22)):null,coverEl(g,"tv"),h("div",{class:"tvtitle"},g.title),h("div",{class:"small muted"},[g.region,c.id==="all"?consoleName(g.console):null,g.emulator||"no emulator"].filter(Boolean).join(" · "))))):h("p",{class:"muted"},"No games for this console yet."),
-   h("p",{class:"small muted tvhelp"},"D-pad or arrows: move · A / Enter: play · Shoulder buttons or [ ]: change console · B / Esc: back to Library · right-click a game for more"));
+   h("p",{class:"small muted tvhelp"},"D-pad or arrows: move · A / Enter: open the game's card · double-click or Y: play now · Shoulder buttons or [ ]: change console · B / Esc: back to Library · right-click a game for more"));
   const sel=wrap.querySelector(".tvcard.sel");if(sel)sel.scrollIntoView({block:"nearest"});
   const cb=wrap.querySelector(".conchip.on");if(cb)cb.scrollIntoView({block:"nearest",inline:"center"});
  };
  const play=g=>launchGame(g);
+ const current=()=>{const c=consoles[ci];const games=c?gamesOf(c):[];return games[gi]};
  const move=(dx,dy)=>{const c=consoles[ci];if(!c)return;const games=gamesOf(c);const cols=Math.max(1,Math.floor((wrap.clientWidth-20)/180));
   gi=Math.max(0,Math.min(games.length-1,gi+dx+dy*cols));render()};
  const go2=n=>{ci=(ci+n+consoles.length)%consoles.length;gi=0;swap=true;S.console=consoles[ci].id==="all"?null:consoles[ci].id;render()};
  const key=e=>{if(S.tab!=="console"){document.removeEventListener("keydown",key);return}
   if(e.target&&/INPUT|SELECT|TEXTAREA/.test(e.target.tagName))return;
   const map={ArrowLeft:()=>move(-1,0),ArrowRight:()=>move(1,0),ArrowUp:()=>move(0,-1),ArrowDown:()=>move(0,1),
-   Enter:()=>{const c=consoles[ci];const games=c?gamesOf(c):[];if(games[gi])play(games[gi])},
+   Enter:()=>{const g=current();if(g)gameCard(g.id)},
    "[":()=>go2(-1),"]":()=>go2(1),Escape:()=>{S.tab="library";go()}};
   if(document.querySelector(".ctx,.modal"))return;
   if(map[e.key]){e.preventDefault();map[e.key]()}};
  document.addEventListener("keydown",key);
  let last={};
  clearInterval(S.tvTimer);S.tvTimer=setInterval(()=>{if(S.tab!=="console"){clearInterval(S.tvTimer);return}
+  if(document.querySelector(".modal"))return;
   const p=livePads()[0];if(!p)return;const prof=(S.P&&S.P.profiles[padKey(p)])||null;const lit=litSlots(p,prof);
   const edge=s=>{const now=lit.has(s);const was=!!last[s];last[s]=now;return now&&!was};
   if(edge(14))move(-1,0);if(edge(15))move(1,0);if(edge(12))move(0,-1);if(edge(13))move(0,1);
-  if(edge(0)){const c=consoles[ci];const games=c?gamesOf(c):[];if(games[gi])play(games[gi])}
+  if(edge(0)){const g=current();if(g)gameCard(g.id)}
+  if(edge(3)){const g=current();if(g)play(g)}
   if(edge(4))go2(-1);if(edge(5))go2(1);
   if(edge(1)){S.tab="library";go()}},50);
  if(!S.P)S.P=await api("pads").catch(()=>null);
  render();
 }
+/* the game card: a profile of one game, with what is known about it and where each fact came from */
+async function gameCard(id){
+ if(document.querySelector(".modal.gcmodal"))return;
+ let c=await act(()=>api("game_card",{id}));if(!c)return;
+ const close=()=>{clearInterval(timer);ov.remove()};let timer=null,editing=false;
+ const box=h("div",{class:"modalbox wide"});
+ const ov=h("div",{class:"modal gcmodal",role:"dialog","aria-modal":"true",onclick:e=>{if(e.target===ov)close()}},box);
+ const srcName={you:"you",file:"file name",wikipedia:"Wikipedia",wikidata:"Wikidata",known:"built-in list",console:"console limit"};
+ const src=(k)=>k?h("span",{class:"src "+k,title:"Where this comes from"},srcName[k]||k):null;
+ const fact=(label,val,k)=>val?[h("span",{class:"k"},label),h("span",{class:"v"},val,src(k))]:[];
+ const lookupBtn=()=>h("button",{class:"btn",disabled:c.lookup.state==="running",title:c.allow_internet?"Asks Wikipedia and Wikidata for this game's description, release date, makers and player count. Only the name and console are sent.":"Needs 'Allow internet downloads' in Settings",
+   onclick:async()=>{if(!c.allow_internet){netTipModal();return}
+    if(!c.looked_up_at&&!await ask("Look this game up? Legacy Player asks en.wikipedia.org and wikidata.org for "+c.title+" ("+c.console_name+"): a short description, the release date, who made it and how many can play. Only the name and console are sent, once; the answer is kept on this computer.","Look it up"))return;
+    const r=await act(()=>api("game_card",{id,action:"lookup",consent:true}));if(r){c=r;draw();poll()}}},c.lookup.state==="running"?[h("span",{class:"spin"}),"Looking it up…"]:c.looked_up_at?"Look it up again":"Look it up online");
+ const poll=()=>{clearInterval(timer);timer=setInterval(async()=>{if(!ov.isConnected){clearInterval(timer);return}const r=await api("game_card",{id}).catch(()=>null);if(!r)return;c=r;if(r.lookup.state!=="running"){clearInterval(timer);if(r.lookup.state==="error")toast(r.lookup.error,"warn");else if(!r.source)toast("Nothing was found for that name. You can type the details yourself.","warn");draw()}},1200)};
+ const draw=()=>{
+  const f=c.fields,pl=c.players;
+  const g=GAMES[id]||{id,cover:c.cover,cover_v:c.cover_v,console:c.console,title:c.title};g.cover=c.cover;g.cover_v=c.cover_v;
+  const playersText=pl.max<2?"1 player":"1–"+pl.max+" players"+(pl.coop&&pl.versus?" · co-op and versus":pl.coop?" · co-op":pl.versus?" · versus":pl.mode==="turns"?" · take turns":"");
+  const plSel=h("select",{"aria-label":"Players",onchange:async e=>{const r=await act(()=>api("game_card",{id,action:"save",players:e.target.value}));if(r){c=r;draw()}}},h("option",{value:"",selected:!c.own_players},"Automatic"),...[1,2,3,4,5,6,7,8].map(n=>h("option",{value:String(n),selected:c.own_players===String(n)},String(n))));
+  const edit=editing?h("div",{class:"gcedit"},
+    fld("Release date",h("input",{type:"text",id:"gc_release",value:f.release.source==="you"?f.release.value:"",placeholder:f.release.value||"e.g. 1996-12-14 or 1996",maxlength:24})),
+    fld("Version or revision",h("input",{type:"text",id:"gc_version",value:f.version.source==="you"?f.version.value:"",placeholder:f.version.value||"e.g. Rev 1, v1.1",maxlength:40})),
+    fld("Developer",h("input",{type:"text",id:"gc_developer",value:f.developer.source==="you"?f.developer.value:"",placeholder:f.developer.value||"",maxlength:80})),
+    fld("Publisher",h("input",{type:"text",id:"gc_publisher",value:f.publisher.source==="you"?f.publisher.value:"",placeholder:f.publisher.value||"",maxlength:80})),
+    fld("Genre",h("input",{type:"text",id:"gc_genre",value:f.genre.source==="you"?f.genre.value:"",placeholder:f.genre.value||"",maxlength:60})),
+    h("label",{class:"fld wide"},h("span",{class:"small muted"},"Description"),h("textarea",{id:"gc_desc",rows:4,maxlength:1200,placeholder:f.description.value||"Your own words about this game"},f.description.source==="you"?f.description.value:"")),
+    h("div",{class:"row wide",style:"justify-content:flex-end"},h("span",{class:"small muted grow"},"Leave a box empty to keep what was looked up or read from the file."),h("button",{class:"btn",onclick:()=>{editing=false;draw()}},"Cancel"),
+     h("button",{class:"btn primary",onclick:async()=>{const v=k=>(box.querySelector("#gc_"+k)||{}).value||"";const r=await act(()=>api("game_card",{id,action:"save",release:v("release"),version:v("version"),developer:v("developer"),publisher:v("publisher"),genre:v("genre"),description:v("desc")}),"Saved");if(r){c=r;editing=false;draw()}}},"Save"))):null;
+  box.replaceChildren(
+   h("div",{class:"row",style:"margin-bottom:10px"},h("div",{class:"grow small muted"},c.console_name+(c.store?" · "+(c.store==="steam"?"Steam":"Epic Games"):"")),h("button",{class:"btn","data-cancel":true,onclick:close,"aria-label":"Close"},"✕")),
+   h("div",{class:"gcard"},
+    h("div",{},coverEl(g,"prop"),h("div",{class:"row",style:"margin-top:8px;gap:6px"},h("button",{class:"btn small",onclick:()=>pickCover(g,r=>{Object.assign(c,{cover:r.cover,cover_v:r.cover_v});GAMES[id]=r;draw()})},"Picture…"),h("button",{class:"btn small",onclick:()=>{close();findArt(g)}},"Find art"))),
+    h("div",{},
+     h("div",{class:"gchead"},h("h2",{class:"grow"},c.title),h("button",{class:"star"+(c.favorite?" on":""),style:"position:static;font-size:1.5rem",title:c.favorite?"Remove favorite":"Favorite",onclick:async()=>{const r=await act(()=>api("favorite",{id,favorite:!c.favorite}));if(r){c.favorite=r.favorite;draw()}}},"★")),
+     h("div",{class:"gcbadges"},h("span",{class:"badge"},c.console_name),c.region?h("span",{class:"badge"},c.region):null,h("span",{class:"badge "+(pl.max<2?"":"good")},playersText),f.genre.value?h("span",{class:"badge"},f.genre.value):null,c.emulator?h("span",{class:"badge per-game"},"opens in "+c.emulator):h("span",{class:"badge warn"},"no emulator yet")),
+     f.description.value?h("div",{class:"gcdesc"},f.description.value,src(f.description.source)):h("p",{class:"small muted"},"No description yet. Look it up online, or write your own."),
+     h("div",{class:"gcfacts"},
+      ...fact("Released",f.release.value,f.release.source),
+      ...fact("Version",f.version.value,f.version.source),
+      ...fact("Developer",f.developer.value,f.developer.source),
+      ...fact("Publisher",f.publisher.value,f.publisher.source),
+      h("span",{class:"k"},"Players"),h("span",{class:"v"},playersText,src(pl.source),h("label",{class:"small",style:"margin-left:10px"},"Set: ",plSel)),
+      ...fact("File",c.file,""),
+      ...(c.file_tags.length?fact("File tags",c.file_tags.join(", "),"file"):[]),
+      h("span",{class:"k"},"Size"),h("span",{class:"v"},c.size_mb+" MB"),
+      h("span",{class:"k"},"Played"),h("span",{class:"v"},c.plays?c.plays+(c.plays===1?" time":" times")+(c.last_played?", last "+ago(c.last_played):""):"never")),
+     c.source?h("div",{class:"small muted"},"Looked up "+ago(c.looked_up_at)+" from ",h("a",{href:c.source,target:"_blank",rel:"noopener noreferrer",onclick:async e=>{e.preventDefault();const r=await api("open_url",{url:c.source}).catch(()=>null);if(!r)window.open(c.source,"_blank","noopener")}},"Wikipedia")," (check it: a search by name can pick the wrong game).",
+       " ",h("a",{href:"#",onclick:async e=>{e.preventDefault();const r=await act(()=>api("game_card",{id,action:"forget"}));if(r){c=r;draw()}}},"Forget it")):null,
+     edit,
+     h("div",{class:"gcactions"},
+      h("button",{class:"btn good",disabled:!c.launch.ready,title:c.launch.ready?"":c.launch.reason,onclick:async()=>{close();await launchGame({id,title:c.title})}},"▶ Play"),
+      h("button",{class:"btn",disabled:!c.launch.ready,title:"Pick the screen, full screen or windowed, resolution and video options for this start",onclick:async()=>{close();await launchGame({id,title:c.title},{options:true})}},"Play with options…"),
+      pl.max>=2&&!c.store?h("button",{class:"btn primary",onclick:()=>{close();quickOnline({id,title:c.title,players:pl})}},"Online"):null,
+      lookupBtn(),
+      editing?null:h("button",{class:"btn",onclick:()=>{editing=true;draw()}},"Edit details"),
+      h("button",{class:"btn",onclick:()=>{close();gameProps(id)}},"Properties…")))));
+  const first=box.querySelector(".btn.good:not(:disabled)")||box.querySelector("button");if(first&&!editing)first.focus()};
+ document.body.append(ov);draw();if(c.lookup.state==="running")poll()}
 
 /* ================= Display and video ================= */
 const VIDEO_ICON={fullscreen:["Y","YY....YY","Y......Y","........","........","........","........","Y......Y","YY....YY"],
@@ -2723,6 +2860,53 @@ async function viewDisplay(m){
    h("div",{class:"row"},Object.keys(c.own||{}).length?h("button",{class:"btn",onclick:async()=>{for(const k of Object.keys(c.own)){await api("video",{scope:c.id,key:k,value:null})}toast("Back to the defaults");go()}},"Reset to defaults"):null,
     h("button",{class:"btn",onclick:()=>{S.ctrl=c.id;nav("controllers")}},c.pad_layout_customized?"Controller layout (custom)":"Controller layout"))),
   h("div",{class:"vpbody"},h("div",{},...F.map(seg)),pvC.el)))}
+
+/* ================= Friends: the separate, optional friends service ================= */
+async function viewFriends(m){
+ let d=await act(()=>api("friends",{action:"status"}));if(!d)return;
+ if(!d.enabled){m.append(h("h2",{},"Friends"),h("div",{class:"why"},"Friends is a separate, optional service: friend codes, who is online, one-click invites into a room and short messages. Legacy Player works fully without it, and no account is made. Paste the address of a friends service a friend or the maintainers run under Settings > Friends and this page comes alive."),
+  h("div",{class:"card"},h("p",{},"No friends service is set yet."),h("div",{class:"row"},h("button",{class:"btn primary",onclick:()=>nav("settings","friends")},"Set it up in Settings"),h("span",{class:"small muted"},"Run your own with  python -m server.social  (see docs/HOSTING_PUBLIC_SERVER.md)."))));return}
+ const box=h("div",{});m.append(h("h2",{},"Friends"),h("div",{class:"why"},"Give your friend code to people you know; when they add it (or you add theirs) you see each other here, with who is online, the room they are in and a one-click Join. Nobody else can see you. Codes are not accounts: this app has one, and you can leave at any time."),box);
+ let sel=S.friendSel||null,inbox=null,thread=null;
+ const refresh=async()=>{const r=await api("friends",{action:"poll"}).catch(()=>null);if(!r||!box.isConnected)return;d=r;if(!r.inbox){draw();return}inbox=r.inbox;S.friendsBadge=(inbox.requests.length+inbox.invites.length+inbox.friends.reduce((n,f)=>n+(f.unread||0),0))||0;renderNav();if(sel){thread=await api("friends",{action:"thread",friend:sel}).catch(()=>null)}draw()};
+ const joinInvite=async inv=>{if(inv.server_code){const r=await act(()=>api("server_connect",{code:inv.server_code}));if(!r)return;if(!r.connected){toast(r.message,"warn");return}}
+  const games=(await api("library",{}).catch(()=>({games:[]}))).games;const g=games.find(x=>x.title.toLowerCase()===(inv.game||"").toLowerCase())||games.find(x=>x.title.toLowerCase().includes((inv.game||"").toLowerCase().slice(0,12)));
+  if(!g){toast("You need "+(inv.game||"that game")+" in your library to join. Add it, then press Rescan.","warn");S.joinCode=inv.invite_code;nav("together");return}
+  const x=await act(()=>api("mp_join",{id:g.id,invite_code:inv.invite_code}));if(x){S.room=x.room;api("friends",{action:"dismiss",from:inv.from}).catch(()=>{});nav("together");poll()}};
+ const draw=()=>{
+  if(!d.me||!d.me.id){box.replaceChildren(h("div",{class:"card"},h("p",{},"Say hello to the friends service to get your friend code. It only learns the name you show other players."),h("div",{class:"row"},h("button",{class:"btn primary",onclick:async()=>{const r=await act(()=>api("friends",{action:"hello"}));if(r){d=r;toast("Your friend code is "+r.me.code);refresh()}}},"Say hello and get my code"),h("span",{class:"small muted"},"Service: "+d.server))));return}
+  if(!inbox){box.replaceChildren(h("div",{class:"card"},h("span",{class:"spin"}),"Reaching the friends service…"));return}
+  const me=inbox.me;
+  const codeIn=h("input",{type:"text",placeholder:"Friend's code, e.g. MK7-4Q2X",maxlength:9,style:"width:200px",onkeydown:e=>{if(e.key==="Enter")addBtn.click()}});
+  const addBtn=h("button",{class:"btn good",onclick:async()=>{const r=await act(()=>api("friends",{action:"request",code:codeIn.value}));if(r){inbox=r.inbox;codeIn.value="";toast(r.inbox.friends.some(f=>f.id)&&r.already?"Already friends":"Request sent");draw()}}},"Add");
+  const left=h("div",{},
+   h("div",{class:"card"},h("div",{class:"row"},h("div",{class:"grow"},h("div",{class:"small muted"},"Your friend code"),h("span",{class:"code mid"},me.code)),h("button",{class:"btn",onclick:()=>copyText(me.code,"Friend code copied")},"Copy")),
+    h("p",{class:"small muted",style:"margin:8px 0 0"},"You appear as "+me.name+". "+(d.share_room?"Friends see the room you host and can join it.":"Friends only see that you are online (Settings > Friends).")),
+    h("div",{class:"row",style:"margin-top:10px"},codeIn,addBtn)),
+   inbox.requests.length?h("div",{class:"card",style:"margin-top:12px"},h("h3",{style:"margin-top:0"},"Wants to be friends"),...inbox.requests.map(r=>h("div",{class:"frow"},h("span",{class:"nm grow"},r.name),h("button",{class:"btn good small",onclick:async()=>{const x=await act(()=>api("friends",{action:"decide",from:r.id,accept:true}));if(x){inbox=x.inbox;draw()}}},"Accept"),h("button",{class:"btn small",onclick:async()=>{const x=await act(()=>api("friends",{action:"decide",from:r.id,accept:false}));if(x){inbox=x.inbox;draw()}}},"No")))):null,
+   inbox.invites.length?h("div",{class:"card",style:"margin-top:12px"},h("h3",{style:"margin-top:0"},"Invited to play"),...inbox.invites.map(i=>h("div",{class:"frow"},h("div",{class:"grow"},h("div",{class:"nm"},i.name+" · "+(i.game||"a game")),h("div",{class:"st"},"Sent "+ago(i.at)+(i.server_code?" · on their server":""))),h("button",{class:"btn primary small",onclick:()=>joinInvite(i)},"Join"),h("button",{class:"btn small",onclick:async()=>{const x=await act(()=>api("friends",{action:"dismiss",from:i.from}));if(x){inbox=x.inbox;draw()}}},"Dismiss")))):null,
+   h("div",{class:"card",style:"margin-top:12px"},h("div",{class:"row"},h("h3",{class:"grow",style:"margin:0"},"Friends",h("span",{class:"badge good",style:"margin-left:8px"},inbox.online+" online")),h("button",{class:"btn small",onclick:refresh},"Refresh")),
+    inbox.friends.length?h("div",{},...inbox.friends.map(f=>h("div",{class:"frow",style:"cursor:pointer",onclick:()=>{sel=S.friendSel=f.id;thread=null;draw();api("friends",{action:"thread",friend:f.id}).then(t=>{thread=t;f.unread=0;draw()}).catch(()=>{})}},
+      h("span",{class:"pres"+(f.online?" on":"")}),h("div",{class:"grow"},h("div",{class:"nm"},f.name,f.unread?h("span",{class:"unread",style:"margin-left:8px"},f.unread):null),h("div",{class:"st"},f.online?(f.room?"In a room: "+(f.room.game||"")+" ("+f.room.players+(f.room.max_players?"/"+f.room.max_players:"")+")":(f.status||"online")):"offline")),
+      f.online&&f.room?h("button",{class:"btn good small",onclick:e=>{e.stopPropagation();joinInvite({from:f.id,name:f.name,game:f.room.game,invite_code:f.room.invite_code,server_code:f.room.server_code})}},"Join"):null,
+      S.room&&S.room.role==="host"&&f.online?h("button",{class:"btn small",title:"Send them your room's invite",onclick:async e=>{e.stopPropagation();const x=await act(()=>api("friends",{action:"invite",to:f.id}),"Invite sent to "+f.name)}},"Invite"):null))):h("p",{class:"muted small"},"No friends yet. Swap codes with someone you know."),
+    inbox.sent.length?h("p",{class:"small muted",style:"margin:8px 0 0"},"Waiting for an answer from: "+inbox.sent.map(x=>x.name).join(", ")):null),
+   h("details",{class:"fold",style:"margin-top:12px"},h("summary",{class:"small muted"},"Leave the friends service"),h("div",{class:"card",style:"margin-top:6px"},h("p",{class:"small"},"Your code, friends and messages on the service are deleted. Nothing else changes."),h("button",{class:"btn bad",onclick:async()=>{if(!await ask("Leave the friends service? Your code stops working and your friends there no longer see you.","Leave"))return;const x=await act(()=>api("friends",{action:"goodbye"}));if(x){sel=S.friendSel=null;d=x;inbox=null;draw()}}},"Leave"))));
+  const friend=sel&&inbox.friends.find(f=>f.id===sel);
+  const msgIn=h("input",{type:"text",placeholder:"Message "+(friend?friend.name:""),maxlength:500,style:"flex:1",onkeydown:e=>{if(e.key==="Enter")sendBtn.click()}});
+  const sendBtn=h("button",{class:"btn primary",onclick:async()=>{if(!msgIn.value.trim())return;const r=await act(()=>api("friends",{action:"message",to:sel,text:msgIn.value}));if(r){msgIn.value="";thread=r;draw();msgIn.focus()}}},"Send");
+  const right=friend?h("div",{class:"card"},h("div",{class:"row"},h("span",{class:"pres"+(friend.online?" on":"")}),h("h3",{class:"grow",style:"margin:0"},friend.name),h("button",{class:"btn small bad",onclick:async()=>{if(!await ask("Remove "+friend.name+" from your friends?","Remove"))return;const x=await act(()=>api("friends",{action:"remove",friend:friend.id}));if(x){inbox=x.inbox;sel=S.friendSel=null;draw()}}},"Remove")),
+    h("div",{class:"msgs"},...(thread&&thread.messages&&thread.messages.length?thread.messages.map(mm=>h("div",{class:"msg"+(mm.mine?" mine":"")},mm.text,h("span",{class:"t"},ago(mm.at)))):[h("p",{class:"small muted"},"No messages yet. Messages are kept for a week.")])),
+    h("div",{class:"row",style:"margin-top:8px"},msgIn,sendBtn)):h("div",{class:"card"},h("p",{class:"muted"},"Pick a friend to message them, invite them to your room, or join theirs."));
+  box.replaceChildren(h("div",{class:"fr"},left,right));
+  const ms=box.querySelector(".msgs");if(ms)ms.scrollTop=ms.scrollHeight};
+ draw();refresh();
+ clearInterval(S.friendsTimer);S.friendsTimer=setInterval(()=>{if(S.tab!=="friends"){clearInterval(S.friendsTimer);return}refresh()},15000)}
+/* in the background: friends' invites and requests show as a toast and a count on the tab, wherever you are */
+if(!OVERLAY)setInterval(async()=>{if(!S.friendsOn||S.tab==="friends"||document.querySelector(".modal"))return;const r=await api("friends",{action:"poll"}).catch(()=>null);if(!r||!r.inbox)return;
+ const n=r.inbox.requests.length+r.inbox.invites.length+r.inbox.friends.reduce((a,f)=>a+(f.unread||0),0);if(n!==S.friendsBadge){S.friendsBadge=n;renderNav()}
+ const sig=r.inbox.invites.map(i=>i.from+i.at).join("|")+"#"+r.inbox.requests.map(x=>x.id).join("|");
+ if(sig!==S.friendsSig){if(S.friendsSig!==undefined){r.inbox.invites.forEach(i=>toast(i.name+" invited you to play "+(i.game||"")+". Open Friends to join.","warn"));r.inbox.requests.forEach(x=>toast(x.name+" wants to be friends. Open Friends to answer."))}S.friendsSig=sig}},30000);
 
 /* ================= a doctor avatar ================= */
 AVATARS.doctor={name:"Doctor",rows:["...KKKKKK...","..KKKKKKKK..","..KSSSSSSK..","..SEESSEES..","..SSSSSSSS..","..SSDDDDSS..","...SSSSSS...",".WWWWGGWWWW.","WWWGWWWWGWWW","WWWGWWWWGRWW","WWWWGGGGWRRR","WWWWWWWWWWRW"]};
@@ -2901,7 +3085,7 @@ async function homeArtTip(){
   "No box art for "+g.title+" yet.",h("div",{class:"row",style:"gap:6px"},h("button",{class:"btn",onclick:()=>{GAMES[g.id]=GAMES[g.id]||g;findArt(g)}},"Find art"),
    h("button",{class:"btn",onclick:e=>{S.artTipOff=g.id;e.target.closest(".arttip").remove()}},"Not now")))))}
 
-(async function init(){if(OVERLAY){await overlayInit();return}try{const s=await api("settings");S.settings=s.values;document.documentElement.dataset.theme=s.values.theme;applyBg(s.values.background)}catch(e){}
+(async function init(){if(OVERLAY){await overlayInit();return}api("ping").catch(()=>{});try{const s=await api("settings");S.settings=s.values;document.documentElement.dataset.theme=s.values.theme;applyBg(s.values.background);S.friendsOn=!!(s.values.friends_server&&/^https:\/\//.test(s.values.friends_server))||/^http:\/\/(127\.0\.0\.1|localhost)/.test(s.values.friends_server||"")}catch(e){}
  buildMenubar();$("#brand").addEventListener("click",()=>nav("home"));$("#logomartin").append(martin(34));$("#bootmartin").append(martin(96,"hop"));
  try{S.profile=await api("profile")}catch(e){}renderWho();
  const r=await api("mp_state").catch(()=>({room:null}));S.room=r.room;S.waits=r.waits||[];if(S.room||S.waits.length)poll();pingServer();setInterval(pingServer,15000);setInterval(async()=>{const n=await api("notices").catch(()=>null);if(n&&n.notices)n.notices.forEach(x=>{toast(x.text,x.level);if(/server/i.test(x.text))pingServer()})},2000);
@@ -2910,6 +3094,19 @@ async function homeArtTip(){
  setTimeout(()=>{const b=$("#boot");if(b){b.classList.add("gone");setTimeout(()=>b.remove(),800)}},350);
  setTimeout(()=>autoNetTest(300),1200)})();
 
+/* Dialogs can be driven from a controller too (Console mode opens cards and the Play options box): D-pad or left stick moves,
+   A presses, B closes. Only while a dialog is open; pages keep their own pad handling. */
+if(!OVERLAY)(()=>{let was={},hold=0;
+ setInterval(()=>{const all=document.querySelectorAll(".modal");const m=all[all.length-1];if(!m)return;
+  const p=livePads()[0];if(!p)return;const prof=(S.P&&S.P.profiles[padKey(p)])||null;const lit=litSlots(p,prof);
+  const ax=p.axes[0]||0,ay=p.axes[1]||0;const now={l:lit.has(14)||ax<-.6,r:lit.has(15)||ax>.6,u:lit.has(12)||ay<-.6,d:lit.has(13)||ay>.6,a:lit.has(0),b:lit.has(1)};
+  const edge=k=>{const e=now[k]&&!was[k];return e};const F='button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+  const items=[...m.querySelectorAll(F)].filter(x=>x.offsetParent!==null);const i=items.indexOf(document.activeElement);
+  const step=n=>{if(!items.length)return;items[(i<0?0:(i+n+items.length)%items.length)].focus()};
+  if(edge("d")||edge("r"))step(1);if(edge("u")||edge("l"))step(-1);
+  if(edge("a")){const a=document.activeElement;if(a&&m.contains(a)){if(a.tagName==="SELECT"){a.focus()}else if(a.type==="checkbox"){a.click()}else a.click()}}
+  if(edge("b")){const btns=[...m.querySelectorAll("button")].filter(b=>!b.disabled);const c=m.querySelector("[data-cancel]:not([disabled])")||btns.find(b=>/^(cancel|close|not now|no|never mind|done|back|later|✕)/i.test((b.textContent||"").trim()));if(c)c.click()}
+  was=now},70)})();
 /* Dialogs: Esc closes the top one, Tab stays inside it, and focus goes back to where it was. */
 (()=>{
  const FOCUS='button:not([disabled]),[href],input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';

@@ -177,3 +177,72 @@ class ScrubberExtraTests(unittest.TestCase):
             self.assertNotIn(leak, s.text("failed: " + raw))
         self.assertNotIn("example.com", s.text("https://example.com/a?b=1"))      # a link may point at a friend's server: whole link goes
         self.assertIn("github.com", s.text("see https://github.com/ScrappyHub/legacy-player/issues?q=1"))
+
+
+class WrittenReportsAndAdminConsole(unittest.TestCase):
+    """'See a problem?' reports reach the receiver with their category, and the admin console can read and triage them."""
+    def setUp(self):
+        self.folder = Path(tempfile.mkdtemp())
+        self.store = report_receiver.Store(self.folder)
+        self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), report_receiver.make_handler(self.store, None, "adm1n"))
+        threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
+        self.url = f"http://127.0.0.1:{self.httpd.server_address[1]}/"
+
+    def tearDown(self):
+        self.httpd.shutdown()
+
+    def _get(self, path, token="adm1n", body=None):
+        req = urllib.request.Request(self.url.rstrip("/") + path + ("&" if "?" in path else "?") + "token=" + token,
+                                     data=json.dumps(body).encode() if body is not None else None, method="POST" if body is not None else "GET",
+                                     headers={"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=5) as r:
+                return r.status, r.read()
+        except urllib.error.HTTPError as err:
+            return err.code, b""
+
+    def test_player_written_report_is_sent_even_when_reports_are_off_and_is_scrubbed(self):
+        c, state, _ = center("off", url=self.url, name="alec")
+        with self.assertRaises(ValueError):
+            c.file("other", "   ")
+        out = c.file("online-play", r"alec could not join from C:\Users\alec\Desktop, code LP-ABCDEFGHJKLMNPQRSTUV2345")
+        self.assertTrue(out["sent"], out)
+        self.assertEqual("off", state["error_reports"])            # their mode is not touched
+        self.assertEqual([], c.pending())
+        rows = self.store.index()
+        self.assertEqual(1, len(rows))
+        self.assertEqual("user-report", rows[0]["kind"])
+        self.assertEqual("online-play", rows[0]["category"])
+        rep = self.store.read(rows[0]["id"])
+        text = json.dumps(rep)
+        self.assertNotIn("alec", text)
+        self.assertNotIn("ABCDEFGHJKLMNPQRSTUV2345", text)
+        self.assertIn("could not join", rep["context"]["description"])
+        two = c.file("other", "second one")
+        self.assertNotEqual(out["id"], two["id"])
+        self.assertEqual(2, len(self.store.index()))               # written reports are never folded together
+
+    def test_admin_console_needs_its_token_and_keeps_triage(self):
+        c, _, _ = center("auto", url=self.url)
+        c.file("display", "the picture tears")
+        self.assertEqual(401, self._get("/admin", token="wrong")[0])
+        self.assertEqual(401, self._get("/admin/list", token="")[0])
+        status, body = self._get("/admin")
+        self.assertEqual(200, status)
+        self.assertIn(b"<title>Legacy Player reports</title>", body)
+        status, body = self._get("/admin/list")
+        rows = json.loads(body)["reports"]
+        self.assertEqual(1, len(rows))
+        self.assertEqual("new", rows[0]["status"])
+        status, body = self._get("/admin/triage", body={"key": rows[0]["key"], "status": "looking", "note": "on it"})
+        self.assertEqual(200, status)
+        self.assertEqual(400, self._get("/admin/triage", body={"key": rows[0]["key"], "status": "bogus"})[0])
+        again = report_receiver.Store(self.folder).index()[0]    # triage survives a restart
+        self.assertEqual(("looking", "on it"), (again["status"], again["note"]))
+        status, body = self._get("/admin/report?id=" + rows[0]["id"])
+        self.assertEqual("user-report", json.loads(body)["kind"])
+        # the admin token never lets a report in through the front door, and reports never need it
+        req = urllib.request.Request(self.url, data=b"{}", method="POST", headers={"Content-Type": "application/json", "X-Admin-Token": "adm1n"})
+        with self.assertRaises(urllib.error.HTTPError) as ctx:
+            urllib.request.urlopen(req, timeout=5)
+        self.assertEqual(400, ctx.exception.code)

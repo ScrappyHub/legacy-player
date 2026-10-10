@@ -105,6 +105,11 @@ SETTINGS_SCHEMA: dict[str, dict] = {
         "label": "Show my installed Steam and Epic games in the library",
         "help": "Reads the list of installed games that Steam and the Epic Games Launcher keep on this computer (names only; nothing is sent anywhere) and starts them through those launchers.",
     },
+    "steam_folder": {
+        "type": "text", "default": "", "optional": True, "max": 260, "group": "Library",
+        "label": "Steam folder (only if it is not found by itself)",
+        "help": "Normally empty: Legacy Player finds Steam through Windows. If your Steam games do not show, paste the folder that holds steam.exe here (for example D:\\Steam).",
+    },
     "show_steam_games": {
         "type": "bool", "default": True, "group": "Library",
         "label": "Include Steam games", "help": "Needs the setting above. Turn off to leave Steam out while keeping Epic games.",
@@ -117,6 +122,16 @@ SETTINGS_SCHEMA: dict[str, dict] = {
         "type": "bool", "default": False, "group": "Privacy",
         "label": "Use an encrypted private link for Dolphin when everyone has Tailscale",
         "help": "Dolphin online play is not encrypted by itself. With this on, and Tailscale (a separate free service, tailscale.com) installed and signed in, Legacy Player tells the room your private Tailscale address (never your home address) and, when the host picks Automatic, plays over it if every player has done the same and can be reached. Otherwise it falls back to the normal connection.",
+    },
+    "friends_server": {
+        "type": "text", "default": "", "optional": True, "max": 200, "group": "Friends",
+        "label": "Friends service address (optional)",
+        "help": "A separate, optional service for friend codes, seeing who is online, room invites and short messages. Legacy Player works fully without it. Paste the https:// address of one a friend or the maintainers run (python -m server.social), and the Friends page appears. No account is made: your app gets a friend code to give out, nothing more.",
+    },
+    "friends_share_room": {
+        "type": "bool", "default": True, "group": "Friends",
+        "label": "Let friends see the room I am in and join it",
+        "help": "While you host or sit in a room, friends see its name and can join with one click (your room's invite code and the server code travel to friends only, never to anyone else). Off: friends only see that you are online.",
     },
     "server_host": {
         "type": "text", "default": "127.0.0.1", "group": "Multiplayer",
@@ -223,12 +238,14 @@ DEFAULT_DATA = {
     "router_mapped": {},   # {"port", "location"} while the app has a port open on the router, so a crash can be cleaned up later
     "overlay": {"enabled": True, "hotkey": "ctrl+shift+l", "pad": ["back", "start"], "hold": 0.8},   # the in-game overlay and how to open it
     "display_prefs": {"modes": {}, "monitor": ""},   # emulator id -> "ask"|"fullscreen"|"windowed"; monitor "" = automatic, else "1","2",...
+    "play_prefs": {},       # emulator id -> {"res": "1920x1080" or "", "borderless": bool} from the Play options box
     "last_rescan": None,    # when the games folders were last read
     "doctor_dismissed": [], # things the user told the doctor not to worry about
     "save_root": "",        # managed save folder root ("" = inside the data folder)
     "pad_profiles": {},     # pad key -> profile (see launcher/pads.py)
     "player_pads": {},      # "1".."4" -> pad key
     "keyboard": {"layout": "default", "keys": {}},   # player 1 keyboard controls (see launcher/keyboard.py)
+    "friends": {},          # this app's identity on the friends service: {"server", "id", "secret", "code"}; empty until hello
 }
 
 
@@ -336,7 +353,10 @@ class Catalog:
         self.data["favorites"] = sorted(favorites)
         self.save()
 
-    META_LIMITS = {"title": 80, "emulator": 40, "args": 200, "note": 400, "players": 1}
+    META_LIMITS = {"title": 80, "emulator": 40, "args": 200, "note": 400, "players": 1,
+                   # the game card: what the player typed or looked up about one game
+                   "description": 1200, "release": 24, "version": 40, "developer": 80, "publisher": 80, "genre": 60,
+                   "hidden_by": 12}
 
     def set_game_meta(self, game_id: str, **fields) -> dict:
         """Per-game choices (name, hidden, emulator, launch options, note). An empty value clears the choice."""

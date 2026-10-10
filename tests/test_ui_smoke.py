@@ -19,7 +19,7 @@ except ImportError:      # pragma: no cover
 
 ROOT = Path(__file__).resolve().parent.parent
 PAGES = ["home", "library", "console", "setup", "together", "servers", "engines", "controllers", "saves", "preferences",
-         "emulators", "settings", "credits", "help", "storage", "profile", "display", "probe"]
+         "emulators", "settings", "credits", "help", "storage", "profile", "display", "probe", "friends"]
 
 
 @unittest.skipUnless(sync_playwright, "Playwright is not installed")
@@ -127,10 +127,22 @@ class UiSmokeTests(unittest.TestCase):
             page.get_by_role("button", name="Cancel").click()
             self.assertEqual(0, page.locator(".modal").count())
             # the launch question and the Display page card
-            page.evaluate('void displayModal({emulator:"RetroArch",title:"Test",monitor:"",monitors:[{index:1,label:"Screen 1"},{index:2,label:"Screen 2"}]})')
-            page.wait_for_selector(".modal select[data-mon]")
+            page.evaluate('void playOptionsModal({id:"x",emulator:"RetroArch",emulator_id:"retroarch",title:"Test",mode:"ask",monitor:"",monitors:[{index:1,label:"Screen 1",w:1920,h:1080,primary:true},{index:2,label:"Screen 2",w:1280,h:720}],video:{fullscreen:false,integer:false,keep_shape:true,smooth:false,vsync:true},applies:["fullscreen","integer","keep_shape","smooth","vsync"],fields:{},res:"",resolutions:["1920x1080","1280x720"],borderless:true,recommended:{choice:{mode:"fullscreen"},why:["x"]},specs_known:true})')
+            page.wait_for_selector(".modal select[aria-label=Screen]")
             self.assertIn("Full screen", page.inner_text(".modal"))
-            page.get_by_role("button", name="Cancel").click()
+            self.assertIn("Optimize for my computer", page.inner_text(".modal"))
+            page.get_by_text("Cancel", exact=True).click()
+            self.assertEqual(0, page.locator(".modal").count())
+            # the game card and the problem report overlay draw and close
+            page.evaluate("gameCard(Object.keys(GAMES)[0])")
+            page.wait_for_selector(".modal.gcmodal")
+            self.assertIn("Players", page.inner_text(".modal.gcmodal"))
+            page.keyboard.press("Escape")
+            self.assertEqual(0, page.locator(".modal").count())
+            page.evaluate("reportProblem()")
+            page.wait_for_selector(".modal.problem")
+            page.keyboard.press("Escape")
+            self.assertEqual(0, page.locator(".modal").count())
             # Dolphin online play: the steps and the host-code box come from the room state, so the screen's 2-second refresh keeps them
             shown = page.evaluate("""() => {
                 const L = {engine:'dolphin', ready:true, direct_allowed:true, dolphin_steps:['Step A','Step B'], needs_code:true, endpoint_kind:null, default_port:2626, suggested_address:'192.168.1.5', address_is_home_only:true};

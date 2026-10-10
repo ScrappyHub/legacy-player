@@ -355,6 +355,32 @@ class ReportCenter:
         self.discard(rid)
         return {"sent": True, "why": ""}
 
+    # --- a report the player writes ---------------------------------------------------------------------
+    CATEGORIES = ("game-wont-start", "emulator", "controller", "display", "online-play", "server", "library-scan", "steam-pc-games",
+                  "saves", "download-update", "looks-wrong", "suggestion", "other")
+
+    def file(self, category: str, text: str, include_recent: bool = True) -> dict:
+        """The player saw something wrong and chose to tell the maintainers: build it like any other report (same scrubbing,
+        same facts), keep it, and send it now. Their explicit choice to send is the consent; the mode setting is not touched.
+        Returns {"id", "sent", "why"}."""
+        category = category if category in self.CATEGORIES else "other"
+        text = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", "", str(text or "")).strip()[:2000]
+        if not text and category == "other":
+            raise ValueError("Say a few words about what you saw.")
+        context = {"category": category, "description": text}
+        if not include_recent:
+            saved, self.crumbs = list(self.crumbs), collections.deque(maxlen=25)
+        try:
+            report = self.build("user-report", None, f"[{category}] " + (text[:120] or category), context)
+        finally:
+            if not include_recent:
+                self.crumbs = collections.deque(saved, maxlen=25)
+        report["fingerprint"] = uuid.uuid4().hex[:12]          # every written report is its own: never folded into another
+        with self.lock:
+            self._save(report)
+        out = self.send(report["id"])
+        return {"id": report["id"], "sent": out["sent"], "why": out["why"]}
+
     def send_all(self) -> dict:
         sent = 0
         for r in self.pending():
