@@ -44,6 +44,14 @@ def items(settings: dict, data: dict) -> list[dict]:
                   "hosting" + (", your room's invite and server code (to friends only)" if s.get("friends_share_room", True) else "")
                   + ", the messages you write, and any report you make (to the people who run that service). Never your address.",
          "off_means": "No Friends page; you share server and invite codes yourself, as before."},
+        {"id": "friends_host", "title": "A friends service on this computer", "setting": "friends_host", "on": bool(data.get("friends_host_wanted")),
+         "signature": f"on|{s.get('friends_host_port', 8791)}" if data.get("friends_host_wanted") else "",
+         "what": "You run a friends service for the people you give your friends link to. You are its moderator.",
+         "contacts": ["anyone who has your friends link", f"your router, to open port {s.get('friends_host_port', 8791)} (when it allows that)"],
+         "sends": "Nothing leaves for anywhere else. The service keeps, on this computer, the names, friend codes, friend lists, invites, "
+                  "messages (a week) and reports of the players who use it. Your friends link contains this computer's address, so the "
+                  "people you give it to know it.",
+         "off_means": "The service stops and nobody can connect to it; their friends lists stay on this computer until you start it again."},
         {"id": "reports", "title": "Problem reports sent automatically", "setting": "error_reports", "on": report_mode == "auto",
          "signature": f"{report_mode}|{report_addr}" if report_mode == "auto" else "",
          "what": "When something breaks, a cleaned-up report goes to the people who make Legacy Player without asking each time.",
@@ -85,4 +93,5 @@ def confirm(data: dict, item_id: str, settings: dict) -> bool:
 
 
 OFF_VALUES = {"allow_internet": False, "allow_game_info": False, "friends_server": "", "error_reports": "ask",
-              "allow_direct_connections": False, "use_private_link": False, "auto_network_test": False}
+              "allow_direct_connections": False, "use_private_link": False, "auto_network_test": False,
+              "friends_host": False}      # not a setting: the app stops the service it runs (api_privacy handles this one)

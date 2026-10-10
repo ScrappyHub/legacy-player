@@ -37,14 +37,35 @@ new / looking / fixed / won't fix with a note. Triage lives in `<dir>/triage.jso
 admin token is a different door from the report token: the app never needs it, and it never accepts a report.
 
 ## 5. The friends service (optional, separate)
+Friend codes, who is online, one-click invites into a room, messages, reporting and blocking. Legacy Player works fully
+without it and no account is made: an app says hello once and gets a friend code (like `MK7-4Q2X`).
+
+### The easy way: from Legacy Player (no commands)
+Friends > **Run a friends service on this computer**. Legacy Player then, by itself:
+- starts the service in the background (it keeps running with the window closed, and starts again with the app and
+  after updates);
+- serves it over HTTPS with the same self-signed certificate as your multiplayer server, and gives you a **friends link**
+  (`https://<your address>:8791/#pin=<fingerprint>`) to send to friends. Their app checks the fingerprint, so nobody can
+  pretend to be your service;
+- asks your router to open the port (when the router allows it) and offers to add a Windows Firewall rule;
+- makes a moderator key and uses it itself: you are the moderator, and Friends > **Moderation** has the reports,
+  players, time-outs, bans, word filter and log. Friends > **Your service** has the link, **Copy moderator key** (for
+  people who help you moderate; they paste it under Friends > *I help moderate this service*) and **Stop**.
+
+Everything it knows stays on that computer, in Legacy Player's data folder (`social/`). The privacy check lists it as
+"A friends service on this computer".
+
+### On a server (VPS)
 ```
 python -m server.social --dir social --port 8791
 ```
-A separate service for friend codes, who is online, one-click invites into a room and short messages. Legacy Player
-works fully without it and no account is made: an app says hello once and gets a friend code (like `MK7-4Q2X`). Put it
-behind https like the receiver; players paste its address under Settings > Friends and the Friends page appears. It
-stores names, codes, friend lists, presence and messages (a week); never addresses or game traffic. Idle players are
-forgotten after 60 days, and a player can leave at any time (everything about them is deleted).
+On first start it makes the moderator key and keeps it in `social/moderator.key` (it prints where). Put HTTPS in front
+(reverse proxy or tunnel), or pass `--tls-cert`/`--tls-key` and share the link with its `#pin=` fingerprint. Players paste
+the link under Friends > Join a friends service. To moderate, paste the key once in Legacy Player (Friends > I help
+moderate this service), or open `https://<address>/admin` in a browser and paste it there. `--admin-token` /
+`LP_SOCIAL_ADMIN_TOKEN` still choose your own key. The service stores names, codes, friend lists, presence and messages
+(a week); never addresses or game traffic. Idle players are forgotten after 60 days, and a player can leave at any time
+(everything about them is deleted).
 
 ### Who can reach whom
 Only mutual friends can message or invite each other. Everyone else can only send a friend request, and only with the
@@ -52,12 +73,8 @@ player's friend code; a player can close requests altogether (Friends > "Let peo
 requests"). Requests (20 an hour), code guesses (60 an hour), messages (20 a minute) and reports (20 a day) are limited
 per player. Blocking hides a player from the blocker completely.
 
-### Moderation console
-```
-python -m server.social --dir social --port 8791 --admin-token <a long random secret>
-```
-(or set `LP_SOCIAL_ADMIN_TOKEN`). Open `https://<your friends address>/admin?token=<secret>`. Without a token there is no
-console (every `/admin` request answers 401).
+### Moderation
+In Legacy Player (Friends > Moderation) for whoever runs the service or has its key, or in a browser at `/admin`.
 
 - **Reports:** players report a player or a single message, with a category (harassment, hate, threats, spam, scam,
   sexual content, offensive name, cheating, other) and optional details. The console shows the reported message and

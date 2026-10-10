@@ -644,6 +644,7 @@ label:has(>input[type=checkbox]:not(.switch input))>input,label:has(>input[type=
 .msg .t{display:block;font-size:.68rem;color:var(--mute);margin-top:2px}
 .msgrep{background:none;border:0;padding:0 0 0 8px;font:inherit;font-size:.68rem;color:var(--mute);cursor:pointer;text-decoration:underline;opacity:0;transition:opacity .15s}
 .msg:hover .msgrep,.msgrep:focus-visible{opacity:1}
+.modq{border-left:3px solid var(--bad);padding:6px 12px;margin:8px 0;background:var(--panel2);border-radius:8px}
 .code.mid{font-size:1.3rem;padding:8px 14px;letter-spacing:.14em}
 .dualcards{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px;align-items:stretch}
 .dualcards>.card{margin:0}.dualcards #netbox h3{font-size:.98rem;margin:6px 0}
@@ -935,8 +936,38 @@ function whoMenu(){
  return box}
 document.addEventListener("click",closeMenus);document.addEventListener("keydown",e=>{if(e.key==="Escape")closeMenus()});
 async function checkUpdates(){const r=await act(()=>api("check_update"));if(!r)return;
- if(r.newer){if(await ask("Version "+r.latest+" is available (you have "+r.current+"). Open its download page?","Open page"))window.open(r.page,"_blank","noopener")}
- else toast(r.ok?r.message+" You have "+r.current+".":r.message,r.ok?"":"warn")}
+ if(!r.ok){toast(r.message,"warn");return}
+ if(!r.newer){toast(r.message);return}
+ if(await ask(r.message+(r.restart_only?"":" Update now? Legacy Player downloads it, checks it, then restarts on the new version. Your games, saves and settings stay as they are."),r.restart_only?"Restart now":"Update and restart"))appUpdate()}
+/* download (or pull) the new version with progress, then restart on it after a short countdown */
+async function appUpdate(){
+ const body=h("div",{}),ov=h("div",{class:"modal",role:"dialog","aria-modal":"true"},h("div",{class:"modalbox"},h("h3",{style:"margin:0 0 6px"},"Updating Legacy Player"),body));
+ document.body.append(ov);const close=()=>ov.remove();
+ const say=(...kids)=>body.replaceChildren(...kids);
+ say(h("p",{class:"small muted"},"Getting the new version…"),h("div",{class:"bar live"},h("i",{})));
+ let v=await act(()=>api("app_update",{action:"install",confirm:true}));if(!v){close();return}
+ for(let i=0;i<1800&&ov.isConnected&&(v.state==="downloading"||v.state==="checking");i++){
+  const pct=v.total?Math.min(100,Math.round(100*(v.done||0)/v.total)):0;
+  say(h("p",{class:"small"},v.message||"Downloading…"),v.total?h("div",{class:"bar"},h("i",{style:"width:"+pct+"%"})):h("div",{class:"bar live"},h("i",{})),
+   v.total?h("p",{class:"small muted"},(Math.round((v.done||0)/1e5)/10)+" of "+(Math.round(v.total/1e5)/10)+" MB"):null);
+  await new Promise(r=>setTimeout(r,700));v=await api("app_update",{action:"status"}).catch(()=>v)}
+ if(!ov.isConnected)return;
+ if(v.state==="ready"){close();restartCountdown(v.latest||"")}
+ else say(h("p",{class:v.state==="problem"?"small bad":"small"},v.message||"Nothing to update."),h("div",{class:"row",style:"justify-content:flex-end"},h("button",{class:"btn primary",onclick:close},"OK")))}
+/* the new version is ready: restart in a few seconds unless the player says not now */
+function restartCountdown(version){
+ const busy=S.room||(S.waits&&S.waits.length);let left=8,timer=null;
+ const msg=h("p",{},""),ov=h("div",{class:"modal",role:"dialog","aria-modal":"true"},h("div",{class:"modalbox"},h("h3",{style:"margin:0 0 6px"},"Version "+version+" is ready"),msg,
+  h("p",{class:"small muted"},"Your games, saves, settings and friends stay as they are."+(busy?" You will leave your room; rejoin it after the restart.":"")+(S.running?" Your game keeps running in its own window.":"")),
+  h("div",{class:"row",style:"justify-content:flex-end"},h("button",{class:"btn",onclick:()=>{clearInterval(timer);ov.remove();toast("The update waits until you restart. Account > Check for updates restarts on it.")}},"Not now"),
+   h("button",{class:"btn primary",onclick:()=>go_()},"Restart now"))));
+ const tick=()=>{msg.textContent="Legacy Player restarts on the new version in "+left+" second"+(left===1?"":"s")+".";if(left--<=0)go_()};
+ async function go_(){clearInterval(timer);ov.remove();
+  const r=await act(()=>api("app_update",{action:"restart",confirm:true}));if(!r)return;
+  S.saidBye=true;document.title="Legacy Player is restarting";
+  document.body.append(h("div",{class:"bye",role:"status","aria-live":"polite"},martin(150),h("h2",{},"Restarting…"),h("p",{class:"muted"},"Legacy Player is closing and opens again on version "+version+" in a few seconds. You can close this page.")));
+  setTimeout(()=>{try{window.close()}catch(e){}},4000)}
+ document.body.append(ov);tick();timer=setInterval(tick,1000)}
 /* ---------- Steam and Epic games: which show, which are hidden, and their pictures ---------- */
 async function pcManager(){
  let d=await act(()=>api("pc_games",{action:"list"}));if(!d)return;
@@ -1258,7 +1289,7 @@ async function updateEverything(){
  if(!S.settings||!S.settings.allow_internet){
   if(!await ask("Updating everything downloads from GitHub only: the release pages of Legacy Player and of each emulator Legacy Player installed. Turn on 'Allow internet downloads' and go ahead?","Allow and update"))return;
   const r=await setPrivate("allow_internet",true,true);if(!r)return;S.settings=r.values}
- else if(!await ask("Update everything now? It refreshes the emulators Legacy Player installed, checks for a newer Legacy Player (and Tailscale, if you have it), reads your games folders again, then lists what is still needed.","Update everything"))return;
+ else if(!await ask("Update everything now? It refreshes the emulators Legacy Player installed, gets the newest Legacy Player ready (and updates Tailscale, if you have it), reads your games folders again, then lists what is still needed. If Legacy Player itself was updated, it restarts on the new version at the end.","Update everything"))return;
  const first=await act(()=>api("update_all",{action:"start",confirm:true}));if(!first)return;
  S.updating=true;
  const body=h("div",{}),close=()=>{S.updating=false;ov.remove();try{go()}catch(e){}};
@@ -1273,12 +1304,13 @@ async function updateEverything(){
   else if(v.report){const rp=v.report;
    kids.push(h("h3",{style:"margin:12px 0 4px"},rp.needs.length?"Still to do":"You are all set"),
     ...(rp.needs.length?[h("div",{class:"unlist",style:"max-height:none;overflow:visible"},...rp.needs.map(n=>h("div",{class:"unrow rrow"},h("span",{class:"rmark"},"•"),h("div",{class:"grow small"},n.text),
-      h("button",{class:"btn small",onclick:async()=>{if(n.action==="app_update"){if(await ask("Install the newest Legacy Player? A PowerShell window opens, downloads it from GitHub and restarts the app.","Update")){const r=await act(()=>api("app_update",{confirm:true}));if(r)toast(r.message)}}else jump(n.action)}},n.label))))]:[]),
+      h("button",{class:"btn small",onclick:()=>{if(n.action==="app_restart")restartCountdown(rp.restart);else jump(n.action)}},n.label))))]:[]),
     h("details",{style:"margin-top:8px"},h("summary",{class:"small muted"},"Already fine"),h("ul",{class:"small"},...rp.ready.map(t=>h("li",{},t)))),
     h("div",{class:"row",style:"justify-content:flex-end;margin-top:12px"},h("button",{class:"btn",onclick:()=>copyText(rp.text,"Checklist copied")},"Copy the checklist"),h("button",{class:"btn primary",onclick:close},"Done")))}
   body.replaceChildren(...kids)};
  draw(first);
- for(let i=0;i<900;i++){await new Promise(r=>setTimeout(r,1000));const v=await api("update_all",{}).catch(()=>null);if(!v||!ov.isConnected)break;draw(v);if(v.state!=="running"){toast(v.report&&v.report.needs.length?"Updates finished. "+v.report.needs.length+" thing"+(v.report.needs.length===1?"":"s")+" still to do.":"Everything is updated and ready.");break}}
+ for(let i=0;i<900;i++){await new Promise(r=>setTimeout(r,1000));const v=await api("update_all",{}).catch(()=>null);if(!v||!ov.isConnected)break;draw(v);if(v.state!=="running"){if(v.report&&v.report.restart){S.updating=false;restartCountdown(v.report.restart);break}
+  toast(v.report&&v.report.needs.length?"Updates finished. "+v.report.needs.length+" thing"+(v.report.needs.length===1?"":"s")+" still to do.":"Everything is updated and ready.");break}}
  S.updating=false}
 async function quitApp(){const busy=S.room||(S.waits&&S.waits.length)||S.running;
  let srv=false;try{srv=!!(await api("server_control",{action:"status"})).running}catch(e){}
@@ -3186,10 +3218,111 @@ function reportPlayer(who,after){return new Promise(res=>{let cat="";const close
   h("label",{class:"small",style:"display:flex;gap:10px;margin-top:8px"},block,h("span",{},"Also block "+who.name+" (they can't message, invite or find you)")),
   h("div",{class:"row",style:"justify-content:flex-end;gap:8px;margin-top:12px"},h("button",{class:"btn",onclick:()=>close(null)},"Cancel"),send)));
  document.body.append(ov)})}
+/* ---------- friends: join one, or run one on this computer with one click ---------- */
+function friendsStart(m){
+ const link=h("input",{type:"text",placeholder:"https://…  (the friends link someone gave you)",style:"flex:1;min-width:220px","aria-label":"Friends link",onkeydown:e=>{if(e.key==="Enter")joinBtn.click()}});
+ const joinBtn=h("button",{class:"btn primary",onclick:async()=>{const v=link.value.trim();if(!/^https:\/\//i.test(v)){toast("Paste the whole friends link; it starts with https://","warn");return}
+   const r=await act(()=>api("settings",{key:"friends_server",value:v}));if(!r)return;S.settings=r.values;
+   const hi=await act(()=>api("friends",{action:"hello"}));if(hi)toast("You're in. Your friend code is "+hi.me.code);go()}},"Join");
+ const run=async()=>{if(!await ask("Run a friends service on this computer? Legacy Player starts it now and again whenever it starts, opens its port on your router if the router allows it, and you become its moderator. It keeps the names, friend lists and messages of the people who use it on this computer, and your friends link contains this computer's address. You can stop it any time.","Run it"))return;
+   const card=m.querySelector(".dualcards>.card:last-child"),before=[...card.childNodes];
+   card.replaceChildren(h("h3",{style:"margin-top:0"},"Starting your friends service…"),h("div",{class:"bar live",style:"margin:10px 0"},h("i",{})),h("p",{class:"small muted"},"The first time it makes its own certificate, which can take up to a minute on a slow computer."));
+   const r=await act(()=>api("friends_host",{action:"start"}));if(!r){card.replaceChildren(...before);return}S.friendTab="service";toast("Your friends service is running. Share your friends link with your friends.");go()};
+ m.append(h("h2",{},"Friends"),
+  h("div",{class:"why"},"Friend codes, who is online, one-click invites into a room, messages, reporting and blocking. It is optional: Legacy Player works fully without it, and no account is made."),
+  h("div",{class:"dualcards"},
+   h("div",{class:"card"},h("h3",{style:"margin-top:0"},"Join a friends service"),
+    h("p",{class:"small muted"},"Someone who runs one gives you a friends link. Paste it here; your app gets a friend code and nothing else is needed."),
+    h("div",{class:"row"},link,joinBtn)),
+   h("div",{class:"card"},h("h3",{style:"margin-top:0"},"Run your own"),
+    h("p",{class:"small muted"},"One click and this computer hosts a friends service for you and the people you invite. No commands, no accounts:"),
+    h("ul",{class:"small",style:"margin:6px 0 10px;padding-left:18px"},
+     h("li",{},"Legacy Player starts it, keeps it running in the background, and starts it again with the app."),
+     h("li",{},"It is encrypted, and your friends' apps check it is really yours."),
+     h("li",{},"Your router's port is opened for you when the router allows it."),
+     h("li",{},"You are its moderator: reports, time-outs, bans and the word filter appear here under Moderation.")),
+    h("div",{class:"row"},h("button",{class:"btn good",onclick:run},"Run a friends service on this computer"),h("button",{class:"btn",onclick:()=>nav("privacy")},"What goes online?")))))}
+/* the moderator key, pasted once by someone who helps moderate a service run elsewhere */
+function modKeyCard(after){
+ const key=h("input",{type:"password",placeholder:"LPM-…",autocomplete:"off",style:"flex:1;min-width:200px","aria-label":"Moderator key"});
+ return h("div",{class:"card",style:"margin-top:6px"},h("p",{class:"small"},"Whoever runs this friends service can give you its moderator key (they find it under Your service). Paste it once; Legacy Player keeps it on this computer and the Moderation tab appears."),
+  h("div",{class:"row"},key,h("button",{class:"btn primary",onclick:async()=>{const r=await act(()=>api("friends_mod",{action:"set_key",key:key.value}));if(r){toast("You can moderate this friends service now");if(after)after()}}},"Use this key")))}
+/* "Your service": the friends service this computer runs */
+function hostPanel(stopped){
+ const box=h("div",{},h("div",{class:"card"},h("span",{class:"spin"}),"Checking your friends service…"));
+ const draw=st=>{
+  if(st.problem||!st.running){box.replaceChildren(h("div",{class:"card"},h("p",{class:"bad"},st.problem||"Your friends service is not running."),
+    h("div",{class:"row"},h("button",{class:"btn primary",onclick:async()=>{const r=await act(()=>api("friends_host",{action:"start",switch:true}),"Started");if(r)draw(r)}},"Start it again"),stopBtn())));return}
+  box.replaceChildren(
+   h("div",{class:"dualcards"},
+    h("div",{class:"card"},h("div",{class:"row"},h("h3",{class:"grow",style:"margin:0"},"Your friends service"),h("span",{class:"badge good"},"Running")),
+     h("p",{class:"small muted"},(st.players!=null?st.players+(st.players===1?" player uses it":" players use it"):"")+(st.open_reports?" · "+st.open_reports+" open report"+(st.open_reports===1?"":"s"):"")),
+     h("div",{class:"small muted",style:"margin-top:6px"},"Your friends link"),
+     st.link?h("div",{class:"row"},h("code",{class:"small",style:"flex:1;word-break:break-all;user-select:all"},st.link),h("button",{class:"btn",onclick:()=>copyText(st.link,"Friends link copied")},"Copy link")):h("p",{class:"small bad"},"Could not work out this computer's address. Set it under Settings > Your server."),
+     h("p",{class:"small muted"},"Send this to your friends. They paste it on their Friends page under Join a friends service. It holds this computer's address and a fingerprint, so their app can check it is really your service."),
+     h("p",{class:"small"},st.reach),
+     st.firewall&&st.firewall.supported&&!st.firewall.allowed?h("div",{class:"inbanner warn"},"Windows Firewall may block friends on other computers. ",h("button",{class:"btn small",onclick:async()=>{if(!await ask("Let the friends service through Windows Firewall? Windows asks you to approve it.","Allow"))return;const r=await act(()=>api("friends_host",{action:"firewall",consent:true}));if(r){toast(r.message,r.allowed?"":"warn");load()}}},"Allow it")):null),
+    h("div",{class:"card"},h("h3",{style:"margin-top:0"},"You are the moderator"),
+     h("p",{class:"small muted"},"Reports from players, time-outs, bans and the word filter are under Moderation. This computer uses its moderator key by itself; you never need to type it."),
+     h("p",{class:"small muted"},"To let someone help you moderate, give them the key. They paste it under Friends > I help moderate this service. Treat it like a password."),
+     h("div",{class:"row"},h("button",{class:"btn",onclick:async()=>{const r=await act(()=>api("friends_host",{action:"key"}));if(r)copyText(r.key,"Moderator key copied. Share it only with people you trust.")}},"Copy moderator key"),
+      h("button",{class:"btn",onclick:()=>{S.friendTab="moderation";go()}},"Open Moderation")),
+     h("details",{class:"fold",style:"margin-top:10px"},h("summary",{class:"small muted"},"How it works"),
+      h("ul",{class:"small",style:"padding-left:18px"},
+       h("li",{},"It runs in the background, even with the window closed, and starts again with Legacy Player. Keep this computer on for your friends to see each other."),
+       h("li",{},"Everything it knows stays on this computer, in Legacy Player's data folder: names, friend codes, friend lists, invites, messages (kept a week) and reports. Nothing goes anywhere else."),
+       h("li",{},"Only friends can message each other; strangers can only send a request with someone's code. Players can report and block."),
+       h("li",{},"Updates restart it with the new version by themselves."))),
+     h("div",{class:"row",style:"margin-top:10px"},stopBtn()))))};
+ function stopBtn(){return h("button",{class:"btn bad",onclick:async()=>{if(!await ask("Stop your friends service? Nobody can use it until you start it again. Their friends lists stay on this computer.","Stop it"))return;const r=await act(()=>api("friends_host",{action:"stop"}),"Friends service stopped");if(r&&stopped)stopped()}},"Stop the service")}
+ const load=async()=>{const st=await api("friends_host",{action:"status"}).catch(e=>({problem:e.message}));if(!box.isConnected)return;draw(st);if(st.router==="checking")setTimeout(load,2000)};
+ load();return box}
+/* "Moderation": reports, players, word filter and log of the friends service in use */
+function modPanel(){
+ const box=h("div",{}),body=h("div",{},h("div",{class:"card"},h("span",{class:"spin"}),"Loading reports…"));let sub=S.modSub||"reports",status="open",D=null,q="";
+ const fmt=t=>t?new Date(t*1000).toLocaleString():"";
+ const state=p=>!p?null:p.banned?h("span",{class:"badge bad"},"banned"):p.muted?h("span",{class:"badge warn"},"timed out until "+fmt(p.muted.until)):null;
+ const act2=async(b,ok)=>{const {action:what,...rest}=b;const r=await act(()=>api("friends_mod",{...rest,action:"act",do:what}),ok);if(r)load()};
+ const actions=(pid,rid,p)=>{const reason=h("input",{type:"text",placeholder:"Reason (the player sees it)",maxlength:200,style:"flex:1;min-width:180px"});
+  const len=h("select",{"aria-label":"Length"},...[["1h","1 hour"],["24h","24 hours"],["7d","7 days"],["30d","30 days"]].map(([v,t])=>h("option",{value:v},t)));
+  return h("div",{class:"row",style:"margin-top:8px"},reason,len,
+   p&&p.muted?h("button",{class:"btn small",onclick:()=>act2({action:"untimeout",player:pid},"Time-out ended")},"End time-out"):h("button",{class:"btn small",onclick:()=>act2({action:"timeout",player:pid,report:rid||"",length:len.value,reason:reason.value},"Timed out")},"Time out"),
+   p&&p.banned?h("button",{class:"btn small",onclick:()=>act2({action:"unban",player:pid},"Unbanned")},"Unban"):h("button",{class:"btn small bad",onclick:async()=>{if(await ask("Ban this player? They are shut out of this friends service and removed from everyone's friends lists. They see the reason you give.","Ban"))act2({action:"ban",player:pid,reason:reason.value},"Banned")}},"Ban"),
+   rid?h("button",{class:"btn small",onclick:()=>act2({action:"resolve",report:rid},"Marked handled")},"Mark handled"):null,
+   rid?h("button",{class:"btn small",onclick:()=>act2({action:"dismiss",report:rid},"Dismissed")},"Dismiss"):null)};
+ const reports=()=>{const list=D.reports.filter(r=>!status||r.status===status);
+  return h("div",{},h("div",{class:"row",style:"margin-bottom:10px"},...[["open","Open"],["resolved","Handled"],["dismissed","Dismissed"],["","All"]].map(([v,t])=>h("button",{class:"chip"+(status===v?" on":""),onclick:()=>{status=v;draw()}},t))),
+   list.length?h("div",{},...list.map(r=>h("div",{class:"card"},
+    h("div",{class:"row"},h("b",{},r.target.name),h("span",{class:"small muted"},r.target.code),state(r.target_state),h("span",{class:"badge"},r.category),r.status!=="open"?h("span",{class:"badge"},r.status==="resolved"?"handled":r.status):null,h("span",{class:"grow"}),
+     h("span",{class:"small muted"},fmt(r.at)+" · reported by "+r.reporter.name+" · "+r.target_state.reports+" report"+(r.target_state.reports===1?"":"s")+" about them")),
+    r.details?h("p",{style:"margin:8px 0 0"},r.details):null,
+    r.context&&r.context.length?h("div",{style:"margin-top:8px"},...r.context.map(c=>h("div",{class:"small muted"},h("b",{},(c.from==="reported"?r.target.name:r.reporter.name)+": "),c.text))):null,
+    r.message?h("div",{class:"modq"},h("b",{},r.target.name+": "),r.message.text,h("span",{class:"small muted"}," ("+fmt(r.message.at)+")")):null,
+    actions(r.target.id,r.id,r.target_state)))):h("p",{class:"muted"},status==="open"?"No open reports. Nice and quiet.":"Nothing here."))};
+ const players=()=>{const inp=h("input",{type:"text",value:q,placeholder:"Name, friend code or id",style:"flex:1;min-width:220px",onkeydown:e=>{if(e.key==="Enter")go2()}});
+  const list=h("div",{},h("p",{class:"small muted"},"Loading…"));
+  const go2=async()=>{q=inp.value;const r=await act(()=>api("friends_mod",{action:"players",q}));if(!r)return;
+   list.replaceChildren(...(r.players.length?r.players.map(p=>h("div",{class:"card"},h("div",{class:"row"},h("b",{},p.name),h("span",{class:"small muted"},p.code),state(p),h("span",{class:"grow"}),h("span",{class:"small muted"},p.friends+" friends · "+p.reports+" report"+(p.reports===1?"":"s")+(p.seen?" · seen "+fmt(p.seen):""))),actions(p.id,"",p))):[h("p",{class:"muted"},"No one found.")]))};
+  setTimeout(go2,0);return h("div",{},h("div",{class:"row",style:"margin-bottom:10px"},inp,h("button",{class:"btn primary",onclick:go2},"Search")),list)};
+ const filter=()=>{const on=h("input",{type:"checkbox",checked:!!D.filter.on}),words=h("textarea",{rows:6,style:"width:100%",placeholder:"One word per line"},(D.filter.words||[]).join("\n"));
+  return h("div",{class:"card"},h("h3",{style:"margin-top:0"},"Word filter for the whole service"),
+   h("p",{class:"small muted"},"When on, the service refuses messages and player names with these words, for everyone. Each player also has their own filter that hides words on their screen (Settings > Friends). Disguises like l33t letters, s p a c e d letters and repeated letters are caught. A built-in list covers common swear words; add your own here, including slurs."),
+   h("label",{class:"row small"},on,"Refuse messages and names with filtered words"),
+   h("div",{class:"small muted",style:"margin:10px 0 4px"},"Your words ("+(D.filter.words||[]).length+")"),words,
+   h("div",{class:"row",style:"justify-content:flex-end;margin-top:8px"},h("button",{class:"btn primary",onclick:async()=>{const r=await act(()=>api("friends_mod",{action:"filter",on:on.checked,words:words.value}),"Word filter saved");if(r)load()}},"Save")))};
+ const log=()=>D.log.length?h("div",{class:"card"},...D.log.map(l=>h("div",{class:"frow"},h("span",{class:"small muted",style:"min-width:150px"},fmt(l.at)),h("b",{},l.action),h("span",{class:"grow"},l.name+(l.length?" · "+l.length:"")+(l.reason?" · "+l.reason:""))))):h("p",{class:"muted"},"No moderator actions yet.");
+ const draw=()=>{if(!D)return;S.modOpen=D.open;
+  const t=(id,label)=>h("button",{class:"chip"+(sub===id?" on":""),onclick:()=>{sub=S.modSub=id;draw()}},label);
+  body.replaceChildren(h("div",{class:"row",style:"margin-bottom:12px"},h("span",{class:"badge"},D.open+" open report"+(D.open===1?"":"s")),h("span",{class:"badge"},D.players+" players"),h("span",{class:"badge"},D.muted+" timed out"),h("span",{class:"badge"},D.banned+" banned"),h("span",{class:"badge"},"filter "+(D.filter.on?"on":"off")),h("span",{class:"grow"}),
+    t("reports","Reports"),t("players","Players"),t("filter","Word filter"),t("log","Log"),h("button",{class:"btn small",onclick:load},"Refresh")),
+   ({reports,players,filter,log}[sub]||reports)())};
+ const load=async()=>{const r=await api("friends_mod",{action:"reports"}).catch(e=>({error:e.message}));if(!box.isConnected)return;
+  if(r.error){body.replaceChildren(h("div",{class:"card"},h("p",{class:"bad"},r.error),h("button",{class:"btn",onclick:async()=>{await api("friends_mod",{action:"forget_key"}).catch(()=>{});go()}},"Forget the key")));return}D=r;draw()};
+ box.append(h("p",{class:"small muted"},"Moderators see the reported message and the few before it as the service stored them, so a report can't put words in anyone's mouth. Reported players are never told who reported them."),body);
+ load();return box}
 async function viewFriends(m){
  let d=await act(()=>api("friends",{action:"status"}));if(!d)return;
- if(!d.enabled){m.append(h("h2",{},"Friends"),h("div",{class:"why"},"Friends is a separate, optional service: friend codes, who is online, one-click invites into a room, messages and blocking. Legacy Player works fully without it, and no account is made. Paste the address of a friends service a friend or the maintainers run under Settings > Friends and this page comes alive."),
-  h("div",{class:"card"},h("p",{},"No friends service is set yet."),h("div",{class:"row"},h("button",{class:"btn primary",onclick:()=>nav("settings","friends")},"Set it up in Settings"),h("button",{class:"btn",onclick:()=>nav("privacy")},"What would it send?"),h("span",{class:"small muted"},"Run your own with  python -m server.social  (see docs/HOSTING_PUBLIC_SERVER.md)."))));return}
+ if(!d.enabled){friendsStart(m);return}
  const box=h("div",{});m.append(h("h2",{},"Friends"),box);
  const T=S.friendTab||"friends";let tab=T,sel=S.friendSel||null,inbox=null,thread=null,busy=false;
  const setTab=t=>{tab=S.friendTab=t;draw()};
@@ -3220,6 +3353,7 @@ async function viewFriends(m){
      h("label",{class:"small",style:"display:flex;gap:10px;margin-top:8px"},h("input",{type:"checkbox",checked:inbox.requests_open!==false,onchange:async e=>{const r=await act(()=>api("settings",{key:"friends_requests_open",value:e.target.checked}));if(r){S.settings=r.values;toast(e.target.checked?"People with your code can send you requests":"New friend requests are turned off");refresh()}}}),h("span",{},"Let people with my code send me friend requests")),
      h("div",{class:"row",style:"margin-top:10px"},codeIn,addBtn),
      inbox.sent.length?h("p",{class:"small muted",style:"margin:8px 0 0"},"Waiting for an answer from: "+inbox.sent.map(x=>x.name).join(", ")):null),
+    d.moderator||d.hosting?null:h("details",{class:"fold",style:"margin-top:12px"},h("summary",{class:"small muted"},"I help moderate this service"),modKeyCard(async()=>{d=await api("friends",{action:"status"});setTab("moderation")})),
     h("details",{class:"fold",style:"margin-top:12px"},h("summary",{class:"small muted"},"Leave the friends service"),h("div",{class:"card",style:"margin-top:6px"},h("p",{class:"small"},"Your code, friends, messages and block list on the service are deleted. Nothing else changes."),h("button",{class:"btn bad",onclick:async()=>{if(!await ask("Leave the friends service? Your code stops working and your friends there no longer see you.","Leave"))return;const x=await act(()=>api("friends",{action:"goodbye"}));if(x){sel=S.friendSel=null;d=x;inbox=null;draw()}}},"Leave")))),
    h("div",{class:"card"},h("div",{class:"row"},h("h3",{class:"grow",style:"margin:0"},"Your friends",h("span",{class:"badge good",style:"margin-left:8px"},inbox.online+" online")),h("button",{class:"btn small",onclick:refresh},"Refresh")),
     inbox.friends.length?h("div",{},...inbox.friends.map(f=>h("div",{class:"frow"},pres(f.online),
@@ -3261,8 +3395,10 @@ async function viewFriends(m){
     h("div",{class:"row"},h("button",{class:"btn",onclick:refresh},"Try again"),h("button",{class:"btn",onclick:()=>nav("settings","friends")},"Friends settings"))));return}
   if(!inbox){box.replaceChildren(h("div",{class:"card"},h("span",{class:"spin"}),"Reaching the friends service…"));return}
   const tb=(id,label,n)=>h("button",{class:"chip"+(tab===id?" on":""),"aria-pressed":String(tab===id),onclick:()=>setTab(id)},label,n?h("span",{class:"n"},n):null);
-  box.replaceChildren(modBanner(),h("div",{class:"ftabs",role:"tablist"},tb("friends","Friends",0),tb("inbox","Inbox",(inbox.unread||0)+inbox.invites.length),tb("requests","Requests",inbox.requests.length),tb("blocked","Blocked",0)),
-   ({friends:friendsTab,inbox:inboxTab,requests:requestsTab,blocked:blockedTab}[tab]||friendsTab)());
+  if((tab==="service"&&!d.hosting)||(tab==="moderation"&&!d.moderator))tab=S.friendTab="friends";
+  box.replaceChildren(modBanner(),h("div",{class:"ftabs",role:"tablist"},tb("friends","Friends",0),tb("inbox","Inbox",(inbox.unread||0)+inbox.invites.length),tb("requests","Requests",inbox.requests.length),tb("blocked","Blocked",0),
+    d.hosting?tb("service","Your service",0):null,d.moderator?tb("moderation","Moderation",S.modOpen||0):null),
+   ({friends:friendsTab,inbox:inboxTab,requests:requestsTab,blocked:blockedTab,service:()=>hostPanel(()=>{d.hosting=false;go()}),moderation:()=>modPanel()}[tab]||friendsTab)());
   const ms=box.querySelector(".msgs");if(ms)ms.scrollTop=ms.scrollHeight};
  draw();await refresh();if(sel&&tab==="inbox")openChat(sel);
  clearInterval(S.friendsTimer);S.friendsTimer=setInterval(()=>{if(S.tab!=="friends"){clearInterval(S.friendsTimer);return}const a=document.activeElement;if(a&&a.tagName==="INPUT"&&a.value)return;refresh()},12000)}

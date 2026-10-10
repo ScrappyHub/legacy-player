@@ -290,6 +290,15 @@ def serve(app: LauncherApp, port: int = 8780, open_browser: bool = True, opener=
                     httpd.shutdown()
                     return
         threading.Thread(target=watch, daemon=True).start()
+    else:
+        def watch_quit() -> None:
+            """Without a window of its own (python -m launcher in a browser tab), Quit and a restart for an update still
+            have to stop this process: give the page a moment to say goodbye, then stop."""
+            while not app.quit_requested:
+                time.sleep(0.5)
+            time.sleep(min(QUIT_FAREWELL_SECONDS, 3.0))
+            httpd.shutdown()
+        threading.Thread(target=watch_quit, daemon=True).start()
     def show_window() -> None:
         if not app.tray_mode and show_existing():
             return

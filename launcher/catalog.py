@@ -136,8 +136,13 @@ SETTINGS_SCHEMA: dict[str, dict] = {
     },
     "friends_server": {
         "type": "text", "default": "", "optional": True, "max": 200, "group": "Friends",
-        "label": "Friends service address (optional)",
-        "help": "A separate, optional service for friend codes, seeing who is online, room invites and short messages. Legacy Player works fully without it. Paste the https:// address of one a friend or the maintainers run (python -m server.social), and the Friends page appears. No account is made: your app gets a friend code to give out, nothing more.",
+        "label": "Friends link (optional)",
+        "help": "A separate, optional service for friend codes, seeing who is online, room invites and short messages. Legacy Player works fully without it. Paste the friends link someone shares with you (it starts with https://), or run your own from the Friends page with one click. No account is made: your app gets a friend code to give out, nothing more.",
+    },
+    "friends_host_port": {
+        "type": "int", "default": 8791, "min": 1024, "max": 65535, "group": "Friends",
+        "label": "Port for the friends service you run",
+        "help": "Only used when you run a friends service on this computer (Friends > Run my own). Legacy Player opens it on your router by itself, like your server's port.",
     },
     "friends_requests_open": {
         "type": "bool", "default": True, "group": "Friends",

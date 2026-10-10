@@ -33,7 +33,7 @@ from . import overlay as overlaymod
 from . import procs
 from . import controllers, emulators, engines, pads, savefolders, saves
 from .installer import EngineInstaller, InstallError, latest_release, pick_asset
-from . import friends as friendsmod, gamecard, privacy, updateall, dolphinpads, dolphinpaths, privatelink, firewall, gamefinder, gameinfo, portmap, pcgames, punch, reach, winplace, keyboard, memprobe, netcheck, reports, selfuninstall, sysinfo
+from . import friends as friendsmod, gamecard, privacy, selfupdate, socialhost, updateall, dolphinpads, dolphinpaths, privatelink, firewall, gamefinder, gameinfo, portmap, pcgames, punch, reach, winplace, keyboard, memprobe, netcheck, reports, selfuninstall, sysinfo
 from .covers import (CONTENT_TYPES, CoverFetcher, SYSTEMS as COVER_SYSTEMS, clear_custom_cover, cover_path,
                      custom_cover, set_custom_cover)
 from .pcscan import PcScan
@@ -155,6 +155,7 @@ class LauncherApp:
         self.waits: dict[str, dict] = {}   # rooms you are queued for while doing something else
         self._overlay_launched = 0.0
         self.overlay_opener = None            # set by the web server: opens the browser-window overlay (fallback)
+        self.self_update = selfupdate.SelfUpdate(self.data_dir)
         self.update_all = updateall.UpdateAll(self)
         self.on_server_change = None          # the tray listens here
         self._notices: list[dict] = []        # short messages for the page (a server started from the tray or the overlay)
@@ -183,6 +184,9 @@ class LauncherApp:
         self.covers = CoverFetcher(self.data_dir / "covers")
         self.cards = gamecard.CardLookups(self.data_dir / "gamecards")
         self.friends = friendsmod.FriendsClient(self.catalog)
+        self.social_host = socialhost.SocialHost(self.data_dir)
+        self.social_map: dict = {}                         # the router port opened for the friends service this app runs
+        self._social_renew = threading.Event()
         self.setup = Setup(self.data_dir, self._retroarch_path,
                            lambda path: self.catalog.set_mapping("emulator_paths", "retroarch", path))
         self.installer = EngineInstaller(self.data_dir / "emulators")
@@ -191,6 +195,7 @@ class LauncherApp:
                              lambda: [Path(r) for r in self.catalog.data["roots"]] + [Path(f) for f in self.catalog.data.get("emulator_folders", [])],
                              matcher=emulators.program_for, archive_matcher=emulators.archive_for, after=self._find_games_after_scan)
         self._prepare_certificate()
+        self._resume_friends_service()
         self._load_cache()
         if not self.games and self.catalog.data["roots"]:
             self.rescan()
@@ -841,13 +846,200 @@ class LauncherApp:
         out = self._api_friends(body)
         return self._friends_filtered(out) if isinstance(out, dict) else out
 
+    # --- running a friends service on this computer, and moderating one -------------------------------------
+    def _hosting_here(self) -> bool:
+        """Is the friends link this app uses the service this app runs?"""
+        port = self.catalog.settings().get("friends_host_port", 8791)
+        server, pin = friendsmod.split_link(self.catalog.settings().get("friends_server") or "")
+        return bool(self.catalog.data.get("friends_host_wanted")) and server == f"https://127.0.0.1:{port}" and pin == self.social_host.pin()
+
+    def _mod_key(self) -> str:
+        """The moderator key for the friends service in use: read from disk when this app runs it, or the one pasted."""
+        if self._hosting_here():
+            return self.social_host.key()
+        saved = self.catalog.data.get("friends_mod") or {}
+        return saved.get("key", "") if saved.get("server") and saved.get("server") == self.friends.server() else ""
+
+    def _friends_share_link(self) -> dict:
+        """The link friends paste: this computer's address as others see it, the port, and the certificate fingerprint."""
+        s = self.catalog.settings()
+        port = s["friends_host_port"]
+        mapped = self.social_map.get("external_ip") if self.social_map.get("state") == "mapped" else ""
+        address = str(s.get("server_public_address") or mapped or detect_lan_address() or "").strip()
+        if not address or not self.social_host.pin():
+            return {"link": "", "address": address}
+        return {"link": friendsmod.make_link(address, port, self.social_host.pin()), "address": address}
+
+    def _friends_host_router(self, open_it: bool) -> None:
+        port = self.catalog.settings()["friends_host_port"]
+        self._social_renew.set()
+        old = self.catalog.data.get("router_mapped_friends") or {}
+        if old.get("location") and old.get("port"):
+            try:
+                portmap.close_port(int(old["port"]), str(old["location"]))
+            except (OSError, ValueError):
+                pass
+        self.catalog.data["router_mapped_friends"] = {}
+        want = open_it and bool(self.catalog.settings().get("server_auto_open", True))
+        self.social_map = {"state": "checking"} if want else {}
+        if not want:
+            self.catalog.save()
+            return
+        self.social_map = portmap.open_port(port)
+        if self.social_map.get("state") == "mapped":
+            self.catalog.data["router_mapped_friends"] = {"port": self.social_map.get("port", port), "location": self.social_map.get("location", ""),
+                                                          "local_ip": self.social_map.get("local_ip", "")}
+            stop = self._social_renew = threading.Event()
+            mapping = dict(self.social_map)
+
+            def renew() -> None:
+                while not stop.wait(portmap.RENEW_SECONDS):
+                    portmap.renew_port(int(mapping.get("port", port)), str(mapping.get("location", "")), str(mapping.get("local_ip", "")))
+            threading.Thread(target=renew, daemon=True, name="friends-router-renew").start()
+        self.catalog.save()
+
+    def _resume_friends_service(self) -> None:
+        """It was running when the app last closed (or before an update): start it again, quietly, in the background."""
+        if not self.catalog.data.get("friends_host_wanted") or os.environ.get("LEGACY_PLAYER_NO_BACKGROUND"):
+            return
+
+        def run() -> None:
+            try:
+                self.social_host.start(self.catalog.settings()["friends_host_port"])
+                self._friends_host_router(True)
+            except Exception as exc:
+                self.reports.capture("friends-service-not-resumed", None, str(exc)[:200], {})
+        threading.Thread(target=run, daemon=True, name="friends-service-resume").start()
+
+    def _before_restart(self) -> None:
+        """An update replaces the program files, so the friends service this app runs stops now and starts again with
+        the new version (it stays 'wanted')."""
+        if self.catalog.data.get("friends_host_wanted"):
+            self.social_host.stop(self.catalog.settings()["friends_host_port"])
+
+    def api_friends_host(self, body: dict) -> dict:
+        """Run the friends service on this computer. action: status | start | stop | key (the moderator key, to give to
+        someone who helps moderate) | firewall (allow its port through Windows Firewall, after a yes)."""
+        action = str(body.get("action") or "status")
+        s = self.catalog.settings()
+        port = s["friends_host_port"]
+        if action == "start":
+            current = friendsmod.split_link(s.get("friends_server") or "")[0]
+            local = f"https://127.0.0.1:{port}"
+            if current and current != local and self.friends.identity() and not body.get("switch"):
+                raise AppError("You already use another friends service. Running your own moves you to it: your friends there "
+                               "will not see you here. Confirm to switch.")
+            try:
+                self.social_host.start(port)
+            except socialhost.HostError as exc:
+                raise AppError(str(exc)) from exc
+            self.catalog.data["friends_host_wanted"] = True
+            self.catalog.set_setting("friends_server", self.social_host.local_link(port))
+            privacy.confirm(self.catalog.data, "friends", self.catalog.settings())      # pressing Run, after reading what it does, is the yes
+            privacy.confirm(self.catalog.data, "friends_host", self.catalog.settings())
+            self.catalog.save()
+            self.social_map = {"state": "checking"}           # the router can take a few seconds: never make the click wait for it
+            threading.Thread(target=lambda: self._friends_host_router(True), daemon=True, name="friends-router").start()
+            if not self.friends.identity():
+                try:
+                    self.friends.hello(self.catalog.settings()["display_name"])
+                except friendsmod.FriendsError:
+                    pass
+        elif action == "stop":
+            self.social_host.stop(port)
+            self._friends_host_router(False)
+            self.catalog.data["friends_host_wanted"] = False
+            if friendsmod.split_link(s.get("friends_server") or "")[0] == f"https://127.0.0.1:{port}":
+                self.catalog.set_setting("friends_server", "")              # nothing answers there any more
+            self.catalog.save()
+        elif action == "key":
+            if not self.catalog.data.get("friends_host_wanted"):
+                raise AppError("You are not running a friends service.")
+            return {"key": self.social_host.key()}
+        elif action == "firewall":
+            if not body.get("consent"):
+                raise AppError("Confirm first: Windows asks you to approve the change.")
+            return firewall.allow(port, rule=firewall.RULE_FRIENDS)
+        elif action != "status":
+            raise AppError("Unknown action.")
+        wanted = bool(self.catalog.data.get("friends_host_wanted"))
+        running = self.social_host.running(port) if wanted else False
+        share = self._friends_share_link() if running else {"link": "", "address": ""}
+        state = self.social_map.get("state", "")
+        if not running:
+            reach = ""
+        elif state == "checking":
+            reach = "Asking your router to open the port for friends outside your home… (a few seconds)"
+        elif state == "mapped":
+            reach = "Your router let Legacy Player open the port, so friends anywhere can use the link."
+        elif state:
+            reach = (self.social_map.get("message") or "Your router did not open the port.") + \
+                " Friends on your home network or VPN can still use the link; for others, open the port yourself or use Tailscale."
+        else:
+            reach = "Friends on your home network or VPN can use the link."
+        out = {"wanted": wanted, "running": running, "port": port, "link": share["link"], "address": share["address"], "reach": reach,
+               "router": state, "using_it": self._hosting_here(), "players": None}
+        if running:
+            try:
+                info = self.social_host._ask(port, "/admin/reports")
+                out["players"], out["open_reports"] = info.get("players"), info.get("open")
+            except Exception:
+                pass
+            fw = firewall.status(port, rule=firewall.RULE_FRIENDS)
+            out["firewall"] = {"supported": fw.get("supported", False), "allowed": fw.get("allowed", True)}
+        if wanted and not running and action == "status":
+            out["problem"] = "Your friends service is not answering. Press Start again; if it keeps stopping, the log is in " + \
+                             str(self.social_host.folder / "service.log") + "."
+        return out
+
+    def api_friends_mod(self, body: dict) -> dict:
+        """Moderation of the friends service in use. action: reports | players | act (with do: timeout | untimeout | ban |
+        unban | resolve | dismiss) | filter | set_key | forget_key."""
+        action = str(body.get("action") or "reports")
+        f = self.friends
+        if action == "set_key":
+            key = str(body.get("key") or "").strip()
+            if not f.enabled():
+                raise AppError("Join or run a friends service first.")
+            if len(key) < 16:
+                raise AppError("That does not look like a moderator key (it starts with LPM- and is long).")
+            try:
+                f.admin(key, "/admin/reports?status=open")
+            except friendsmod.FriendsError as exc:
+                raise AppError(str(exc)) from exc
+            self.catalog.data["friends_mod"] = {"server": f.server(), "key": key}
+            self.catalog.save()
+            return {"moderator": True}
+        if action == "forget_key":
+            self.catalog.data["friends_mod"] = {}
+            self.catalog.save()
+            return {"moderator": bool(self._mod_key())}
+        key = self._mod_key()
+        if not key:
+            raise AppError("You are not a moderator of this friends service. Whoever runs it can give you the moderator key.")
+        from urllib.parse import quote
+        try:
+            if action == "reports":
+                return f.admin(key, "/admin/reports?status=" + quote(str(body.get("status") or "")))
+            if action == "players":
+                return f.admin(key, "/admin/players?q=" + quote(str(body.get("q") or "")))
+            if action == "act":
+                return f.admin(key, "/admin/act", {"action": str(body.get("do") or ""),
+                                                   **{k: str(body.get(k) or "") for k in ("player", "report", "length", "reason")}})
+            if action == "filter":
+                return f.admin(key, "/admin/filter", {"on": bool(body.get("on")), "words": str(body.get("words") or "")})
+        except friendsmod.FriendsError as exc:
+            raise AppError(str(exc)) from exc
+        raise AppError("Unknown action.")
+
     def _api_friends(self, body: dict) -> dict:
         """Everything the Friends page does. action: status | hello | poll | request | decide | remove | invite | dismiss | message |
         thread | goodbye. The service is optional: with no address set, status says so and nothing else works."""
         action = str(body.get("action") or "status")
         f = self.friends
         base = {"enabled": f.enabled(), "server": f.server(), "me": {k: v for k, v in f.identity().items() if k != "secret"},
-                "share_room": bool(self.catalog.settings().get("friends_share_room", True))}
+                "share_room": bool(self.catalog.settings().get("friends_share_room", True)),
+                "hosting": self._hosting_here(), "moderator": bool(self._mod_key())}
         if action == "status":
             return base
         try:
@@ -913,6 +1105,10 @@ class LauncherApp:
             for i in known.values():
                 if i["on"]:
                     privacy.confirm(self.catalog.data, i["id"], settings)
+            self.catalog.save()
+        elif action == "off" and item == "friends_host":
+            self.api_friends_host({"action": "stop"})
+            self.catalog.data.get("privacy_ok", {}).pop(item, None)
             self.catalog.save()
         elif action == "off":
             key = known[item]["setting"]
@@ -2232,21 +2428,81 @@ class LauncherApp:
         return self.update_all.snapshot()
 
     def api_app_update(self, body: dict) -> dict:
-        """Install the newest Legacy Player by running the project's own installer in a visible PowerShell window."""
-        if sys.platform != "win32":
-            raise AppError("Updating Legacy Player itself is for the Windows app.")
+        """Legacy Player updating itself. action: status | check | install (download and check, in the background) |
+        restart (finish the update: close, swap the files, start the new version). install and restart need confirm."""
+        action = str(body.get("action") or "install")
+        up = self.self_update
+        if action == "status":
+            return up.snapshot()
+        if action == "check":
+            return self._update_check()
         if not body.get("confirm"):
             raise AppError("Please confirm the update.")
+        if action == "install":
+            if up.snapshot()["state"] in {"checking", "downloading"}:
+                return up.snapshot()
+            info = self._update_check()
+            if not info.get("newer"):
+                return {**up.snapshot(), "state": "idle", "message": info["message"]}
+
+            def run() -> None:
+                try:
+                    up.prepare(info)
+                except Exception as exc:                  # shown in the app; never a silent stop
+                    up._set(state="problem", message=str(exc)[:300])
+            up._set(state="downloading", message="Getting the new version…", latest=info.get("latest", ""))
+            threading.Thread(target=run, daemon=True, name="self-update").start()
+            return up.snapshot()
+        if action == "restart":
+            return self._restart_into_update()
+        raise AppError("Unknown update action.")
+
+    def _update_check(self) -> dict:
+        """What is newer. A git copy can always compare its own folder; asking GitHub needs the internet setting."""
+        up = self.self_update
         if not self.catalog.settings()["allow_internet"]:
-            raise AppError("Internet downloads are off. Turn on 'Allow internet downloads' in Settings first.")
-        # update the copy that is actually running (not always the default install folder), and keep the window open if it fails
-        where = ""
-        if getattr(sys, "frozen", False):
-            where = " -Dest '" + str(Path(sys.executable).resolve().parent).replace("'", "''") + "'"
-        command = (f"& ([scriptblock]::Create((irm https://raw.githubusercontent.com/{REPO}/main/install.ps1))) -Pause{where}")
-        subprocess.Popen(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", command],
-                         creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0))
-        return {"message": "The installer opened in its own window. Legacy Player restarts when it finishes."}
+            disk = selfupdate.version_on_disk()
+            if up.mode() == "git" and selfupdate.nums(disk) != selfupdate.nums(VERSION):
+                return {"mode": "git", "newer": True, "restart_only": True, "latest": disk, "current": VERSION,
+                        "message": f"Version {disk} is already in your folder; Legacy Player is still running {VERSION}. Restart to use it."}
+            raise AppError("Internet downloads are off. Turn on 'Allow internet downloads' in Settings first (updates come from GitHub only).")
+        if not up.mode() and not getattr(sys, "frozen", False):
+            raise AppError("This copy of Legacy Player was not installed with the installer or git, so it cannot update itself. "
+                           "Install it with the one-line installer (see README) or run it from a git clone.")
+        try:
+            info = up.check()
+        except (InstallError, OSError, subprocess.SubprocessError) as exc:
+            raise AppError(f"Could not check for updates: {exc}") from exc
+        return {**{k: v for k, v in info.items() if k != "release"}, "current": VERSION,
+                "page": (info.get("release") or {}).get("page", "")}
+
+    def _restart_into_update(self) -> dict:
+        """Close politely (leave rooms, stop this computer's server so it starts again on the new version), hand the swap
+        to the helper, and quit. The helper starts the new version once this process is gone."""
+        up = self.self_update
+        if not up.staged:
+            raise AppError("There is no update ready yet. Press Update first.")
+        try:
+            up.restart_plan()                              # fails early (no staged files) before anything is closed
+        except InstallError as exc:
+            raise AppError(str(exc)) from exc
+        try:
+            from server import cli
+            args = self._server_args(False)
+            if cli._is_running(args.state_dir):
+                with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                    cli.stop(args)                         # not api_server_control: the player did not ask to stop it for good
+        except Exception:
+            pass
+        try:
+            self._before_restart()
+        except Exception:
+            pass
+        up.launch_helper()
+        self.quit_at = time.time()
+        self.quit_requested = True
+        self.shutdown()
+        return {**up.snapshot(), "restarting": True}
 
     def api_window_style(self, body: dict) -> dict:
         """Tint the window's title bar to the current theme (Windows 11; does nothing elsewhere)."""
@@ -2254,18 +2510,12 @@ class LauncherApp:
         return {"touched": winstyle.apply(str(body.get("bg", "")), str(body.get("fg", "")))}
 
     def api_check_update(self, body: dict) -> dict:
-        """Ask GitHub whether a newer release exists. Only when the user presses the button and allows internet."""
-        if not self.catalog.settings()["allow_internet"]:
-            raise AppError("Internet access is off. Turn on 'Allow internet downloads' in Settings to check for updates (it only asks api.github.com).")
+        """Is there a newer Legacy Player? Only when the user presses the button (GitHub needs the internet setting)."""
         try:
-            rel = latest_release(REPO)
-        except InstallError as exc:
-            return {"current": VERSION, "ok": False, "message": f"Could not check: {exc}"}
-        def nums(v: str) -> tuple:
-            return tuple(int(x) for x in __import__("re").findall(r"\d+", v)[:3])
-        newer = nums(rel["tag"]) > nums(VERSION) if nums(rel["tag"]) else False
-        return {"current": VERSION, "ok": True, "latest": rel["tag"], "newer": newer, "page": rel["page"], "published_at": rel["published_at"],
-                "message": ("Version " + rel["tag"] + " is available.") if newer else "You have the latest version."}
+            info = self._update_check()
+        except AppError as exc:
+            return {"current": VERSION, "ok": False, "message": str(exc)}
+        return {"ok": True, **info}
 
     def api_mp_host(self, body: dict) -> dict:
         self._claim_alias()
@@ -2885,7 +3135,7 @@ class LauncherApp:
         if not body.get("confirm"):
             plan = selfuninstall.plan(self.data_dir, self.catalog.data.get("save_root") or "",
                                       self.catalog.data.get("backup_root") or "", self._managed_console_ids())
-            if firewall.exists():
+            if firewall.exists() or firewall.exists(rule=firewall.RULE_FRIENDS):
                 plan["items"].insert(-1, {"key": "firewall", "label": "The Windows Firewall rule for your server", "keepable": False,
                                           "why": "The door I opened so friends could connect. Windows may ask you to approve removing it.", "paths": [], "mb": 0.0})
             return plan
@@ -2901,6 +3151,11 @@ class LauncherApp:
                 server_stopped = not cli._is_running(self.data_dir / "server")
         except (AppError, OSError):
             pass
+        try:      # the friends service this app runs keeps its players in the data folder: stop it before that goes
+            self.social_host.stop(self.catalog.settings()["friends_host_port"])
+            self._friends_host_router(False)
+        except Exception:
+            pass
         created = selfuninstall.created_folders(self.catalog.data.get("save_root") or "", self.catalog.data.get("backup_root") or "",
                                                 self._managed_console_ids(), self.data_dir)
         keep_paths = [self._save_root(), *self.catalog.data.get("save_sources", {}).values()]
@@ -2912,7 +3167,7 @@ class LauncherApp:
         except ValueError as exc:
             raise AppError(str(exc)) from exc
         report["server_stopped"] = server_stopped
-        if firewall.exists():
+        if firewall.exists() or firewall.exists(rule=firewall.RULE_FRIENDS):
             gone = firewall.remove()["removed"]
             report["steps"].insert(-1 if report["steps"] and report["steps"][-1]["key"] == "program" else len(report["steps"]),
                                    {"key": "firewall", "label": "The Windows Firewall rule for your server", "status": "removed" if gone else "problem", "mb": 0.0})

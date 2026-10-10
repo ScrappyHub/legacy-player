@@ -86,5 +86,7 @@ class UpdaterTargetsRunningCopyTests(unittest.TestCase):
     def test_installer_can_target_a_folder_and_stays_open_on_failure(self):
         text = (ROOT / "install.ps1").read_text(encoding="utf-8")
         self.assertIn("[string]$Dest", text)
-        self.assertIn("-Pause", (ROOT / "launcher" / "app.py").read_text(encoding="utf-8"))
+        updater = (ROOT / "launcher" / "selfupdate.py").read_text(encoding="utf-8")
+        self.assertIn("Path(sys.executable).resolve().parent", updater)     # the in-app update replaces the copy that is running
+        self.assertIn("The update did not finish", updater)
         self.assertIn("did not finish", text)

@@ -27,7 +27,7 @@ or, through git, with the small `lp` command that comes with the repository:
 ```powershell
 git clone https://github.com/ScrappyHub/legacy-player
 cd legacy-player
-.\lp install            # newest release; or  .\lp install v0.7.42  for one exact version
+.\lp install            # newest release; or  .\lp install v0.7.43  for one exact version
 .\lp run                # later:  .\lp update   .\lp version   .\lp path   .\lp uninstall   .\lp help
 ```
 
@@ -54,8 +54,11 @@ SHA-256 hashes and carries a GitHub build attestation. See `docs/RELEASE.md`.
   description (looked up from Wikipedia/Wikidata only when you ask; you can write your own).
 - **Friends (optional):** a separate friends service with friend codes, who is online, room invites and messages. No accounts.
   Only friends can message you; requests need your code and can be switched off. Report a player or a single message,
-  block, and a word filter you can turn on or off (Settings > Friends). Whoever runs the service gets a moderation
-  console with time-outs, bans and a service-wide filter (`docs/HOSTING_PUBLIC_SERVER.md`).
+  block, and a word filter you can turn on or off (Settings > Friends). Run your own service with one click (Friends >
+  Run a friends service on this computer): encrypted, router port opened for you, and you moderate it right there
+  (reports, time-outs, bans, word filter). No commands (`docs/HOSTING_PUBLIC_SERVER.md`).
+- **Updates:** Account > Update everything (or Check for updates) downloads the new Legacy Player, checks it, and
+  restarts on it. A copy run from a git folder pulls and restarts instead.
 - **See a problem?** on the Home page sends a categorised report (scrubbed) to the maintainers' admin console.
 - **Games open where you want:** in front of Legacy Player, full screen or windowed, on the screen you pick (asked once per emulator,
   changeable under Display and video > Where games open).

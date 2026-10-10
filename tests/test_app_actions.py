@@ -64,8 +64,9 @@ class UpdateAndCoverTests(unittest.TestCase):
 
     def test_update_check_needs_internet_permission(self):
         self.app.catalog.set_setting("allow_internet", False)
-        with self.assertRaises(AppError):
-            self.app.api_check_update({})
+        out = self.app.api_check_update({})                       # says why instead of asking GitHub
+        self.assertFalse(out["ok"])
+        self.assertIn("Internet", out["message"])
 
     def test_cover_lookup_needs_internet_and_consent(self):
         self.app.catalog.set_setting("allow_internet", False)

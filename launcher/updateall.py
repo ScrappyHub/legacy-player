@@ -1,7 +1,8 @@
 """One button: bring everything Legacy Player installed or connected up to date, then say what is still needed.
 
 Steps, in order (each one reports done / nothing to do / problem, and one failure never stops the rest):
-  1 Legacy Player itself      asks GitHub for the newest release (installing it is a separate, confirmed button)
+  1 Legacy Player itself      gets the newest version ready (the Windows app: downloads the release and checks its SHA-256;
+                              a git copy: git pull). When everything else is done the app restarts on it.
   2 Engines                   re-fetches the emulators Legacy Player installed, from their official GitHub releases
   3 Tailscale                 only if you already have it: Windows' package manager (winget) upgrades it
   4 Your games                reads the games folders again, finds Steam and Epic games, makes the save folders
@@ -82,13 +83,21 @@ class UpdateAll:
 
     # --- the steps -------------------------------------------------------------------------------------------
     def _app(self):
+        """Get a newer Legacy Player ready (downloaded and checked, or pulled). The restart waits until the other steps
+        are done, so nothing is cut off half-way."""
         try:
-            rel = latest_release(REPO)
-        except InstallError as exc:
-            return "problem", f"Could not check: {exc}", None
-        if _nums(rel["tag"]) > _nums(VERSION):
-            return "done", f"Version {rel['tag']} is available (you have {VERSION}).", rel["tag"]
-        return "done", f"You have the latest version ({VERSION}).", None
+            info = self.app._update_check()
+        except Exception as exc:
+            return "problem", f"Could not check: {exc}"[:200], None
+        if not info.get("newer"):
+            return "done", info["message"], None
+        up = self.app.self_update
+        try:
+            up.prepare(info)
+        except Exception as exc:
+            return "problem", f"Version {info.get('latest')} is out, but getting it failed: {exc}"[:240], None
+        version = (up.staged or {}).get("version") or info.get("latest")
+        return "done", f"Version {version} is ready (you have {VERSION}). Legacy Player restarts on it at the end.", version
 
     def _ours(self) -> list[str]:
         """Engines Legacy Player installed itself (they live under its own folder), so it may update them."""
@@ -142,7 +151,8 @@ class UpdateAll:
         needs: list[dict] = []
         ready: list[str] = []
         if newer:
-            needs.append({"text": f"Install Legacy Player {newer}.", "action": "app_update", "label": "Update Legacy Player"})
+            needs.append({"text": f"Restart Legacy Player to use version {newer} (it is downloaded and ready).", "action": "app_restart",
+                          "label": "Restart now"})
         else:
             ready.append(f"Legacy Player {VERSION} is current.")
         doc = app.api_doctor({})
@@ -172,4 +182,4 @@ class UpdateAll:
         lines = ["Legacy Player checkup", ""]
         lines += ["Ready:"] + [f"  - {r}" for r in ready]
         lines += ["", "Still to do:" if needs else "Nothing else is needed."] + [f"  {i}. {n['text']}" for i, n in enumerate(needs, 1)]
-        return {"needs": needs, "ready": ready, "text": "\n".join(lines)}
+        return {"needs": needs, "ready": ready, "text": "\n".join(lines), "restart": newer or ""}

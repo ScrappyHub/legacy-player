@@ -3,10 +3,18 @@
 One endpoint, JSON in and out:  POST /  {"op": "...", "id": "...", "secret": "...", ...}  ->  {"ok": true, ...} or {"ok": false,
 "error": "..."}.  GET /health answers "ok".
 
-Moderators: start with --admin-token SOMETHING-LONG (or LP_SOCIAL_ADMIN_TOKEN) and open /admin?token=... in a browser to read
-reports (with the reported message and the few before it), time players out, ban and unban them, and turn the
-service-wide word filter on or off. Without the token the console does not exist. Put HTTPS in front of it (a reverse proxy or a tunnel); the app only talks to
-https:// addresses, or 127.0.0.1 for testing. No request log is kept: who talked to whom is deliberately not recorded."""
+Most people never run this by hand: Legacy Player runs it for them (Friends > Run a friends service on this computer),
+with its own certificate, the router port opened and moderation inside the app.
+
+Moderation: on first start the service makes a moderator key and keeps it in <dir>/moderator.key (or use --admin-token /
+LP_SOCIAL_ADMIN_TOKEN to choose one). Legacy Player on the same computer reads it by itself. Anyone else who helps moderate
+pastes the key once in Legacy Player (Friends > Moderation), or opens /admin in a browser and pastes it there. With the
+key you read reports (with the reported message and the few before it), time players out, ban and unban them, and
+turn the service-wide word filter on or off.
+
+HTTPS: --tls-cert/--tls-key serve it directly (Legacy Player uses its self-signed certificate and friends' apps check its
+fingerprint, which travels in the friends link); or put a reverse proxy or a tunnel in front. No request log is kept:
+who talked to whom is deliberately not recorded."""
 from __future__ import annotations
 
 import argparse
@@ -85,7 +93,7 @@ table{width:100%;border-collapse:collapse}td,th{padding:8px 10px;border-bottom:1
  <span class="row tabs"><button data-t="reports" class="on">Reports</button><button data-t="players">Players</button><button data-t="filter">Word filter</button><button data-t="log">Log</button></span><button onclick="load()">Refresh</button></header>
 <main id="main"></main>
 <script>
-const TOKEN=new URLSearchParams(location.search).get("token")||"";const $=s=>document.querySelector(s);let tab="reports",D=null,status="open";
+let TOKEN=new URLSearchParams(location.search).get("token")||"";try{TOKEN=TOKEN||sessionStorage.getItem("lpmodkey")||""}catch(e){}const $=s=>document.querySelector(s);let tab="reports",D=null,status="open";
 async function api(path,body){const r=await fetch(path+(path.includes("?")?"&":"?")+"token="+encodeURIComponent(TOKEN),body?{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}:{});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||("HTTP "+r.status));return j}
 const esc=t=>String(t==null?"":t).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const when=t=>t?new Date(t*1000).toLocaleString():"";
@@ -119,7 +127,9 @@ function draw(){const m=$("#main");if(!D){m.innerHTML='<p class="muted">Loadingâ
  else{m.innerHTML='<table><thead><tr><th>When</th><th>Action</th><th>Player</th><th>Length</th><th>Reason</th></tr></thead><tbody>'+D.log.map(l=>`<tr><td class="small">${esc(when(l.at))}</td><td>${esc(l.action)}</td><td>${esc(l.name)} <span class="muted small">${esc(l.player)}</span></td><td>${esc(l.length)}</td><td>${esc(l.reason)}</td></tr>`).join("")+"</tbody></table>"}
  wire()}
 document.querySelectorAll(".tabs button").forEach(b=>b.onclick=()=>{tab=b.dataset.t;document.querySelectorAll(".tabs button").forEach(x=>x.classList.toggle("on",x===b));draw()});
-async function load(){try{D=await api("/admin/reports");draw()}catch(e){$("#main").innerHTML='<p>Could not load: '+esc(e.message)+' (is the token right?)</p>'}}
+function askKey(why){$("#main").innerHTML='<div class="card" style="max-width:560px"><h2 style="margin-top:0">Moderator key</h2><p class="muted small">'+esc(why||"Paste the moderator key. Whoever runs this service finds it in Legacy Player (Friends > Your service > Copy moderator key) or in the moderator.key file next to the service's data.")+'</p><div class="row"><input id="key" type="password" style="flex:1" autocomplete="off"><button class="primary" id="go">Open</button></div></div>';
+ $("#go").onclick=()=>{TOKEN=$("#key").value.trim();try{sessionStorage.setItem("lpmodkey",TOKEN)}catch(e){}load()}}
+async function load(){if(!TOKEN)return askKey();try{D=await api("/admin/reports");draw()}catch(e){if(/401|token/.test(e.message)){try{sessionStorage.removeItem("lpmodkey")}catch(x){}TOKEN="";askKey("That key was not accepted. Paste it again.")}else $("#main").innerHTML='<p>Could not load: '+esc(e.message)+'</p>'}}
 load();
 </script></body></html>"""
 
@@ -162,6 +172,8 @@ def make_handler(service: SocialService, admin_token: str | None = None):
             u = urlsplit(self.path)
             if u.path in ("/", "/health"):
                 return self._json(200, {"ok": True, "service": "legacy-player-friends"})
+            if u.path in ("/admin", "/admin/") and admin_token:
+                return self._page(ADMIN_PAGE)              # the page asks for the key; every answer it loads needs it
             if u.path.startswith("/admin"):
                 if not self._admin_ok():
                     return self._json(401, {"ok": False, "error": "admin token needed"})
@@ -188,6 +200,11 @@ def make_handler(service: SocialService, admin_token: str | None = None):
                                                 str(body.get("length", "")), str(body.get("reason", "")))
                     elif path == "/admin/filter":
                         out = service.admin_filter(body.get("on"), body.get("words"))
+                    elif path == "/admin/stop":
+                        if self.client_address[0] not in ("127.0.0.1", "::1"):
+                            return self._json(403, {"ok": False, "error": "only from this computer"})
+                        threading.Thread(target=self.server.shutdown, daemon=True).start()
+                        out = {"stopping": True}
                     else:
                         return self._json(404, {"ok": False, "error": "not found"})
                 except SocialError as exc:
@@ -217,16 +234,49 @@ def make_handler(service: SocialService, admin_token: str | None = None):
     return Handler
 
 
-def main() -> None:
+def moderator_key(folder: Path) -> str:
+    """The moderator key, made once and kept next to the service's data (readable only by this user where possible)."""
+    import secrets
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / "moderator.key"
+    try:
+        key = path.read_text(encoding="utf-8").strip()
+        if len(key) >= 16:
+            return key
+    except OSError:
+        pass
+    key = "LPM-" + secrets.token_urlsafe(24)
+    path.write_text(key + "\n", encoding="utf-8")
+    try:
+        os.chmod(path, 0o600)
+    except OSError:
+        pass
+    return key
+
+
+def main(argv=None) -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--dir", default=os.environ.get("LP_SOCIAL_DIR") or "social")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8791)
     parser.add_argument("--admin-token", default=os.environ.get("LP_SOCIAL_ADMIN_TOKEN") or None,
-                        help="opens the moderation console at /admin?token=... (without it there is no console)")
-    args = parser.parse_args()
-    service = SocialService(Path(args.dir))
-    httpd = ThreadingHTTPServer((args.host, args.port), make_handler(service, args.admin_token))
+                        help="choose the moderator key yourself (otherwise one is made and kept in <dir>/moderator.key)")
+    parser.add_argument("--tls-cert", help="serve HTTPS directly with this certificate (PEM)")
+    parser.add_argument("--tls-key", help="the certificate's private key (PEM)")
+    args = parser.parse_args(argv)
+    folder = Path(args.dir)
+    key = args.admin_token or moderator_key(folder)
+    service = SocialService(folder)
+    httpd = ThreadingHTTPServer((args.host, args.port), make_handler(service, key))
+    scheme = "http"
+    if args.tls_cert:
+        import ssl
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.minimum_version = ssl.TLSVersion.TLSv1_2
+        context.load_cert_chain(args.tls_cert, args.tls_key)
+        # the handshake happens in each request thread, so a stranger who never finishes it cannot hold up the others
+        httpd.socket = context.wrap_socket(httpd.socket, server_side=True, do_handshake_on_connect=False)
+        scheme = "https"
 
     def tidy() -> None:
         while True:
@@ -235,12 +285,18 @@ def main() -> None:
                 service._tidy()
                 service.save()
     threading.Thread(target=tidy, daemon=True).start()
-    print(f"Friends service on http://{args.host}:{args.port}/ keeping its players in {args.dir}  (put HTTPS in front of it)", flush=True)
-    print("Moderation console: /admin?token=..." if args.admin_token else "Moderation console is off: start with --admin-token SOMETHING-LONG to read reports, time out and ban.", flush=True)
+    print(f"Friends service on {scheme}://{args.host}:{httpd.server_address[1]}/ keeping its players in {folder}"
+          + ("" if scheme == "https" else "  (put HTTPS in front of it)"), flush=True)
+    print(f"Moderation: open {scheme}://<this address>/admin and paste the moderator key"
+          + (" you chose" if args.admin_token else f" from {folder / 'moderator.key'}")
+          + ", or paste it once in Legacy Player (Friends > Moderation).", flush=True)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
         pass
+    finally:
+        with service.lock:
+            service.save()
 
 
 if __name__ == "__main__":

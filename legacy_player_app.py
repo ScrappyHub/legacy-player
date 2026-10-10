@@ -3,6 +3,7 @@
     LegacyPlayer.exe                    opens the app window
     LegacyPlayer.exe --games "D:\\Games"  also adds a games folder
     LegacyPlayer.exe --server-run ...   (internal) runs the multiplayer server
+    LegacyPlayer.exe --social-run ...   (internal) runs the friends service (Friends > Run a friends service)
 """
 from __future__ import annotations
 
@@ -34,6 +35,11 @@ def main() -> int:
         sys.argv.remove("--server-run")
         from server.api import json_server
         json_server.main()
+        return 0
+    if "--social-run" in sys.argv:
+        sys.argv.remove("--social-run")
+        from server.social.__main__ import main as social_main
+        social_main()
         return 0
     from launcher.__main__ import main as launcher_main
     return launcher_main()
