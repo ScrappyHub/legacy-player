@@ -19,7 +19,7 @@ except ImportError:      # pragma: no cover
 
 ROOT = Path(__file__).resolve().parent.parent
 PAGES = ["home", "library", "console", "setup", "together", "servers", "engines", "controllers", "saves", "preferences",
-         "emulators", "settings", "credits", "help", "storage", "profile", "display", "probe", "friends"]
+         "emulators", "settings", "credits", "help", "storage", "profile", "display", "probe", "friends", "privacy"]
 
 
 @unittest.skipUnless(sync_playwright, "Playwright is not installed")

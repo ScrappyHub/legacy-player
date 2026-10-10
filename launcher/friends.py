@@ -93,6 +93,18 @@ class FriendsClient:
     def thread(self, other: str) -> dict:
         return self._call({"op": "thread", **self._auth(), "friend": other})
 
+    def block(self, other: str) -> dict:
+        return self._call({"op": "block", **self._auth(), "player": other})
+
+    def unblock(self, other: str) -> dict:
+        return self._call({"op": "unblock", **self._auth(), "player": other})
+
+    def clear_thread(self, other: str) -> dict:
+        return self._call({"op": "clear_thread", **self._auth(), "friend": other})
+
+    def read_all(self) -> dict:
+        return self._call({"op": "read_all", **self._auth()})
+
     def goodbye(self) -> dict:
         try:
             return self._call({"op": "goodbye", **self._auth()})

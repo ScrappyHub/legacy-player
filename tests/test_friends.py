@@ -175,3 +175,50 @@ class OverHttpAndInTheApp(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BlockingAndInbox(unittest.TestCase):
+    def setUp(self):
+        self.clock = Clock()
+        self.s = SocialService(None, self.clock)
+        self.a, self.b = self.s.hello("Alec"), self.s.hello("Bea")
+        self.s.request(self.a["id"], self.a["secret"], self.b["code"])
+        self.s.decide(self.b["id"], self.b["secret"], self.a["id"], True)
+
+    def test_inbox_lists_conversations_newest_first_with_unread(self):
+        c = self.s.hello("Cal")
+        self.s.request(self.a["id"], self.a["secret"], c["code"])
+        self.s.decide(c["id"], c["secret"], self.a["id"], True)
+        self.s.message(self.b["id"], self.b["secret"], self.a["id"], "first")
+        self.clock.t += 5
+        self.s.message(c["id"], c["secret"], self.a["id"], "second")
+        inbox = self.s.heartbeat(self.a["id"], self.a["secret"])
+        self.assertEqual(["Cal", "Bea"], [x["name"] for x in inbox["conversations"]])
+        self.assertEqual(2, inbox["unread"])
+        self.assertEqual("second", inbox["conversations"][0]["last"])
+        inbox = self.s.read_all(self.a["id"], self.a["secret"])
+        self.assertEqual(0, inbox["unread"])
+        inbox = self.s.clear_thread(self.a["id"], self.a["secret"], c["id"])
+        self.assertEqual(["Bea"], [x["name"] for x in inbox["conversations"]])
+        self.assertEqual(["second"], [m["text"] for m in self.s.thread(c["id"], c["secret"], self.a["id"])["messages"]])   # theirs stays
+
+    def test_block_cuts_everything_and_is_not_announced(self):
+        self.s.message(self.b["id"], self.b["secret"], self.a["id"], "hi")
+        self.s.invite(self.b["id"], self.b["secret"], self.a["id"], "ABCDE-FGH12", "Tetris")
+        inbox = self.s.block(self.a["id"], self.a["secret"], self.b["id"])
+        self.assertEqual([], inbox["friends"])
+        self.assertEqual([], inbox["conversations"])
+        self.assertEqual([], inbox["invites"])
+        self.assertEqual(["Bea"], [x["name"] for x in inbox["blocked"]])
+        bb = self.s.heartbeat(self.b["id"], self.b["secret"])
+        self.assertEqual([], bb["friends"])                                   # Bea no longer sees Alec at all
+        with self.assertRaises(SocialError) as ctx:
+            self.s.request(self.b["id"], self.b["secret"], self.a["code"])
+        self.assertIn("No player has that friend code", str(ctx.exception))   # the same answer as a wrong code
+        with self.assertRaises(SocialError):
+            self.s.message(self.b["id"], self.b["secret"], self.a["id"], "hello?")
+        with self.assertRaises(SocialError):
+            self.s.request(self.a["id"], self.a["secret"], self.b["code"])   # the blocker is told to unblock first
+        self.s.unblock(self.a["id"], self.a["secret"], self.b["id"])
+        self.s.request(self.b["id"], self.b["secret"], self.a["code"])
+        self.assertEqual(["Bea"], [r["name"] for r in self.s.heartbeat(self.a["id"], self.a["secret"])["requests"]])

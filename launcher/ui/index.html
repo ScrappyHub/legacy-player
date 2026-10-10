@@ -631,6 +631,17 @@ label:has(>input[type=checkbox]:not(.switch input))>input,label:has(>input[type=
 .msg.mine{align-self:flex-end;background:color-mix(in srgb,var(--accent) 28%,transparent);border-color:transparent}
 .msg .t{display:block;font-size:.68rem;color:var(--mute);margin-top:2px}
 .code.mid{font-size:1.3rem;padding:8px 14px;letter-spacing:.14em}
+.pvitem{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 18px;align-items:start}
+.pvitem .meta{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 12px;margin-top:8px;font-size:.88rem}.pvitem .meta .k{color:var(--mute)}
+.pvitem.look{border-color:var(--warn);box-shadow:0 0 0 2px color-mix(in srgb,var(--warn) 30%,transparent)}
+.pvstate{font:800 .7rem ui-monospace,Consolas,monospace;letter-spacing:.1em;padding:3px 9px;border-radius:999px;border:1px solid var(--line);color:var(--mute)}
+.pvstate.on{color:var(--accent2);border-color:var(--accent2)}.pvstate.look{color:var(--warn);border-color:var(--warn)}
+.ftabs{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 14px}
+.ftabs button{position:relative}.ftabs .n{margin-left:6px;font-size:.7rem;background:var(--accent);color:#fff;border-radius:999px;padding:1px 7px;font-weight:700}
+.conv{display:flex;gap:10px;align-items:center;padding:10px 8px;border-bottom:1px solid var(--line);cursor:pointer;border-radius:10px}
+.conv:hover,.conv.on{background:var(--panel2)}.conv .cwho{flex:1;min-width:0}
+.pres{width:10px;height:10px;border-radius:50%;background:#6b7390;flex:none;display:inline-block}.pres.on{background:var(--accent2);box-shadow:0 0 8px var(--accent2)}.conv .last{color:var(--mute);font-size:.84rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.conv.unread .nm{font-weight:800}.conv .when{font-size:.74rem;color:var(--mute);white-space:nowrap}
 </style>
 </head>
 <body>
@@ -851,17 +862,17 @@ function renderNav(){const n=$("#nav");n.replaceChildren(...primaryTabs().map(([
 function renderWho(){const w=$("#who");if(!w)return;const p=S.profile||{alias:"Player",avatar:"martin",player:"Player"};
  w.replaceChildren(avatarEl(p.avatar,26),h("span",{class:"nm"},p.player||p.alias))}
 async function go(){closeMenus();renderNav();const old=$("#main"),m=old.cloneNode(false);old.replaceWith(m);window.scrollTo(0,0);
- Promise.resolve(({home:viewHome,library:viewLibrary,together:viewTogether,servers:viewServers,console:viewConsole,setup:viewSetup,engines:viewEngines,controllers:viewControllers,saves:viewSaves,emulators:viewEmulators,settings:viewSettings,preferences:viewPreferences,credits:viewCredits,welcome:viewWelcome,help:viewHelp,storage:viewStorage,probe:viewProbe,profile:viewProfile,display:viewDisplay,friends:viewFriends})[S.tab](m)).then(()=>{if(S.tab==="home")homeArtTip()}).catch(e=>{console.error("page error",e);reportClientError(e&&e.message||e,"draw:"+S.tab,e&&e.stack);toast("Something went wrong drawing this page: "+(e&&e.message||e),"err")})}
+ Promise.resolve(({home:viewHome,library:viewLibrary,together:viewTogether,servers:viewServers,console:viewConsole,setup:viewSetup,engines:viewEngines,controllers:viewControllers,saves:viewSaves,emulators:viewEmulators,settings:viewSettings,preferences:viewPreferences,credits:viewCredits,welcome:viewWelcome,help:viewHelp,storage:viewStorage,probe:viewProbe,profile:viewProfile,display:viewDisplay,friends:viewFriends,privacy:viewPrivacy})[S.tab](m)).then(()=>{if(S.tab==="home")homeArtTip()}).catch(e=>{console.error("page error",e);reportClientError(e&&e.message||e,"draw:"+S.tab,e&&e.stack);toast("Something went wrong drawing this page: "+(e&&e.message||e),"err")})}
 function nav(tab,anchor){S.tab=tab;S.anchor=anchor||null;go()}
 
 /* ---------- menu bar ---------- */
 function menuDefs(){return[
- ["Account",[["Your account: name, picture, theme and background",()=>nav("profile")],["Preferences (look, home, overlay, controller)",()=>nav("preferences")],["Settings (library, privacy, server)",()=>nav("settings")],"-",["Update everything",updateEverything],["Check for updates",checkUpdates],"-",["Exit Legacy Player",quitApp]]],
+ ["Account",[["Your account: name, picture, theme and background",()=>nav("profile")],["Preferences (look, home, overlay, controller)",()=>nav("preferences")],["Settings (library, privacy, server)",()=>nav("settings")],["Privacy: what goes online",()=>nav("privacy")],"-",["Update everything",updateEverything],["Check for updates",checkUpdates],"-",["Exit Legacy Player",quitApp]]],
  ["Games",[["Library",()=>nav("library")],["Console mode",()=>nav("console")],["Rescan my games",()=>rescan()],"-",[S.showHidden?"Hide the hidden games again":"Show hidden games",()=>{S.showHidden=!S.showHidden;nav("library")}]]],
  ["Configure",[["Display and video",()=>nav("display")],["Play options (how games open)",()=>nav("display")],["Controllers",()=>nav("controllers")],["Saves and backups",()=>nav("saves")],["Storage by console",()=>nav("storage")],"-",["Emulators",()=>nav("emulators")],["Engines (get or update emulators)",()=>nav("engines")],["Steam and PC games",()=>pcManager()]]],
- ["Online",[...liveMenu(),["Server Info and network test",()=>nav("together")],["Servers: start, share, connect",()=>nav("servers")],...(S.friendsOn?[["Friends",()=>nav("friends")]]:[["Friends (set up under Settings > Friends)",()=>nav("settings","friends")]])]],
+ ["Online",[...liveMenu(),["Server Info and network test",()=>nav("together")],["Servers: start, share, connect",()=>nav("servers")],...(S.friendsOn?[["Friends",()=>{S.friendTab="friends";nav("friends")}],["Inbox and messages",()=>{S.friendTab="inbox";nav("friends")}],["Friend requests",()=>{S.friendTab="requests";nav("friends")}],["Blocked players",()=>{S.friendTab="blocked";nav("friends")}]]:[["Friends (set up under Settings > Friends)",()=>nav("settings","friends")]])]],
  ["Tools",[["Update everything",updateEverything],["Doctor's office (Setup)",()=>nav("setup")],["Engines",()=>nav("engines")],["Preview the overlay",()=>act(()=>api("overlay_open",{preview:true}))],["Dolphin memory probe",()=>nav("probe")],["Emulators",()=>nav("emulators")],["Scan this computer",()=>{nav("engines");setTimeout(()=>runScan().then(v=>{if(v)go()}),250)}],["Credits",()=>nav("credits")]]],
- ["Help",[["How it works",()=>nav("help")],["How save files work",()=>nav("help","saves")],["Privacy",()=>nav("help","privacy")],["Uninstall Legacy Player...",()=>retireClinic()]]]]}
+ ["Help",[["How it works",()=>nav("help")],["How save files work",()=>nav("help","saves")],["Privacy",()=>nav("privacy")],["Uninstall Legacy Player...",()=>retireClinic()]]]]}
 function closeMenus(){document.querySelectorAll(".menu.open").forEach(x=>x.classList.remove("open"))}
 function buildMenubar(){const bar=$("#menubar");
  const menus=menuDefs().map(([name,items])=>{const m=h("div",{class:"menu"},h("button",{type:"button",onclick:e=>{e.stopPropagation();const was=m.classList.contains("open");closeMenus();if(!was)m.classList.add("open")},onmouseenter:()=>{if(document.querySelector(".menu.open")){closeMenus();m.classList.add("open")}}},name),
@@ -1010,7 +1021,7 @@ async function updateEverything(){
  if(S.updating)return;
  if(!S.settings||!S.settings.allow_internet){
   if(!await ask("Updating everything downloads from GitHub only: the release pages of Legacy Player and of each emulator Legacy Player installed. Turn on 'Allow internet downloads' and go ahead?","Allow and update"))return;
-  const r=await act(()=>api("settings",{key:"allow_internet",value:true}));if(!r)return;S.settings=r.values}
+  const r=await setPrivate("allow_internet",true,true);if(!r)return;S.settings=r.values}
  else if(!await ask("Update everything now? It refreshes the emulators Legacy Player installed, checks for a newer Legacy Player (and Tailscale, if you have it), reads your games folders again, then lists what is still needed.","Update everything"))return;
  const first=await act(()=>api("update_all",{action:"start",confirm:true}));if(!first)return;
  S.updating=true;
@@ -1203,8 +1214,8 @@ function doctorCard(dr,opts){opts=opts||{};
     h("button",{class:"btn primary",style:"margin:10px 3px 0;width:calc(100% - 6px)",onclick:()=>scanEverything(refresh)},"Scan everything"));
   box.replaceChildren(h("div",{class:"row",style:"align-items:center;flex-wrap:nowrap;gap:14px"},opts.office?null:pixels(doctorRows(dr.mood),104,"doctor "+dr.mood),report),
    ...(opts.noWorries?[]:active).map(i=>h("div",{class:"worry"},h("span",{class:"grow"},i.text),
-    i.kind==="dolphin-folders"||i.kind==="dolphin-direct"?h("button",{class:"btn",onclick:()=>fixDolphin(i,refresh)},"Fix"):i.kind==="core"?h("button",{class:"btn",onclick:()=>{const el=$("#supplies");if(el)el.scrollIntoView({behavior:"smooth"})}},"Fix"):(i.kind==="emulator"||i.kind==="bios")?h("button",{class:"btn",onclick:()=>nav("engines")},"Fix"):null,
-    h("button",{class:"btn",title:"I do not want to install that. Stop worrying about it.",onclick:async()=>{await act(()=>api("doctor_dismiss",{key:i.key}));refresh()}},"I don't need it"))),
+    i.kind==="privacy"?h("button",{class:"btn",onclick:()=>nav("privacy")},"Look"):i.kind==="dolphin-folders"||i.kind==="dolphin-direct"?h("button",{class:"btn",onclick:()=>fixDolphin(i,refresh)},"Fix"):i.kind==="core"?h("button",{class:"btn",onclick:()=>{const el=$("#supplies");if(el)el.scrollIntoView({behavior:"smooth"})}},"Fix"):(i.kind==="emulator"||i.kind==="bios")?h("button",{class:"btn",onclick:()=>nav("engines")},"Fix"):null,
+    i.kind==="privacy"?null:h("button",{class:"btn",title:"I do not want to install that. Stop worrying about it.",onclick:async()=>{await act(()=>api("doctor_dismiss",{key:i.key}));refresh()}},"I don't need it"))),
    quiet.length&&!opts.noWorries?h("div",{class:"small muted",style:"margin-top:6px"},quiet.length+" worr"+(quiet.length>1?"ies":"y")+" set aside. ",h("a",{href:"#",onclick:async e=>{e.preventDefault();for(const q of quiet)await api("doctor_dismiss",{key:q.key,undo:true});refresh()}},"Bring back")):null);
   if(opts.onDraw)opts.onDraw(dr)};
  draw(dr);return box}
@@ -1319,13 +1330,14 @@ async function viewWelcome(m){
   else if(step===2){let done=false;
    box.append(h("div",{class:"card"},h("h3",{},"Let me look around"),h("p",{class:"small muted"},"I do one scan that finds your emulators and the BIOS files you already have, so you don't have to point at each one. It only reads names, stays on this computer and uses no internet."),
     scanPanel(()=>{done=true;toast("Scan finished. Everything it found is in use.");},{everything:true}),nav2(true,()=>{S.wizStep=3;go()},"Next")))}
-  else if(step===3){const allow=h("input",{type:"checkbox",checked:!!st.allow_internet}),auto=h("input",{type:"checkbox",checked:st.auto_network_test!==false});
-   box.append(h("div",{class:"card"},h("h3",{},"Privacy and downloads"),
-    h("p",{class:"small"},"Legacy Player never sends anything about you, your computer or your games anywhere. Multiplayer talks only to the server address you choose; other players see your name and tag and nothing else."),
-    h("p",{},h("label",{class:"small"},allow," Allow internet downloads (engines from official project releases, RetroArch cores from libretro, update checks). Each download still asks you first.")),
-    h("p",{},h("label",{class:"small"},auto," Test my network when Legacy Player opens, so I can tell you if you should host or join. Only this computer and your chosen server are contacted.")),
-    h("p",{class:"small muted"},"BIOS files for PS1/PS2/Xbox/DS are never downloaded: they belong to the console makers. I use the copies you dumped from your own consoles."),
-    nav2(true,async()=>{await act(()=>api("settings",{key:"allow_internet",value:allow.checked}));const r=await act(()=>api("settings",{key:"auto_network_test",value:auto.checked}));if(r)S.settings=r.values;S.wizStep=4;go()})))}
+  else if(step===3){const allow=h("input",{type:"checkbox",checked:!!st.allow_internet}),info=h("input",{type:"checkbox",checked:!!st.allow_game_info}),auto=h("input",{type:"checkbox",checked:st.auto_network_test!==false});
+   box.append(h("div",{class:"card"},h("div",{class:"row",style:"gap:14px;align-items:flex-start"},docFace(64),h("div",{class:"grow"},h("h3",{style:"margin-top:0"},"Privacy: you decide what goes online"),
+    h("p",{class:"small"},"Straight from the doctor: Legacy Player doesn't collect data. No tracking, no analytics, no account, nothing sold. Each thing below is its own switch, off unless you tick it, and you can change any of them later on the Privacy page (Account menu)."))),
+    h("p",{},h("label",{class:"small"},allow," ",h("span",{},h("b",{},"Internet downloads. "),"Emulators from their official GitHub releases, RetroArch cores from libretro, box art (sends the game's name) and update checks. Each download still waits for your click."))),
+    h("p",{},h("label",{class:"small"},info," ",h("span",{},h("b",{},"Look up game details. "),"A game's card can ask Wikipedia and Wikidata for its description, release date and makers. Only that game's name and console are sent, when you press Look it up."))),
+    h("p",{},h("label",{class:"small"},auto," ",h("span",{},h("b",{},"Network test at start-up. "),"Tells you whether to host or join. Only this computer and the server you chose are contacted."))),
+    h("p",{class:"small muted"},"Friends (friend codes, invites, messages) is a separate, optional service that stays off until you paste its address under Settings > Friends. BIOS files are never downloaded: they belong to the console makers."),
+    nav2(true,async()=>{for(const[k,el]of[["allow_internet",allow],["allow_game_info",info],["auto_network_test",auto]]){const r=await act(()=>api("settings",{key:k,value:el.checked,informed:true}));if(r)S.settings=r.values}S.wizStep=4;go()})))}
   else{const hm=await api("home");const en=await api("engines");const bios=en.bios.reduce((n,b)=>n+(b.found.length?1:0),0);const p=await api("profile",{claim:true});S.profile=p;renderWho();
    box.append(h("div",{class:"hero"},docFace(120),h("div",{},h("h1",{},"You're good to go."),h("p",{},"Everything is locked in. Here is what I found:"))),
     h("div",{class:"card",style:"margin-top:14px"},
@@ -1354,7 +1366,9 @@ function viewHelp(m){
   sec("notify","Notifications","You are told when someone asks to join, joins, leaves, disconnects, is removed by the host, or when the server restarts. A removed player sees the host's reason."),
   sec("server","Starting and stopping the server","Use Servers: Start, Restart and Stop. From a terminal, python -m server.cli start --detach, stop, restart, and status work the same everywhere. Stopping saves rooms; starting resumes them. A match in progress returns to the ready step so everyone re-syncs."),
   sec("match","Starting a match","NES, SNES, Game Boy, GBA, Genesis and Atari start through RetroArch netplay. GameCube and Wii open Dolphin and guide you through its NetPlay window with the room address filled in. Other consoles have rooms and invites but no match launcher yet."),
-  sec("privacy","Privacy","Legacy Player never sends anything about you, your computer or your games anywhere. Addresses are hidden behind a little eye until you press it. Matches go through the server relay by default so players never learn each other's address. Scans read names only. Downloads and update checks happen only when you press a button and have allowed internet access in Settings."));
+  sec("privacy","Privacy","Legacy Player doesn't collect data: no analytics, no tracking, no account, nothing sold or shared. Scans, your library, saves and controllers only ever read this computer. Addresses are hidden behind a little eye until you press it, and matches go through the server relay by default so players never learn each other's address.",
+   "Each thing that can go online is its own switch, off unless you turn it on: internet downloads, looking up game details (Wikipedia), the friends service, sending problem reports automatically, direct connections and the Tailscale link. The Privacy page (Account menu) lists every one with where it goes and exactly what it sends, and the doctor checks them at every check-up: anything switched on that you never said yes to is flagged until you keep it or turn it off.",
+   h("button",{class:"btn",onclick:()=>nav("privacy")},"Open the Privacy page")));
  if(S.anchor){const el=$("#h-"+S.anchor);if(el)setTimeout(()=>el.scrollIntoView({behavior:"smooth",block:"start"}),60)}
 }
 /* ---------- Saves: backups ---------- */
@@ -1629,7 +1643,7 @@ function launchBox(rm,host){
  const L=rm.launch||{};const dolphin=L.engine==="dolphin";
  const addr=h("input",{type:"text",value:L.suggested_address||"",style:"width:180px","aria-label":"Your address"});
  const port=h("input",{type:"number",value:L.default_port||55435,min:1024,max:65535,style:"width:100px","aria-label":"Port"});
- const mode=h("select",{"aria-label":"Connection type",onchange:()=>{addrRow.hidden=mode.value!=="direct";if(mode.value==="auto"&&!L.private_link_on){(async()=>{if(await ask("Use the encrypted private link when every player has Tailscale (a separate free service from tailscale.com)? Your Tailscale address, not your home address, is shared with the room. If anyone doesn't have it, the normal connection is used. Every player has to turn this on themselves.","Turn on")){if(await act(()=>api("settings",{key:"use_private_link",value:true}),"Turned on"))L.private_link_on=true;else mode.value="traversal"}else mode.value="traversal"})()}
+ const mode=h("select",{"aria-label":"Connection type",onchange:()=>{addrRow.hidden=mode.value!=="direct";if(mode.value==="auto"&&!L.private_link_on){(async()=>{if(await ask("Use the encrypted private link when every player has Tailscale (a separate free service from tailscale.com)? Your Tailscale address, not your home address, is shared with the room. If anyone doesn't have it, the normal connection is used. Every player has to turn this on themselves.","Turn on")){if(await setPrivate("use_private_link",true,true))L.private_link_on=true;else mode.value="traversal"}else mode.value="traversal"})()}
   if(mode.value==="private"){const p=L.private_link||{};if(!p.installed)toast("Install Tailscale first (tailscale.com/download), then sign in.","warn");else if(!p.running)toast("Open Tailscale and sign in first.","warn")}}},h("option",{value:"traversal"},"Dolphin traversal server (easiest, no router setup)"),h("option",{value:"auto"},"Automatic: encrypted private link if everyone has Tailscale, otherwise traversal"),h("option",{value:"private"},"Private link only (encrypted, needs Tailscale)"),h("option",{value:"direct"},"Direct connection (address and port)"));
  const relay=h("input",{type:"checkbox",checked:!!L.relay_available,disabled:!L.relay_available||!L.direct_allowed,title:!L.relay_available?"The relay needs the Legacy Player app (Python 3.13+)":L.direct_allowed?"":"Direct connections are off in Settings > Privacy, so the relay is always used."});
  const relayNote=(!dolphin&&host&&!L.relay_available)?h("p",{class:"warn small"},"The address-hiding relay is not available in this Python. Use the Legacy Player app, or allow direct connections in Settings > Privacy to play on a trusted network."):null;
@@ -1644,13 +1658,13 @@ function launchBox(rm,host){
  codeRow.append(code,h("button",{class:"btn primary",onclick:async()=>{const r=await act(()=>api("mp_share_code",{code:code.value}),"Code shared with the room");if(r){S.codeDraft="";const st=await api("mp_state").catch(()=>null);if(st){S.room=st.room;drawRoom($("#room"))}}}},L.endpoint_kind==="code"?"Share a new code":"Share Dolphin host code"),
   L.endpoint_kind==="code"?h("span",{class:"small good"},"Code shared. Your friend can press Open Dolphin."):null);
  const allowRow=(dolphin&&!L.direct_allowed)?h("div",{class:"warn small",style:"margin:6px 0"},h("p",{},"Dolphin's online play connects you and your friend to each other, so you each learn the other's address. It is off until you allow it, and your friend has to allow it on their computer too."),
-  h("button",{class:"btn",onclick:async()=>{if(!await ask("Allow direct connections? The other players in a Dolphin game will be able to see your address.","Allow"))return;const x=await act(()=>api("settings",{key:"allow_direct_connections",value:true}),"Allowed");if(x){const st=await api("mp_state").catch(()=>null);if(st){S.room=st.room;drawRoom($("#room"))}}}},"Allow direct connections")):null;
+  h("button",{class:"btn",onclick:async()=>{if(!await ask("Allow direct connections? The other players in a Dolphin game will be able to see your address.","Allow"))return;const x=await setPrivate("allow_direct_connections",true,true);if(x){const st=await api("mp_state").catch(()=>null);if(st){S.room=st.room;drawRoom($("#room"))}}}},"Allow direct connections")):null;
  const waitingForCode=dolphin&&!host&&!L.endpoint_kind;
  const label=dolphin?(host?"Open Dolphin (host)":"Open Dolphin"):(host?"Launch match (host)":"Join match");
  const go=h("button",{class:"btn good",disabled:!L.ready||waitingForCode,title:waitingForCode?"Wait for the host to share a Dolphin host code":(L.reason||""),onclick:async()=>{
    if(dolphin){
      if(!await ask("Dolphin NetPlay connects players to each other, so the others will learn this computer's address. Allow that for Dolphin games and open Dolphin?",L.direct_allowed?"Open Dolphin":"Allow and open Dolphin"))return
-     if(!L.direct_allowed){const ok=await act(()=>api("settings",{key:"allow_direct_connections",value:true}));if(!ok)return;L.direct_allowed=true}}
+     if(!L.direct_allowed){const ok=await setPrivate("allow_direct_connections",true,true);if(!ok)return;L.direct_allowed=true}}
    const body=host?(dolphin?{mode:mode.value,address:addr.value.trim(),port:(+port.value||L.default_port),expose_address:true}:{address:addr.value.trim(),port:+port.value,relay:relay.checked,expose_address:!relay.checked&&await ask("Direct connection: every guest will learn this computer's address ("+addr.value.trim()+"). Continue?")}):{expose_address:dolphin||(L.endpoint_kind==="direct"&&await ask("The host chose a direct connection: you and the host will learn each other's address. Continue?"))};
    if(!host&&!dolphin&&L.endpoint_kind==="direct"&&!body.expose_address)return;
    if(host&&!dolphin&&!relay.checked&&!body.expose_address)return;
@@ -1743,7 +1757,7 @@ async function viewServers(m){
   const say=(text)=>toast(text);
   if(!t.installed){
    if(!await ask("Tailscale is a free private network that lets you and a friend connect even when your internet provider blocks direct connections. Legacy Player can install it for you through Windows (official Tailscale package); Windows will ask you to approve. Install it now?","Install Tailscale"))return;
-   if(!V.allow_internet&&!await act(()=>api("settings",{key:"allow_internet",value:true})))return;
+   if(!V.allow_internet&&!await setPrivate("allow_internet",true))return;
    t=await act(()=>api("tailscale",{action:"install",confirm:true}));if(!t)return;
    for(let i=0;i<150&&t.install.state==="installing";i++){say(t.install.message);await new Promise(r=>setTimeout(r,4000));t=await read()}
    if(t.install.state==="error"){say(t.install.message);window.open(t.download_page,"_blank","noopener");return}
@@ -2116,7 +2130,7 @@ function settingGroups(m,s,groups,wanted){
  for(const[g,items]of Object.entries(groups).filter(([g])=>wanted(g)).sort((a,b)=>(a[0]==="You"?-1:0)-(b[0]==="You"?-1:0))){
   m.append(h("div",{class:"card",style:"margin-top:14px"},h("h3",{},g),...items.map(([k,sp])=>{
    let ctl;const v=s.values[k];
-   const save=async val=>{const r=await act(()=>api("settings",{key:k,value:val}));if(r){S.settings=r.values;if(k==="theme")document.documentElement.dataset.theme=val;if(k==="background")applyBg(val);if(k==="view"||k==="show_region")toast("Saved");if(k==="display_name"){S.profile=await api("profile");renderWho()}if(k==="auto_network_test"&&val)autoNetTest(300);if(k==="friends_server"){S.friendsOn=/^https:\/\//.test(val)||/^http:\/\/(127\.0\.0\.1|localhost)/.test(val);renderNav();buildMenubar();if(S.friendsOn)toast("The Friends page is on. Open it to get your friend code.")}}};
+   const save=async val=>{const r=(PRIVACY_KEYS[k]||k==="error_reports")?await setPrivate(k,val):await act(()=>api("settings",{key:k,value:val}));if(!r&&PRIVACY_KEYS[k]){go();return}if(r){S.settings=r.values;if(k==="theme")document.documentElement.dataset.theme=val;if(k==="background")applyBg(val);if(k==="view"||k==="show_region")toast("Saved");if(k==="display_name"){S.profile=await api("profile");renderWho()}if(k==="auto_network_test"&&val)autoNetTest(300);if(k==="friends_server"){S.friendsOn=/^https:\/\//.test(val)||/^http:\/\/(127\.0\.0\.1|localhost)/.test(val);renderNav();buildMenubar();if(S.friendsOn)toast("The Friends page is on. Open it to get your friend code.")}}};
    if(sp.type==="bool")ctl=h("input",{type:"checkbox",checked:v,onchange:e=>save(e.target.checked)});
    else if(k==="theme")ctl=themePicker();
    else if(sp.type==="choice")ctl=h("select",{onchange:e=>save(e.target.value)},...sp.choices.map(c=>h("option",{value:c,selected:c===v},(sp.labels&&sp.labels[c])||c)));
@@ -2436,6 +2450,9 @@ function buildVisit(dr,noscan){const act=dr.issues.filter(i=>!i.dismissed),L=[],
  L.push([dr.saves_ready?"happy":"worried",dr.saves_ready?"Your save folders are in great shape. No lost progress on my watch!":"I haven't made your save folders yet. Press Scan everything and I'll set them up."]);
  L.push(["happy",dr.bios_needed?"BIOS files: "+dr.bios_have+" of "+dr.bios_needed+" found.":"No BIOS files needed for what you have. Easy!"]);
  L.push([dr.last_scan?"happy":"worried",dr.last_scan?"I last scanned your computer "+ago(dr.last_scan)+".":"I've never scanned your computer. Let's fix that with a Scan everything!"]);
+ {const pv=dr.privacy||{online:[],to_look_at:0};
+  L.push(["happy","A word on privacy: Legacy Player doesn't collect anything about you. No tracking, no accounts, nothing sold. Everything I just looked at stayed on this computer."]);
+  L.push([pv.to_look_at?"worried":"happy",pv.online.length?"The only things that go online are the ones switched on: "+pv.online.join(", ")+"."+(pv.to_look_at?" "+pv.to_look_at+" of them you never told me you wanted. Check the case files, or open the Privacy page.":" You chose each of them."):"Nothing is switched on that talks to the internet. Quiet as a library."])}
  if(act.length){L.push(["worried","Now, about "+(act.length===1?"that one thing":"those "+act.length+" things")+"..."]);act.slice(0,4).forEach(i=>L.push(["worried",i.text]));
   L.push(["worried","Don't worry. Press Fix on the case files below and I'll get right on it, or tell me you don't need it."]);
   L.push(["happy","Sort those out and you'll be healthy as can be. And then the best medicine is to stay home and play video games!"])}
@@ -2520,13 +2537,17 @@ function showRx(){const scene=$(".office");if(!scene||$(".rx"))return;const n=S.
 const GRADS=[["#3b6bff","#7a5cff"],["#d9468f","#ff8a5c"],["#0aa57a","#2bd1b0"],["#7b4dff","#4fc3ff"],["#e8a21a","#ff6a3d"],["#2b8cff","#3be0a8"]];
 async function fixDolphin(i,refresh){
  if(i.kind==="dolphin-folders"){const r=await act(()=>api("dolphin_folders",{}));if(r){toast(r.added?"Added "+r.added+" game folder(s) to Dolphin.":"Dolphin already has them.");refresh()}}
- else{if(!await ask("Dolphin online play lets the other players see your address. Allow direct connections?","Allow"))return;if(await act(()=>api("settings",{key:"allow_direct_connections",value:true}),"Allowed"))refresh()}}
+ else{if(!await ask("Dolphin online play lets the other players see your address. Allow direct connections?","Allow"))return;if(await setPrivate("allow_direct_connections",true,true))refresh()}}
 function caseCards(dr,refresh){const todo=dr.issues.filter(i=>!i.dismissed),quiet=dr.issues.filter(i=>i.dismissed);
- const ic={core:AVATARS.gem,emulator:AVATARS.controller,bios:AVATARS.ghost};
+ const ic={core:AVATARS.gem,emulator:AVATARS.controller,bios:AVATARS.ghost,privacy:AVATARS.gem};
  const fix=i=>i.kind==="dolphin-folders"||i.kind==="dolphin-direct"?{t:i.kind==="dolphin-folders"?"Add the folders":"Allow it",fn:()=>fixDolphin(i,refresh)}:i.kind==="core"?{t:"Install the core",fn:()=>{const el=$("#supplies");if(el)el.scrollIntoView({behavior:"smooth"});toast("Press “Install missing cores” in the supply cabinet","")}}:{t:i.kind==="bios"?"Find BIOS files":"Find an emulator",fn:()=>nav("engines")};
  return h("div",{},todo.length?h("div",{class:"cases"},...todo.map((i,n)=>{const g=GRADS[n%GRADS.length],f=fix(i);
    return h("div",{class:"case",style:`--c1:${g[0]};--c2:${g[1]}`},h("span",{class:"stamp"},"NEEDS A DOCTOR"),pixels((ic[i.kind]||AVATARS.gem).rows,44,"caseicon"),
-    h("div",{class:"ct"},i.kind==="dolphin-folders"?"Dolphin can't see your games":i.kind==="dolphin-direct"?"Dolphin online is switched off":i.kind==="core"?"Missing core":i.kind==="bios"?"Missing BIOS":"Missing emulator"),h("p",{},i.text),
+    h("div",{class:"ct"},i.kind==="privacy"?"Something goes online":i.kind==="dolphin-folders"?"Dolphin can't see your games":i.kind==="dolphin-direct"?"Dolphin online is switched off":i.kind==="core"?"Missing core":i.kind==="bios"?"Missing BIOS":"Missing emulator"),h("p",{},i.text),
+    i.kind==="privacy"?h("div",{class:"row",style:"gap:8px"},
+      h("button",{class:"btn primary",onclick:async()=>{if(await act(()=>api("privacy",{action:"keep",id:i.item}),"Kept on. The doctor won't ask again unless it changes."))refresh()}},"Yes, keep it on"),
+      h("button",{class:"btn",onclick:async()=>{if(await act(()=>api("privacy",{action:"off",id:i.item}),"Turned off"))refresh()}},"Turn it off"),
+      h("button",{class:"btn",onclick:()=>nav("privacy")},"What does it send?")):
     h("div",{class:"row",style:"gap:8px"},h("button",{class:"btn primary",onclick:f.fn},f.t),
      h("button",{class:"btn",title:"I do not want to install that. Stop worrying about it.",onclick:async()=>{await act(()=>api("doctor_dismiss",{key:i.key}));refresh()}},"I don't need it")))})):null,
   quiet.length?h("div",{class:"small muted",style:"margin-top:8px"},quiet.length+" worr"+(quiet.length>1?"ies":"y")+" set aside. ",h("a",{href:"#",onclick:async e=>{e.preventDefault();for(const q of quiet)await api("doctor_dismiss",{key:q.key,undo:true});refresh()}},"Bring back")):null)}
@@ -2556,6 +2577,7 @@ async function viewSetup(m){
    h("div",{class:"clip"},h("h3",{style:"margin:0 0 10px"},"Today's check-up"),report)),
   dr.issues.length?h("h3",{class:"sect"},"Case files"):"",caseCards(dr,refresh),
   h("h3",{class:"sect"},"In the waiting room: your emulators"),emulatorCards(dr),
+  h("h3",{class:"sect"},"Privacy check: what goes online"),privacySummary(dr),
   h("h3",{class:"sect"},"The patient's chart: what you're playing on"),specsBox,
   h("h3",{class:"sect"},"The supply cabinet"),supplies,
   h("h3",{class:"sect"},"Closing the clinic"),
@@ -2754,9 +2776,9 @@ async function gameCard(id){
  const srcName={you:"you",file:"file name",wikipedia:"Wikipedia",wikidata:"Wikidata",known:"built-in list",console:"console limit"};
  const src=(k)=>k?h("span",{class:"src "+k,title:"Where this comes from"},srcName[k]||k):null;
  const fact=(label,val,k)=>val?[h("span",{class:"k"},label),h("span",{class:"v"},val,src(k))]:[];
- const lookupBtn=()=>h("button",{class:"btn",disabled:c.lookup.state==="running",title:c.allow_internet?"Asks Wikipedia and Wikidata for this game's description, release date, makers and player count. Only the name and console are sent.":"Needs 'Allow internet downloads' in Settings",
-   onclick:async()=>{if(!c.allow_internet){netTipModal();return}
-    if(!c.looked_up_at&&!await ask("Look this game up? Legacy Player asks en.wikipedia.org and wikidata.org for "+c.title+" ("+c.console_name+"): a short description, the release date, who made it and how many can play. Only the name and console are sent, once; the answer is kept on this computer.","Look it up"))return;
+ const lookupBtn=()=>h("button",{class:"btn",disabled:c.lookup.state==="running",title:"Asks Wikipedia and Wikidata for this game's description, release date, makers and player count. Only the name and console are sent."+(c.allow_game_info?"":" Needs 'Look up game details online' (Privacy)."),
+   onclick:async()=>{if(!c.allow_game_info){const r=await setPrivate("allow_game_info",true);if(!r)return;c.allow_game_info=true}
+    else if(!c.looked_up_at&&!await ask("Look this game up? Legacy Player asks en.wikipedia.org and wikidata.org for "+c.title+" ("+c.console_name+"). Only the name and console are sent, once; the answer is kept on this computer.","Look it up"))return;
     const r=await act(()=>api("game_card",{id,action:"lookup",consent:true}));if(r){c=r;draw();poll()}}},c.lookup.state==="running"?[h("span",{class:"spin"}),"Looking it up…"]:c.looked_up_at?"Look it up again":"Look it up online");
  const poll=()=>{clearInterval(timer);timer=setInterval(async()=>{if(!ov.isConnected){clearInterval(timer);return}const r=await api("game_card",{id}).catch(()=>null);if(!r)return;c=r;if(r.lookup.state!=="running"){clearInterval(timer);if(r.lookup.state==="error")toast(r.lookup.error,"warn");else if(!r.source)toast("Nothing was found for that name. You can type the details yourself.","warn");draw()}},1200)};
  const draw=()=>{
@@ -2861,52 +2883,130 @@ async function viewDisplay(m){
     h("button",{class:"btn",onclick:()=>{S.ctrl=c.id;nav("controllers")}},c.pad_layout_customized?"Controller layout (custom)":"Controller layout"))),
   h("div",{class:"vpbody"},h("div",{},...F.map(seg)),pvC.el)))}
 
+/* ================= Privacy: what goes online, each on its own switch ================= */
+const PRIVACY_INTRO="Legacy Player doesn't collect data. There are no analytics, no tracking, no account and nothing is sold or shared. The only things that ever leave this computer are the features below that you switch on, and each one says exactly where it goes and what it carries.";
+/* Before a privacy switch goes on: say what it does, where it goes and what it sends; the yes is remembered so the doctor won't ask again */
+async function privacyAsk(id){const d=await api("privacy",{}).catch(()=>null);const it=d&&d.items.find(x=>x.id===id);if(!it)return true;
+ return new Promise(res=>{const done=v=>{ov.remove();res(v)};
+  const ov=h("div",{class:"modal",role:"dialog","aria-modal":"true"},h("div",{class:"modalbox",style:"max-width:560px"},
+   h("div",{class:"row",style:"gap:12px;align-items:flex-start"},pixels(doctorRows("happy"),56,"doctor happy"),h("div",{class:"grow"},h("h3",{style:"margin:0 0 4px"},"Turn on: "+it.title+"?"),h("p",{class:"small",style:"margin:0"},it.what))),
+   h("div",{class:"pvitem",style:"display:block;margin-top:10px"},h("div",{class:"meta"},h("span",{class:"k"},"Talks to"),h("span",{},it.contacts.join(", ")),h("span",{class:"k"},"Sends"),h("span",{},it.sends),h("span",{class:"k"},"If you say no"),h("span",{},it.off_means))),
+   h("p",{class:"small muted"},"This isn't for collecting data: nothing about you is kept or used by anyone. You can turn it off any time on the Privacy page."),
+   h("div",{class:"row",style:"justify-content:flex-end;gap:8px"},h("button",{class:"btn",onclick:()=>done(false)},"Not now"),h("button",{class:"btn primary",onclick:()=>done(true)},"Turn it on"))));
+  document.body.append(ov)})}
+/* the settings key each privacy item uses, so any switch for it asks first */
+const PRIVACY_KEYS={allow_internet:"downloads",allow_game_info:"game_info",friends_server:"friends",allow_direct_connections:"direct",use_private_link:"private_link",auto_network_test:"network_test"};
+async function setPrivate(key,value,explained){const id=PRIVACY_KEYS[key];const turningOn=key==="error_reports"?value==="auto":!!value;
+ if(!explained&&key==="error_reports"&&turningOn&&!await privacyAsk("reports"))return null;
+ if(!explained&&id&&turningOn&&!await privacyAsk(id))return null;
+ const r=await act(()=>api("settings",{key,value,informed:true}));if(r)S.settings=r.values;return r}
+function privacySummary(dr){const pv=dr.privacy||{online:[],to_look_at:0};
+ return h("div",{class:"card row",style:"align-items:center;gap:14px"},pixels(AVATARS.gem.rows,40),h("div",{class:"grow"},
+   h("b",{},pv.online.length?pv.online.length+" thing"+(pv.online.length===1?"":"s")+" can go online: "+pv.online.join(", "):"Nothing goes online"),
+   h("div",{class:"small muted"},pv.to_look_at?pv.to_look_at+" of them you never said yes to. The case files above ask about each one.":"Every one of them was your choice. Legacy Player itself collects nothing.")),
+  h("button",{class:"btn "+(pv.to_look_at?"primary":""),onclick:()=>nav("privacy")},"Open the privacy page"))}
+async function viewPrivacy(m){
+ let d=await api("privacy",{});
+ const box=h("div",{});
+ m.append(h("div",{class:"row",style:"gap:16px;align-items:center"},pixels(doctorRows(d.to_look_at?"worried":"happy"),84,"doctor "+(d.to_look_at?"worried":"happy")),h("div",{class:"grow"},h("h2",{style:"margin:0"},"Privacy: what goes online"),h("p",{class:"muted",style:"margin:4px 0 0"},PRIVACY_INTRO))),box);
+ const draw=()=>{
+  box.replaceChildren(
+   d.to_look_at?h("div",{class:"inbanner warn",role:"status"},d.to_look_at+" thing"+(d.to_look_at===1?" is":"s are")+" switched on that you never said yes to (an older settings file, or someone else changed it). Keep or turn off each one marked below. ",h("button",{class:"btn small",onclick:async()=>{const r=await act(()=>api("privacy",{action:"keep_all"}),"All kept");if(r){d=r;draw()}}},"Keep them all")):
+    h("div",{class:"inbanner ok",role:"status"},"✓ "+(d.online?d.online+" switched on, each by you.":"Nothing that goes online is switched on.")),
+   ...d.items.map(it=>{const sw=h("input",{type:"checkbox",role:"switch",checked:it.on,"aria-label":it.title,onchange:async e=>{e.target.checked=it.on;
+      if(it.on){const r=await act(()=>api("privacy",{action:"off",id:it.id}),it.title+": off");if(r){d=r;draw()}return}
+      if(it.id==="friends"){nav("settings","friends");toast("Paste the friends service address here to turn it on.");return}
+      const key=it.setting,val=key==="error_reports"?"auto":true;const r=await setPrivate(key,val);if(r){d=await api("privacy",{});draw()}}});
+    return h("div",{class:"card pvitem"+(it.needs_look?" look":""),style:"margin-top:12px"},
+     h("div",{},h("div",{class:"row",style:"gap:10px"},h("h3",{style:"margin:0"},it.title),h("span",{class:"pvstate "+(it.needs_look?"look":it.on?"on":"")},it.needs_look?"ON, NOT CONFIRMED":it.on?"ON":"OFF")),
+      h("p",{class:"small",style:"margin:6px 0 0"},it.what),
+      h("div",{class:"meta"},h("span",{class:"k"},"Talks to"),h("span",{},it.contacts.join(", ")),h("span",{class:"k"},"Sends"),h("span",{},it.sends),h("span",{class:"k"},"When off"),h("span",{},it.off_means)),
+      it.needs_look?h("div",{class:"row",style:"margin-top:10px;gap:8px"},h("button",{class:"btn primary",onclick:async()=>{const r=await act(()=>api("privacy",{action:"keep",id:it.id}),"Kept on");if(r){d=r;draw()}}},"Yes, I want this on"),h("button",{class:"btn",onclick:async()=>{const r=await act(()=>api("privacy",{action:"off",id:it.id}),"Turned off");if(r){d=r;draw()}}},"Turn it off")):null),
+     h("span",{class:"switch",title:it.on?"Turn off":"Turn on"},sw,h("i",{})))}),
+   h("div",{class:"card",style:"margin-top:12px"},h("h3",{style:"margin-top:0"},"Never sent, by anything"),h("p",{class:"small"},d.never),
+    h("p",{class:"small muted",style:"margin:0"},"Steam and Epic pictures, your library, saves, controllers and the doctor's scans only read this computer. Starting your own server for friends opens a port on your router (UPnP) when you ask it to; that is your router, not the internet at large.")))};
+ draw()}
+
 /* ================= Friends: the separate, optional friends service ================= */
 async function viewFriends(m){
  let d=await act(()=>api("friends",{action:"status"}));if(!d)return;
- if(!d.enabled){m.append(h("h2",{},"Friends"),h("div",{class:"why"},"Friends is a separate, optional service: friend codes, who is online, one-click invites into a room and short messages. Legacy Player works fully without it, and no account is made. Paste the address of a friends service a friend or the maintainers run under Settings > Friends and this page comes alive."),
-  h("div",{class:"card"},h("p",{},"No friends service is set yet."),h("div",{class:"row"},h("button",{class:"btn primary",onclick:()=>nav("settings","friends")},"Set it up in Settings"),h("span",{class:"small muted"},"Run your own with  python -m server.social  (see docs/HOSTING_PUBLIC_SERVER.md)."))));return}
- const box=h("div",{});m.append(h("h2",{},"Friends"),h("div",{class:"why"},"Give your friend code to people you know; when they add it (or you add theirs) you see each other here, with who is online, the room they are in and a one-click Join. Nobody else can see you. Codes are not accounts: this app has one, and you can leave at any time."),box);
- let sel=S.friendSel||null,inbox=null,thread=null;
- const refresh=async()=>{const r=await api("friends",{action:"poll"}).catch(()=>null);if(!r||!box.isConnected)return;d=r;if(!r.inbox){draw();return}inbox=r.inbox;S.friendsBadge=(inbox.requests.length+inbox.invites.length+inbox.friends.reduce((n,f)=>n+(f.unread||0),0))||0;renderNav();if(sel){thread=await api("friends",{action:"thread",friend:sel}).catch(()=>null)}draw()};
+ if(!d.enabled){m.append(h("h2",{},"Friends"),h("div",{class:"why"},"Friends is a separate, optional service: friend codes, who is online, one-click invites into a room, messages and blocking. Legacy Player works fully without it, and no account is made. Paste the address of a friends service a friend or the maintainers run under Settings > Friends and this page comes alive."),
+  h("div",{class:"card"},h("p",{},"No friends service is set yet."),h("div",{class:"row"},h("button",{class:"btn primary",onclick:()=>nav("settings","friends")},"Set it up in Settings"),h("button",{class:"btn",onclick:()=>nav("privacy")},"What would it send?"),h("span",{class:"small muted"},"Run your own with  python -m server.social  (see docs/HOSTING_PUBLIC_SERVER.md)."))));return}
+ const box=h("div",{});m.append(h("h2",{},"Friends"),box);
+ const T=S.friendTab||"friends";let tab=T,sel=S.friendSel||null,inbox=null,thread=null,busy=false;
+ const setTab=t=>{tab=S.friendTab=t;draw()};
+ const take=r=>{if(r&&r.inbox){inbox=r.inbox;S.friendsBadge=badge(inbox);renderNav()}return r};
+ const badge=x=>x?x.requests.length+x.invites.length+(x.unread||0):0;
+ const refresh=async()=>{if(busy)return;busy=true;try{const r=await api("friends",{action:"poll"}).catch(()=>null);if(!r||!box.isConnected)return;d=r;if(!r.inbox){draw();return}take(r);
+   if(sel&&tab==="inbox"){thread=await api("friends",{action:"thread",friend:sel}).catch(()=>null)}draw()}finally{busy=false}};
+ const call=async(body,ok)=>{const r=await act(()=>api("friends",body),ok);take(r);if(r&&box.isConnected)draw();return r};
+ const openChat=async id=>{sel=S.friendSel=id;tab=S.friendTab="inbox";thread=null;draw();thread=await api("friends",{action:"thread",friend:id}).catch(()=>null);const f=inbox&&inbox.friends.find(x=>x.id===id);if(f)f.unread=0;await refresh()};
+ const block=async(id,name)=>{if(!await ask("Block "+name+"? You stop being friends, your conversation and any invites from them are deleted, and they can no longer find you with your code, message you or invite you. They are not told.","Block"))return;
+  const r=await call({action:"block",player:id},name+" is blocked");if(r){if(sel===id){sel=S.friendSel=null;thread=null}draw()}};
+ const remove=async(id,name)=>{if(!await ask("Remove "+name+" from your friends? You can add each other again later with your codes.","Remove"))return;const r=await call({action:"remove",friend:id},name+" removed");if(r){if(sel===id){sel=S.friendSel=null;thread=null}draw()}};
  const joinInvite=async inv=>{if(inv.server_code){const r=await act(()=>api("server_connect",{code:inv.server_code}));if(!r)return;if(!r.connected){toast(r.message,"warn");return}}
-  const games=(await api("library",{}).catch(()=>({games:[]}))).games;const g=games.find(x=>x.title.toLowerCase()===(inv.game||"").toLowerCase())||games.find(x=>x.title.toLowerCase().includes((inv.game||"").toLowerCase().slice(0,12)));
+  const games=(await api("library",{}).catch(()=>({games:[]}))).games;const want=(inv.game||"").toLowerCase();const g=games.find(x=>x.title.toLowerCase()===want)||games.find(x=>want&&x.title.toLowerCase().includes(want.slice(0,12)));
   if(!g){toast("You need "+(inv.game||"that game")+" in your library to join. Add it, then press Rescan.","warn");S.joinCode=inv.invite_code;nav("together");return}
   const x=await act(()=>api("mp_join",{id:g.id,invite_code:inv.invite_code}));if(x){S.room=x.room;api("friends",{action:"dismiss",from:inv.from}).catch(()=>{});nav("together");poll()}};
+ const pres=on=>h("span",{class:"pres"+(on?" on":"")});
+ const friendsTab=()=>{const me=inbox.me;
+  const codeIn=h("input",{type:"text",placeholder:"Friend's code, e.g. MK7-4Q2X",maxlength:9,style:"width:220px","aria-label":"Friend's code",onkeydown:e=>{if(e.key==="Enter")addBtn.click()}});
+  const addBtn=h("button",{class:"btn good",onclick:async()=>{if(!codeIn.value.trim()){toast("Type your friend's code first","warn");return}const r=await call({action:"request",code:codeIn.value});if(r){codeIn.value="";toast(r.inbox.friends.length&&r.already?"You are already friends":"Request sent. They see it under Requests.");draw()}}},"Add friend");
+  return h("div",{class:"fr"},
+   h("div",{},h("div",{class:"card"},h("div",{class:"row"},h("div",{class:"grow"},h("div",{class:"small muted"},"Your friend code"),h("span",{class:"code mid"},me.code)),h("button",{class:"btn",onclick:()=>copyText(me.code,"Friend code copied")},"Copy")),
+     h("p",{class:"small muted",style:"margin:8px 0 0"},"You appear as "+me.name+". "+(d.share_room?"Friends see the room you host and can join it.":"Friends only see that you are online (Settings > Friends).")),
+     h("div",{class:"row",style:"margin-top:10px"},codeIn,addBtn),
+     inbox.sent.length?h("p",{class:"small muted",style:"margin:8px 0 0"},"Waiting for an answer from: "+inbox.sent.map(x=>x.name).join(", ")):null),
+    h("details",{class:"fold",style:"margin-top:12px"},h("summary",{class:"small muted"},"Leave the friends service"),h("div",{class:"card",style:"margin-top:6px"},h("p",{class:"small"},"Your code, friends, messages and block list on the service are deleted. Nothing else changes."),h("button",{class:"btn bad",onclick:async()=>{if(!await ask("Leave the friends service? Your code stops working and your friends there no longer see you.","Leave"))return;const x=await act(()=>api("friends",{action:"goodbye"}));if(x){sel=S.friendSel=null;d=x;inbox=null;draw()}}},"Leave")))),
+   h("div",{class:"card"},h("div",{class:"row"},h("h3",{class:"grow",style:"margin:0"},"Your friends",h("span",{class:"badge good",style:"margin-left:8px"},inbox.online+" online")),h("button",{class:"btn small",onclick:refresh},"Refresh")),
+    inbox.friends.length?h("div",{},...inbox.friends.map(f=>h("div",{class:"frow"},pres(f.online),
+      h("div",{class:"grow"},h("div",{class:"nm"},f.name,f.unread?h("span",{class:"unread",style:"margin-left:8px"},f.unread):null),h("div",{class:"st"},f.online?(f.room?"In a room: "+(f.room.game||"")+" ("+f.room.players+(f.room.max_players?"/"+f.room.max_players:"")+")":(f.status||"online")):"offline")),
+      f.online&&f.room?h("button",{class:"btn good small",onclick:()=>joinInvite({from:f.id,name:f.name,game:f.room.game,invite_code:f.room.invite_code,server_code:f.room.server_code})},"Join"):null,
+      S.room&&S.room.role==="host"?h("button",{class:"btn small",title:"Send them your room's invite",onclick:()=>call({action:"invite",to:f.id},"Invite sent to "+f.name)},"Invite"):null,
+      h("button",{class:"btn small",onclick:()=>openChat(f.id)},"Message"),
+      h("button",{class:"btn small",title:"More",onclick:e=>{e.stopPropagation();const r=e.target.getBoundingClientRect();ctxMenu(r.left,r.bottom+4,[{label:"Message",fn:()=>openChat(f.id)},{label:"Copy their name",fn:()=>copyText(f.name)},"-",{label:"Remove friend",fn:()=>remove(f.id,f.name)},{label:"Block",fn:()=>block(f.id,f.name)}])}},"⋯")))):
+     h("p",{class:"muted small"},"No friends yet. Swap codes with someone you know: they add yours, or you add theirs.")))};
+ const inboxTab=()=>{const friend=sel&&(inbox.friends.find(f=>f.id===sel)||inbox.conversations.find(c=>c.id===sel));
+  const convs=inbox.conversations;const noConv=inbox.friends.filter(f=>!convs.some(c=>c.id===f.id));
+  const msgIn=h("input",{type:"text",placeholder:friend?"Message "+friend.name:"",maxlength:500,style:"flex:1","aria-label":"Message",onkeydown:e=>{if(e.key==="Enter")sendBtn.click()}});
+  const sendBtn=h("button",{class:"btn primary",onclick:async()=>{if(!msgIn.value.trim())return;const r=await act(()=>api("friends",{action:"message",to:sel,text:msgIn.value}));if(r){msgIn.value="";thread=r;await refresh();const i2=box.querySelector("input[aria-label=Message]");if(i2)i2.focus()}}},"Send");
+  const isFriend=friend&&inbox.friends.some(f=>f.id===sel);
+  return h("div",{},
+   inbox.invites.length?h("div",{class:"card",style:"margin-bottom:12px"},h("h3",{style:"margin-top:0"},"Invited to play"),...inbox.invites.map(i=>h("div",{class:"frow"},h("div",{class:"grow"},h("div",{class:"nm"},i.name+" · "+(i.game||"a game")),h("div",{class:"st"},"Sent "+ago(i.at)+(i.server_code?" · on their server":""))),
+     h("button",{class:"btn primary small",onclick:()=>joinInvite(i)},"Join"),h("button",{class:"btn small",onclick:()=>call({action:"dismiss",from:i.from})},"Dismiss"),h("button",{class:"btn small bad",onclick:()=>block(i.from,i.name)},"Block")))):null,
+   h("div",{class:"fr"},
+    h("div",{class:"card"},h("div",{class:"row"},h("h3",{class:"grow",style:"margin:0"},"Conversations"),inbox.unread?h("button",{class:"btn small",onclick:()=>call({action:"read_all"},"All marked read")},"Mark all read"):null),
+     convs.length?h("div",{style:"margin-top:6px"},...convs.map(c=>h("div",{class:"conv"+(c.id===sel?" on":"")+(c.unread?" unread":""),role:"button",tabindex:0,onclick:()=>openChat(c.id),onkeydown:e=>{if(e.key==="Enter")openChat(c.id)}},
+       pres(c.online),h("div",{class:"cwho"},h("div",{class:"nm"},c.name,c.unread?h("span",{class:"unread",style:"margin-left:8px"},c.unread):null),h("div",{class:"last"},(c.mine?"You: ":"")+c.last)),h("span",{class:"when"},ago(c.at))))):h("p",{class:"small muted"},"No messages yet."),
+     noConv.length?h("div",{style:"margin-top:10px"},h("div",{class:"small muted",style:"margin-bottom:4px"},"Start a conversation"),h("div",{class:"chips",style:"margin:0"},...noConv.map(f=>h("button",{class:"chip",onclick:()=>openChat(f.id)},f.name)))):null),
+    friend?h("div",{class:"card"},h("div",{class:"row"},pres(friend.online),h("h3",{class:"grow",style:"margin:0"},friend.name),
+       h("button",{class:"btn small",title:"Deletes this conversation from your inbox; they keep their copy",onclick:async()=>{if(!await ask("Delete your conversation with "+friend.name+"? Only your copy is deleted.","Delete"))return;const r=await call({action:"clear_thread",friend:sel},"Conversation deleted");if(r){thread=null;draw()}}},"Delete conversation"),
+       isFriend?h("button",{class:"btn small",onclick:()=>remove(sel,friend.name)},"Remove friend"):null,h("button",{class:"btn small bad",onclick:()=>block(sel,friend.name)},"Block")),
+      h("div",{class:"msgs"},...(thread&&thread.messages&&thread.messages.length?thread.messages.map(mm=>h("div",{class:"msg"+(mm.mine?" mine":"")},mm.text,h("span",{class:"t"},ago(mm.at)))):[h("p",{class:"small muted"},thread?"No messages yet. Say hi! Messages are kept for a week.":"Loading…")])),
+      isFriend?h("div",{class:"row",style:"margin-top:8px"},msgIn,sendBtn):h("p",{class:"small muted"},"You are no longer friends, so you can't reply. Add each other again to keep talking.")):
+     h("div",{class:"card"},h("p",{class:"muted"},"Pick a conversation, or start one with a friend.")))) };
+ const requestsTab=()=>h("div",{class:"fr"},
+  h("div",{class:"card"},h("h3",{style:"margin-top:0"},"Wants to be your friend"),inbox.requests.length?h("div",{},...inbox.requests.map(r=>h("div",{class:"frow"},h("span",{class:"nm grow"},r.name),
+    h("button",{class:"btn good small",onclick:()=>call({action:"decide",from:r.id,accept:true},"You and "+r.name+" are friends")},"Accept"),h("button",{class:"btn small",onclick:()=>call({action:"decide",from:r.id,accept:false},"Declined")},"Decline"),h("button",{class:"btn small bad",onclick:()=>block(r.id,r.name)},"Block")))):h("p",{class:"small muted"},"No requests waiting.")),
+  h("div",{class:"card"},h("h3",{style:"margin-top:0"},"You asked"),inbox.sent.length?h("div",{},...inbox.sent.map(r=>h("div",{class:"frow"},h("span",{class:"nm grow"},r.name),h("span",{class:"st"},"waiting"),h("button",{class:"btn small",title:"Withdraw the request",onclick:()=>call({action:"remove",friend:r.id},"Request withdrawn")},"Withdraw")))):h("p",{class:"small muted"},"Nothing waiting on others.")));
+ const blockedTab=()=>h("div",{class:"card"},h("h3",{style:"margin-top:0"},"Blocked players"),
+  h("p",{class:"small muted"},"Blocked players can't find you with your code, message you, invite you or see you online. They are not told. Unblocking does not make you friends again."),
+  inbox.blocked.length?h("div",{},...inbox.blocked.map(b=>h("div",{class:"frow"},h("span",{class:"nm grow"},b.name),h("button",{class:"btn small",onclick:()=>call({action:"unblock",player:b.id},b.name+" unblocked")},"Unblock")))):h("p",{class:"small muted"},"Nobody is blocked."));
  const draw=()=>{
-  if(!d.me||!d.me.id){box.replaceChildren(h("div",{class:"card"},h("p",{},"Say hello to the friends service to get your friend code. It only learns the name you show other players."),h("div",{class:"row"},h("button",{class:"btn primary",onclick:async()=>{const r=await act(()=>api("friends",{action:"hello"}));if(r){d=r;toast("Your friend code is "+r.me.code);refresh()}}},"Say hello and get my code"),h("span",{class:"small muted"},"Service: "+d.server))));return}
+  if(!d.me||!d.me.id){box.replaceChildren(h("div",{class:"why"},"Friend codes, who is online, invites into a room, messages and blocking. Nobody else can see you. No account: this app gets one code."),h("div",{class:"card"},h("p",{},"Say hello to the friends service to get your friend code. It only learns the name you show other players."),h("div",{class:"row"},h("button",{class:"btn primary",onclick:async()=>{const r=await act(()=>api("friends",{action:"hello"}));if(r){d=r;toast("Your friend code is "+r.me.code);refresh()}}},"Say hello and get my code"),h("span",{class:"small muted"},"Service: "+d.server))));return}
   if(!inbox){box.replaceChildren(h("div",{class:"card"},h("span",{class:"spin"}),"Reaching the friends service…"));return}
-  const me=inbox.me;
-  const codeIn=h("input",{type:"text",placeholder:"Friend's code, e.g. MK7-4Q2X",maxlength:9,style:"width:200px",onkeydown:e=>{if(e.key==="Enter")addBtn.click()}});
-  const addBtn=h("button",{class:"btn good",onclick:async()=>{const r=await act(()=>api("friends",{action:"request",code:codeIn.value}));if(r){inbox=r.inbox;codeIn.value="";toast(r.inbox.friends.some(f=>f.id)&&r.already?"Already friends":"Request sent");draw()}}},"Add");
-  const left=h("div",{},
-   h("div",{class:"card"},h("div",{class:"row"},h("div",{class:"grow"},h("div",{class:"small muted"},"Your friend code"),h("span",{class:"code mid"},me.code)),h("button",{class:"btn",onclick:()=>copyText(me.code,"Friend code copied")},"Copy")),
-    h("p",{class:"small muted",style:"margin:8px 0 0"},"You appear as "+me.name+". "+(d.share_room?"Friends see the room you host and can join it.":"Friends only see that you are online (Settings > Friends).")),
-    h("div",{class:"row",style:"margin-top:10px"},codeIn,addBtn)),
-   inbox.requests.length?h("div",{class:"card",style:"margin-top:12px"},h("h3",{style:"margin-top:0"},"Wants to be friends"),...inbox.requests.map(r=>h("div",{class:"frow"},h("span",{class:"nm grow"},r.name),h("button",{class:"btn good small",onclick:async()=>{const x=await act(()=>api("friends",{action:"decide",from:r.id,accept:true}));if(x){inbox=x.inbox;draw()}}},"Accept"),h("button",{class:"btn small",onclick:async()=>{const x=await act(()=>api("friends",{action:"decide",from:r.id,accept:false}));if(x){inbox=x.inbox;draw()}}},"No")))):null,
-   inbox.invites.length?h("div",{class:"card",style:"margin-top:12px"},h("h3",{style:"margin-top:0"},"Invited to play"),...inbox.invites.map(i=>h("div",{class:"frow"},h("div",{class:"grow"},h("div",{class:"nm"},i.name+" · "+(i.game||"a game")),h("div",{class:"st"},"Sent "+ago(i.at)+(i.server_code?" · on their server":""))),h("button",{class:"btn primary small",onclick:()=>joinInvite(i)},"Join"),h("button",{class:"btn small",onclick:async()=>{const x=await act(()=>api("friends",{action:"dismiss",from:i.from}));if(x){inbox=x.inbox;draw()}}},"Dismiss")))):null,
-   h("div",{class:"card",style:"margin-top:12px"},h("div",{class:"row"},h("h3",{class:"grow",style:"margin:0"},"Friends",h("span",{class:"badge good",style:"margin-left:8px"},inbox.online+" online")),h("button",{class:"btn small",onclick:refresh},"Refresh")),
-    inbox.friends.length?h("div",{},...inbox.friends.map(f=>h("div",{class:"frow",style:"cursor:pointer",onclick:()=>{sel=S.friendSel=f.id;thread=null;draw();api("friends",{action:"thread",friend:f.id}).then(t=>{thread=t;f.unread=0;draw()}).catch(()=>{})}},
-      h("span",{class:"pres"+(f.online?" on":"")}),h("div",{class:"grow"},h("div",{class:"nm"},f.name,f.unread?h("span",{class:"unread",style:"margin-left:8px"},f.unread):null),h("div",{class:"st"},f.online?(f.room?"In a room: "+(f.room.game||"")+" ("+f.room.players+(f.room.max_players?"/"+f.room.max_players:"")+")":(f.status||"online")):"offline")),
-      f.online&&f.room?h("button",{class:"btn good small",onclick:e=>{e.stopPropagation();joinInvite({from:f.id,name:f.name,game:f.room.game,invite_code:f.room.invite_code,server_code:f.room.server_code})}},"Join"):null,
-      S.room&&S.room.role==="host"&&f.online?h("button",{class:"btn small",title:"Send them your room's invite",onclick:async e=>{e.stopPropagation();const x=await act(()=>api("friends",{action:"invite",to:f.id}),"Invite sent to "+f.name)}},"Invite"):null))):h("p",{class:"muted small"},"No friends yet. Swap codes with someone you know."),
-    inbox.sent.length?h("p",{class:"small muted",style:"margin:8px 0 0"},"Waiting for an answer from: "+inbox.sent.map(x=>x.name).join(", ")):null),
-   h("details",{class:"fold",style:"margin-top:12px"},h("summary",{class:"small muted"},"Leave the friends service"),h("div",{class:"card",style:"margin-top:6px"},h("p",{class:"small"},"Your code, friends and messages on the service are deleted. Nothing else changes."),h("button",{class:"btn bad",onclick:async()=>{if(!await ask("Leave the friends service? Your code stops working and your friends there no longer see you.","Leave"))return;const x=await act(()=>api("friends",{action:"goodbye"}));if(x){sel=S.friendSel=null;d=x;inbox=null;draw()}}},"Leave"))));
-  const friend=sel&&inbox.friends.find(f=>f.id===sel);
-  const msgIn=h("input",{type:"text",placeholder:"Message "+(friend?friend.name:""),maxlength:500,style:"flex:1",onkeydown:e=>{if(e.key==="Enter")sendBtn.click()}});
-  const sendBtn=h("button",{class:"btn primary",onclick:async()=>{if(!msgIn.value.trim())return;const r=await act(()=>api("friends",{action:"message",to:sel,text:msgIn.value}));if(r){msgIn.value="";thread=r;draw();msgIn.focus()}}},"Send");
-  const right=friend?h("div",{class:"card"},h("div",{class:"row"},h("span",{class:"pres"+(friend.online?" on":"")}),h("h3",{class:"grow",style:"margin:0"},friend.name),h("button",{class:"btn small bad",onclick:async()=>{if(!await ask("Remove "+friend.name+" from your friends?","Remove"))return;const x=await act(()=>api("friends",{action:"remove",friend:friend.id}));if(x){inbox=x.inbox;sel=S.friendSel=null;draw()}}},"Remove")),
-    h("div",{class:"msgs"},...(thread&&thread.messages&&thread.messages.length?thread.messages.map(mm=>h("div",{class:"msg"+(mm.mine?" mine":"")},mm.text,h("span",{class:"t"},ago(mm.at)))):[h("p",{class:"small muted"},"No messages yet. Messages are kept for a week.")])),
-    h("div",{class:"row",style:"margin-top:8px"},msgIn,sendBtn)):h("div",{class:"card"},h("p",{class:"muted"},"Pick a friend to message them, invite them to your room, or join theirs."));
-  box.replaceChildren(h("div",{class:"fr"},left,right));
+  const tb=(id,label,n)=>h("button",{class:"chip"+(tab===id?" on":""),"aria-pressed":String(tab===id),onclick:()=>setTab(id)},label,n?h("span",{class:"n"},n):null);
+  box.replaceChildren(h("div",{class:"ftabs",role:"tablist"},tb("friends","Friends",0),tb("inbox","Inbox",(inbox.unread||0)+inbox.invites.length),tb("requests","Requests",inbox.requests.length),tb("blocked","Blocked",0)),
+   ({friends:friendsTab,inbox:inboxTab,requests:requestsTab,blocked:blockedTab}[tab]||friendsTab)());
   const ms=box.querySelector(".msgs");if(ms)ms.scrollTop=ms.scrollHeight};
- draw();refresh();
- clearInterval(S.friendsTimer);S.friendsTimer=setInterval(()=>{if(S.tab!=="friends"){clearInterval(S.friendsTimer);return}refresh()},15000)}
+ draw();await refresh();if(sel&&tab==="inbox")openChat(sel);
+ clearInterval(S.friendsTimer);S.friendsTimer=setInterval(()=>{if(S.tab!=="friends"){clearInterval(S.friendsTimer);return}const a=document.activeElement;if(a&&a.tagName==="INPUT"&&a.value)return;refresh()},12000)}
 /* in the background: friends' invites and requests show as a toast and a count on the tab, wherever you are */
 if(!OVERLAY)setInterval(async()=>{if(!S.friendsOn||S.tab==="friends"||document.querySelector(".modal"))return;const r=await api("friends",{action:"poll"}).catch(()=>null);if(!r||!r.inbox)return;
- const n=r.inbox.requests.length+r.inbox.invites.length+r.inbox.friends.reduce((a,f)=>a+(f.unread||0),0);if(n!==S.friendsBadge){S.friendsBadge=n;renderNav()}
+ const n=r.inbox.requests.length+r.inbox.invites.length+(r.inbox.unread||0);
+ const newMsgs=(r.inbox.unread||0)>(S.friendsUnread||0);if(newMsgs&&S.friendsUnread!==undefined){const c=r.inbox.conversations.find(x=>x.unread);if(c)toast(c.name+": "+c.last.slice(0,80))}S.friendsUnread=r.inbox.unread||0;if(n!==S.friendsBadge){S.friendsBadge=n;renderNav()}
  const sig=r.inbox.invites.map(i=>i.from+i.at).join("|")+"#"+r.inbox.requests.map(x=>x.id).join("|");
- if(sig!==S.friendsSig){if(S.friendsSig!==undefined){r.inbox.invites.forEach(i=>toast(i.name+" invited you to play "+(i.game||"")+". Open Friends to join.","warn"));r.inbox.requests.forEach(x=>toast(x.name+" wants to be friends. Open Friends to answer."))}S.friendsSig=sig}},30000);
+ if(sig!==S.friendsSig){if(S.friendsSig!==undefined){r.inbox.invites.forEach(i=>toast(i.name+" invited you to play "+(i.game||"")+". Friends > Inbox to join.","warn"));r.inbox.requests.forEach(x=>toast(x.name+" wants to be friends. Friends > Requests to answer."))}S.friendsSig=sig}},30000);
 
 /* ================= a doctor avatar ================= */
 AVATARS.doctor={name:"Doctor",rows:["...KKKKKK...","..KKKKKKKK..","..KSSSSSSK..","..SEESSEES..","..SSSSSSSS..","..SSDDDDSS..","...SSSSSS...",".WWWWGGWWWW.","WWWGWWWWGWWW","WWWGWWWWGRWW","WWWWGGGGWRRR","WWWWWWWWWWRW"]};

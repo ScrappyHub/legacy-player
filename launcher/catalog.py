@@ -95,6 +95,11 @@ SETTINGS_SCHEMA: dict[str, dict] = {
         "label": "Allow internet downloads",
         "help": "Off means Legacy Player never downloads anything. On lets Setup and the Engines page fetch emulators from their official sites, and only when you press a Get button. Playing with friends uses only the server address you set.",
     },
+    "allow_game_info": {
+        "type": "bool", "default": False, "group": "Privacy",
+        "label": "Look up game details online (Wikipedia)",
+        "help": "Separate from downloads. When on, a game's card can ask en.wikipedia.org and www.wikidata.org for its description, release date, makers and player count. Only that game's name and console are sent, and only when you press Look it up. Off: cards show what the file name says and what you type.",
+    },
     "allow_direct_connections": {
         "type": "bool", "default": False, "group": "Privacy",
         "label": "Allow direct connections (reveals your address)",
@@ -245,6 +250,7 @@ DEFAULT_DATA = {
     "pad_profiles": {},     # pad key -> profile (see launcher/pads.py)
     "player_pads": {},      # "1".."4" -> pad key
     "keyboard": {"layout": "default", "keys": {}},   # player 1 keyboard controls (see launcher/keyboard.py)
+    "privacy_ok": {},       # privacy item id -> the setting value the player said yes to (see launcher/privacy.py)
     "friends": {},          # this app's identity on the friends service: {"server", "id", "secret", "code"}; empty until hello
 }
 

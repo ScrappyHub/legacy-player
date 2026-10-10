@@ -106,10 +106,11 @@ class SocialService:
             return
         self.codes.pop(p["code"], None)
         for other in self.players.values():
-            for key in ("friends", "requests_in", "requests_out"):
+            for key in ("friends", "requests_in", "requests_out", "blocked"):
                 if pid in other.get(key, []):
                     other[key].remove(pid)
             other.get("messages", {}).pop(pid, None)
+            other["invites"] = [i for i in other.get("invites", []) if i.get("from") != pid]
 
     def _auth(self, pid: str, secret: str) -> dict:
         p = self.players.get(str(pid or ""))
@@ -143,7 +144,27 @@ class SocialService:
                 "requests": [{"id": r, "name": self.players.get(r, {}).get("name", "?")} for r in p.get("requests_in", []) if r in self.players],
                 "sent": [{"id": r, "name": self.players.get(r, {}).get("name", "?")} for r in p.get("requests_out", []) if r in self.players],
                 "invites": list(p.get("invites", [])),
+                "conversations": self._conversations(pid),
+                "blocked": [{"id": b, "name": self.players.get(b, {}).get("name", "?")} for b in p.get("blocked", []) if b in self.players],
+                "unread": sum(f["unread"] for f in friends),
                 "online": sum(1 for f in friends if f["online"])}
+
+    def _conversations(self, pid: str) -> list[dict]:
+        p = self.players[pid]
+        out = []
+        for other, msgs in p.get("messages", {}).items():
+            if not msgs or other not in self.players:
+                continue
+            last = msgs[-1]
+            out.append({"id": other, "name": self.players[other]["name"], "last": last["text"][:120], "at": last["at"], "mine": last["from"] == pid,
+                        "unread": sum(1 for m in msgs if not m.get("read") and m["from"] == other), "online": self._online(self.players[other]),
+                        "friend": other in p.get("friends", [])})
+        out.sort(key=lambda c: -c["at"])
+        return out
+
+    def _blocks(self, a: str, b: str) -> bool:
+        """True when either player has blocked the other."""
+        return b in self.players.get(a, {}).get("blocked", []) or a in self.players.get(b, {}).get("blocked", [])
 
     # --- operations ---------------------------------------------------------------------------------------------
     def hello(self, name) -> dict:
@@ -155,7 +176,7 @@ class SocialService:
             while code in self.codes:
                 code = make_code()
             self.players[pid] = {"name": clean_name(name), "secret": secrets.token_urlsafe(24), "code": code, "friends": [], "requests_in": [],
-                                 "requests_out": [], "seen": self.clock(), "status": "", "room": None, "invites": [], "messages": {}}
+                                 "requests_out": [], "seen": self.clock(), "status": "", "room": None, "invites": [], "messages": {}, "blocked": []}
             self.codes[code] = pid
             self.save()
             return {"id": pid, "secret": self.players[pid]["secret"], "code": code, "name": self.players[pid]["name"]}
@@ -186,6 +207,10 @@ class SocialService:
                 raise SocialError("No player has that friend code. Check it with your friend (it looks like MK7-4Q2X).")
             if other_id == pid:
                 raise SocialError("That is your own code.")
+            if other_id in p.get("blocked", []):
+                raise SocialError("You blocked this player. Unblock them first (Friends > Blocked).")
+            if pid in self.players[other_id].get("blocked", []):
+                raise SocialError("No player has that friend code. Check it with your friend (it looks like MK7-4Q2X).")
             other = self.players[other_id]
             if other_id in p["friends"]:
                 return {"ok": True, "already": True, **self._inbox(pid)}
@@ -239,7 +264,7 @@ class SocialService:
         with self.lock:
             p = self._auth(pid, secret)
             to = str(to or "")
-            if to not in p["friends"] or to not in self.players:
+            if to not in p["friends"] or to not in self.players or self._blocks(pid, to):
                 raise SocialError("You can only invite someone on your friends list.")
             code = clean_text(invite_code, 14)
             if not code:
@@ -264,7 +289,7 @@ class SocialService:
         with self.lock:
             p = self._auth(pid, secret)
             to = str(to or "")
-            if to not in p["friends"] or to not in self.players:
+            if to not in p["friends"] or to not in self.players or self._blocks(pid, to):
                 raise SocialError("You can only message someone on your friends list.")
             text = clean_text(text)
             if not text:
@@ -292,6 +317,52 @@ class SocialService:
             out = {"messages": self._thread(pid, other), "name": self.players[other]["name"]}
             self.save()
             return out
+
+    def block(self, pid, secret, other) -> dict:
+        """Block a player: no friendship, requests, invites or messages either way, and they no longer see you. They are not told."""
+        with self.lock:
+            p = self._auth(pid, secret)
+            other = str(other or "")
+            if other == pid or other not in self.players:
+                raise SocialError("That player is not known to the friends service.")
+            o = self.players[other]
+            for a, b in ((p, other), (o, pid)):
+                for key in ("friends", "requests_in", "requests_out"):
+                    if b in a.get(key, []):
+                        a[key].remove(b)
+                a.get("messages", {}).pop(b, None)
+                a["invites"] = [i for i in a.get("invites", []) if i.get("from") != b]
+            p.setdefault("blocked", [])
+            if other not in p["blocked"]:
+                p["blocked"].append(other)
+            self.save()
+            return {"ok": True, **self._inbox(pid)}
+
+    def unblock(self, pid, secret, other) -> dict:
+        with self.lock:
+            p = self._auth(pid, secret)
+            other = str(other or "")
+            if other in p.get("blocked", []):
+                p["blocked"].remove(other)
+            self.save()
+            return {"ok": True, **self._inbox(pid)}
+
+    def clear_thread(self, pid, secret, other) -> dict:
+        """Delete a conversation from my inbox (the other player keeps their own copy)."""
+        with self.lock:
+            p = self._auth(pid, secret)
+            p.get("messages", {}).pop(str(other or ""), None)
+            self.save()
+            return {"ok": True, **self._inbox(pid)}
+
+    def read_all(self, pid, secret) -> dict:
+        with self.lock:
+            p = self._auth(pid, secret)
+            for msgs in p.get("messages", {}).values():
+                for m in msgs:
+                    m["read"] = True
+            self.save()
+            return {"ok": True, **self._inbox(pid)}
 
     def goodbye(self, pid, secret) -> dict:
         """The player wants out: everything about them goes."""

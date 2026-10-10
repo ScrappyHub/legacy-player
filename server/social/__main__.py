@@ -16,7 +16,8 @@ from pathlib import Path
 from . import SocialError, SocialService
 
 MAX_BODY = 16 * 1024
-OPS = {"hello", "heartbeat", "request", "decide", "remove", "invite", "dismiss_invite", "message", "thread", "goodbye"}
+OPS = {"hello", "heartbeat", "request", "decide", "remove", "invite", "dismiss_invite", "message", "thread", "goodbye",
+       "block", "unblock", "clear_thread", "read_all"}
 
 
 def dispatch(service: SocialService, body: dict) -> dict:
@@ -42,6 +43,14 @@ def dispatch(service: SocialService, body: dict) -> dict:
         return service.message(pid, secret, body.get("to"), body.get("text"))
     if op == "thread":
         return service.thread(pid, secret, body.get("friend"))
+    if op == "block":
+        return service.block(pid, secret, body.get("player"))
+    if op == "unblock":
+        return service.unblock(pid, secret, body.get("player"))
+    if op == "clear_thread":
+        return service.clear_thread(pid, secret, body.get("friend"))
+    if op == "read_all":
+        return service.read_all(pid, secret)
     return service.goodbye(pid, secret)
 
 

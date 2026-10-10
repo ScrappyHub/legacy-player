@@ -110,8 +110,8 @@ class CardApi(unittest.TestCase):
         self.assertEqual("", card["fields"]["release"]["value"])
         self.assertEqual("USA", card["region"])
         with self.assertRaises(AppError):
-            self.app.api_game_card({"id": self.gid, "action": "lookup", "consent": True})      # internet is off by default
-        self.app.catalog.set_setting("allow_internet", True)
+            self.app.api_game_card({"id": self.gid, "action": "lookup", "consent": True})      # look-ups are off by default
+        self.app.catalog.set_setting("allow_game_info", True)
         with self.assertRaises(AppError):
             self.app.api_game_card({"id": self.gid, "action": "lookup"})                       # and it asks first
         self.app.cards.start(self.gid, "Mario Kart 64", "Nintendo 64", run_inline=True)

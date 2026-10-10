@@ -20,4 +20,4 @@ class ContrastTests(unittest.TestCase):
         spec = importlib.util.spec_from_file_location("contrast_check", TOOL)
         tool = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(tool)
-        self.assertEqual(0, tool.main(pages=["home", "library", "servers", "setup", "settings"]))
+        self.assertEqual(0, tool.main(pages=["home", "library", "servers", "setup", "settings", "privacy"]))

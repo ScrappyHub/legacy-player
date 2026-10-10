@@ -33,7 +33,7 @@ from . import overlay as overlaymod
 from . import procs
 from . import controllers, emulators, engines, pads, savefolders, saves
 from .installer import EngineInstaller, InstallError, latest_release, pick_asset
-from . import friends as friendsmod, gamecard, updateall, dolphinpads, dolphinpaths, privatelink, firewall, gamefinder, gameinfo, portmap, pcgames, punch, reach, winplace, keyboard, memprobe, netcheck, reports, selfuninstall, sysinfo
+from . import friends as friendsmod, gamecard, privacy, updateall, dolphinpads, dolphinpaths, privatelink, firewall, gamefinder, gameinfo, portmap, pcgames, punch, reach, winplace, keyboard, memprobe, netcheck, reports, selfuninstall, sysinfo
 from .covers import (CONTENT_TYPES, CoverFetcher, SYSTEMS as COVER_SYSTEMS, clear_custom_cover, cover_path,
                      custom_cover, set_custom_cover)
 from .pcscan import PcScan
@@ -843,12 +843,47 @@ class LauncherApp:
                 return {**base, **f.message(str(body.get("to") or ""), str(body.get("text") or ""))}
             if action == "thread":
                 return {**base, **f.thread(str(body.get("friend") or ""))}
+            if action == "block":
+                return {**base, "inbox": f.block(str(body.get("player") or ""))}
+            if action == "unblock":
+                return {**base, "inbox": f.unblock(str(body.get("player") or ""))}
+            if action == "clear_thread":
+                return {**base, "inbox": f.clear_thread(str(body.get("friend") or ""))}
+            if action == "read_all":
+                return {**base, "inbox": f.read_all()}
             if action == "goodbye":
                 f.goodbye()
                 return {**base, "me": {}}
         except friendsmod.FriendsError as exc:
             raise AppError(str(exc)) from exc
         raise AppError("Unknown friends action.")
+
+    # privacy: what goes online, each on its own switch ---------------------------------------------------------
+    def api_privacy(self, body: dict) -> dict:
+        """The privacy check. action: list (default) | keep (the player says yes to one that is on) | off (turn one off) |
+        keep_all. Nothing goes online here; it only reads and changes this computer's settings."""
+        action = str(body.get("action") or "list")
+        item = str(body.get("id") or "")
+        settings = self.catalog.settings()
+        known = {i["id"]: i for i in privacy.items(settings, self.catalog.data)}
+        if action in ("keep", "off") and item not in known:
+            raise AppError("Unknown privacy item.")
+        if action == "keep":
+            privacy.confirm(self.catalog.data, item, settings)
+            self.catalog.save()
+        elif action == "keep_all":
+            for i in known.values():
+                if i["on"]:
+                    privacy.confirm(self.catalog.data, i["id"], settings)
+            self.catalog.save()
+        elif action == "off":
+            key = known[item]["setting"]
+            self.catalog.set_setting(key, privacy.OFF_VALUES[key])
+            self.catalog.data.get("privacy_ok", {}).pop(item, None)
+            self.catalog.save()
+        out = privacy.items(self.catalog.settings(), self.catalog.data)
+        return {"items": out, "never": privacy.NEVER, "online": sum(1 for i in out if i["on"]),
+                "to_look_at": sum(1 for i in out if i["needs_look"])}
 
     # the game card ------------------------------------------------------------------------------------------
     def api_game_card(self, body: dict) -> dict:
@@ -867,8 +902,8 @@ class LauncherApp:
         elif action == "forget":
             self.cards.forget(game["id"])
         elif action == "lookup":
-            if not self.catalog.settings()["allow_internet"]:
-                raise AppError("Internet access is off. Turn on 'Allow internet downloads' in Settings first.")
+            if not self.catalog.settings().get("allow_game_info"):
+                raise AppError("Looking up game details is off. Turn on 'Look up game details online' under Settings > Privacy first.")
             if not body.get("consent"):
                 raise AppError("Please confirm: this game's name and console are sent to Wikipedia to look it up.")
             self.cards.start(game["id"], self._meta(game).get("title") or game["title"], console.name)
@@ -883,7 +918,7 @@ class LauncherApp:
                "file": Path(game["path"]).name if game["console"] != "pc" else "", "store": game.get("root") if game["console"] == "pc" else "",
                "region": local["region"], "file_tags": local["file_tags"], "players": public["players"], "own_players": public["own_players"],
                "lookup": self.cards.state(game["id"]), "looked_up_at": looked.get("at"), "source": looked.get("source", ""),
-               "allow_internet": bool(self.catalog.settings()["allow_internet"]), "fields": {}}
+               "allow_game_info": bool(self.catalog.settings().get("allow_game_info")), "fields": {}}
         for key in ("description", "release", "version", "developer", "publisher", "genre"):
             if meta.get(key):
                 out["fields"][key] = {"value": meta[key], "source": "you"}
@@ -1824,7 +1859,15 @@ class LauncherApp:
                 self.catalog.set_setting(body["key"], body.get("value"))
             except CatalogError as exc:
                 raise AppError(str(exc)) from exc
-        return {"values": self.catalog.settings(), "schema": SETTINGS_SCHEMA}
+            # a privacy switch the player turned on here, in the app, after reading what it does, counts as their yes
+            if body.get("informed"):
+                settings = self.catalog.settings()
+                for it in privacy.items(settings, self.catalog.data):
+                    if it["setting"] == body["key"] and it["on"]:
+                        privacy.confirm(self.catalog.data, it["id"], settings)
+                        self.catalog.save()
+        return {"values": self.catalog.settings(), "schema": SETTINGS_SCHEMA,
+                "privacy_keys": sorted({i["setting"] for i in privacy.items(self.catalog.settings(), self.catalog.data)})}
 
     # saves ------------------------------------------------------------------
     def api_save_source(self, body: dict) -> dict:
@@ -2085,6 +2128,10 @@ class LauncherApp:
             if not self.catalog.settings()["allow_direct_connections"]:
                 issues.append({"key": "dolphin-direct", "kind": "dolphin-direct", "dismissed": "dolphin-direct" in dismissed,
                                "text": "Dolphin online play connects players directly, and 'Allow direct connections' is off, so it can't start."})
+        for it in privacy.items(self.catalog.settings(), self.catalog.data):    # anything online the player never said yes to
+            if it["needs_look"]:
+                issues.append({"key": "privacy:" + it["id"], "kind": "privacy", "item": it["id"], "dismissed": False,
+                               "text": f"{it['title']} is on: it talks to {', '.join(it['contacts'][:2])}. Did you mean to turn this on?"})
         active = [i for i in issues if not i["dismissed"]]
         if not self.games or not have:
             mood = "sad"
@@ -2102,7 +2149,9 @@ class LauncherApp:
                           "games": sum(counts.get(c.id, 0) for c in mine)})
         library = [{"name": c.name, "count": counts[c.id], "emulator": (emulators.EMULATORS.get(chosen[c.id]) or {}).get("name")}
                    for c in CONSOLES if counts.get(c.id)]
+        priv = privacy.items(self.catalog.settings(), self.catalog.data)
         return {"emulator_cards": cards, "library": library,
+                "privacy": {"online": [i["title"] for i in priv if i["on"]], "to_look_at": sum(1 for i in priv if i["needs_look"])},
                 "mood": mood, "games": len(self.games), "emulators": have, "saves_ready": self._save_root().is_dir(),
                 "bios_needed": bios_needed, "bios_have": bios_have, "issues": issues,
                 "last_rescan": self.catalog.data.get("last_rescan"), "last_scan": self.catalog.data.get("last_scan"),
