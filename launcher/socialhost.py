@@ -13,6 +13,7 @@ import sys
 import time
 from pathlib import Path
 
+from .childenv import child_cwd, clean_env
 from .friends import FriendsError, pinned_request
 
 _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -80,7 +81,9 @@ class SocialHost:
         self.folder.mkdir(parents=True, exist_ok=True)
         from server.social.__main__ import moderator_key
         moderator_key(self.folder)                         # made now, so the app can read it the moment the service answers
-        kwargs: dict = {"stdin": subprocess.DEVNULL, "cwd": str(Path(__file__).resolve().parent.parent)}
+        # a fresh start for the exe's child (not the parent's onefile temporary folder, which goes away with the app),
+        # and a working folder that is never that temporary folder either
+        kwargs: dict = {"stdin": subprocess.DEVNULL, "cwd": child_cwd(self.folder.parent), "env": clean_env()}
         if sys.platform == "win32":
             kwargs["creationflags"] = _DETACHED | _NO_WINDOW
         else:

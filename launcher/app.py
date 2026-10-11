@@ -169,6 +169,8 @@ class LauncherApp:
         self.bye_at = 0.0
         self.quit_requested = False
         self.quit_at = 0.0
+        self._shutdown_lock = threading.Lock()   # closing down happens once (quit, restart and the web server's own end may race)
+        self._shut_down = False
         self._specs_lock = threading.Lock()
         self.api_lock = threading.RLock()        # one ordinary API call at a time (the web layer takes it)
         self.memprobe = memprobe.MemProbe(self.data_dir)
@@ -2336,10 +2338,10 @@ class LauncherApp:
             if counts.get(c.id) and not self._emulator_for(c.id, found)[0]:
                 names = ", ".join(emulators.EMULATORS[e]["name"] for e in c.emulators if e in emulators.EMULATORS)
                 if ra and c.id in CORES:
-                    issues.append({"key": c.id, "kind": "core", "text": f"{counts[c.id]} {c.name} games: RetroArch is here but has no {c.name} core yet.",
+                    issues.append({"key": c.id, "kind": "core", "text": f"{counts[c.id]} {c.name} game{'s' if counts[c.id] != 1 else ''}: RetroArch is here but has no {c.name} core yet.",
                                    "dismissed": c.id in dismissed})
                 else:
-                    issues.append({"key": c.id, "kind": "emulator", "text": f"{counts[c.id]} {c.name} games still need an emulator ({names}).",
+                    issues.append({"key": c.id, "kind": "emulator", "text": f"{counts[c.id]} {c.name} game{'s' if counts[c.id] != 1 else ''} still need{'s' if counts[c.id] == 1 else ''} an emulator ({names}).",
                                    "dismissed": c.id in dismissed})
         bios_found = self.catalog.data.get("bios_found", {})
         bios_needed = bios_have = 0
@@ -2428,37 +2430,80 @@ class LauncherApp:
         return self.update_all.snapshot()
 
     def api_app_update(self, body: dict) -> dict:
-        """Legacy Player updating itself. action: status | check | install (download and check, in the background) |
-        restart (finish the update: close, swap the files, start the new version). install and restart need confirm."""
+        """Legacy Player updating itself. action: status | check | install | restart.
+
+        status   what is going on: {state: idle|checking|downloading|ready|restarting|problem, message, latest, newer?,
+                 restart_only?, done, total, current, mode, last_result?}. last_result ({ok, tag, error}) is how the last
+                 update went; it is given once, then forgotten.
+        check    looks for a newer version in the background (git fetch or GitHub can take a while): answers at once with
+                 state "checking"; poll status until it is idle (then newer / latest / restart_only / message say what
+                 was found) or problem.
+        install  checks, then downloads and checks the files (or git pull) in the background; poll status until
+                 ready / idle / problem. Needs confirm.
+        restart  finishes the update: closes, swaps the files and starts the new version. Needs confirm."""
         action = str(body.get("action") or "install")
         up = self.self_update
         if action == "status":
-            return up.snapshot()
+            out = up.snapshot()
+            last = up.take_last_result()
+            if last is not None:
+                out["last_result"] = {"ok": last["ok"], "tag": last["tag"], "error": last["error"]}
+            return out
         if action == "check":
-            return self._update_check()
+            return self._start_update_job(install=False)
         if not body.get("confirm"):
             raise AppError("Please confirm the update.")
         if action == "install":
-            if up.snapshot()["state"] in {"checking", "downloading"}:
-                return up.snapshot()
-            info = self._update_check()
-            if not info.get("newer"):
-                return {**up.snapshot(), "state": "idle", "message": info["message"]}
-
-            def run() -> None:
-                try:
-                    up.prepare(info)
-                except Exception as exc:                  # shown in the app; never a silent stop
-                    up._set(state="problem", message=str(exc)[:300])
-            up._set(state="downloading", message="Getting the new version…", latest=info.get("latest", ""))
-            threading.Thread(target=run, daemon=True, name="self-update").start()
-            return up.snapshot()
+            return self._start_update_job(install=True)
         if action == "restart":
             return self._restart_into_update()
         raise AppError("Unknown update action.")
 
-    def _update_check(self) -> dict:
-        """What is newer. A git copy can always compare its own folder; asking GitHub needs the internet setting."""
+    def _start_update_job(self, install: bool) -> dict:
+        """Check (and with install, also get the new version ready) in a background thread, so the slow part never holds
+        the app's lock. Raises AppError at once when it cannot even start (internet off, a copy that cannot update)."""
+        up = self.self_update
+        quick = self._update_preflight()
+        with up.lock:
+            state = up.status.get("state")
+            if state in {"checking", "downloading", "restarting"} or (state == "ready" and up.staged):
+                return dict(up.status)                      # already on it, or already ready to restart
+        if quick is not None:                               # answered from the folder alone: no need for a thread
+            up._set(state="idle", message=quick["message"], latest=quick.get("latest", ""), newer=bool(quick.get("newer")),
+                    restart_only=bool(quick.get("restart_only")))
+            if install and quick.get("newer"):
+                try:
+                    up.prepare(quick)
+                except Exception as exc:
+                    up._set(state="problem", message=str(exc)[:300])
+            return up.snapshot()
+        up._set(state="checking", message="Checking for updates…", newer=None, restart_only=False, done=0, total=0)
+
+        def run() -> None:
+            try:
+                info = self._update_check_online()
+            except AppError as exc:
+                up._set(state="problem", message=str(exc)[:300])
+                return
+            except Exception as exc:                         # shown in the app; never a silent stop
+                up._set(state="problem", message=f"Could not check for updates: {exc}"[:300])
+                return
+            up._set(state="idle", message=info["message"], latest=info.get("latest", ""), newer=bool(info.get("newer")),
+                    restart_only=bool(info.get("restart_only")), page=info.get("page", ""))
+            if not (install and info.get("newer")):
+                return
+            up._set(state="downloading", message="Getting the new version…", latest=info.get("latest", ""))
+            try:
+                up.prepare(info)
+            except Exception as exc:
+                up._set(state="problem", message=str(exc)[:300])
+        answer = up.snapshot()                              # "checking", even when the thread is quicker than this answer
+        threading.Thread(target=run, daemon=True, name="self-update").start()
+        return answer
+
+    def _update_preflight(self) -> dict | None:
+        """The quick part of a check. Raises AppError when checking is not possible; returns a full answer when the
+        folder alone tells (a git copy whose files are already newer while internet downloads are off); else None."""
         up = self.self_update
         if not self.catalog.settings()["allow_internet"]:
             disk = selfupdate.version_on_disk()
@@ -2469,12 +2514,22 @@ class LauncherApp:
         if not up.mode() and not getattr(sys, "frozen", False):
             raise AppError("This copy of Legacy Player was not installed with the installer or git, so it cannot update itself. "
                            "Install it with the one-line installer (see README) or run it from a git clone.")
+        return None
+
+    def _update_check_online(self) -> dict:
+        """The slow part of a check (git fetch, or asking GitHub). Keeps the release details for prepare()."""
         try:
-            info = up.check()
+            info = self.self_update.check()
         except (InstallError, OSError, subprocess.SubprocessError) as exc:
             raise AppError(f"Could not check for updates: {exc}") from exc
-        return {**{k: v for k, v in info.items() if k != "release"}, "current": VERSION,
-                "page": (info.get("release") or {}).get("page", "")}
+        return {**info, "current": VERSION, "page": (info.get("release") or {}).get("page", "")}
+
+    def _update_check(self) -> dict:
+        """What is newer, all in one go (used by Update everything, which runs in its own thread)."""
+        quick = self._update_preflight()
+        if quick is not None:
+            return quick
+        return self._update_check_online()                  # keeps the release details, so prepare() need not ask again
 
     def _restart_into_update(self) -> dict:
         """Close politely (leave rooms, stop this computer's server so it starts again on the new version), hand the swap
@@ -2499,9 +2554,13 @@ class LauncherApp:
         except Exception:
             pass
         up.launch_helper()
-        self.quit_at = time.time()
-        self.quit_requested = True
         self.shutdown()
+        try:
+            self.catalog.save()
+        except Exception:
+            pass
+        self.quit_at = time.time()                       # last: the web server stops soon after it sees quit_requested
+        self.quit_requested = True
         return {**up.snapshot(), "restarting": True}
 
     def api_window_style(self, body: dict) -> dict:
@@ -2510,12 +2569,16 @@ class LauncherApp:
         return {"touched": winstyle.apply(str(body.get("bg", "")), str(body.get("fg", "")))}
 
     def api_check_update(self, body: dict) -> dict:
-        """Is there a newer Legacy Player? Only when the user presses the button (GitHub needs the internet setting)."""
+        """Is there a newer Legacy Player? Only when the player presses the button (GitHub needs the internet setting).
+
+        Answers at once. {"ok": false, "state": "problem", "message"} when checking is not possible; a full answer
+        ({"ok": true, "state": "idle", "newer", "latest", "restart_only", "message"}) when the folder alone tells;
+        otherwise {"ok": true, "state": "checking", "message"}: then poll app_update {"action": "status"}."""
         try:
-            info = self._update_check()
+            out = self._start_update_job(install=False)
         except AppError as exc:
-            return {"current": VERSION, "ok": False, "message": str(exc)}
-        return {"ok": True, **info}
+            return {"current": VERSION, "ok": False, "state": "problem", "message": str(exc)}
+        return {"ok": True, "current": VERSION, **out}
 
     def api_mp_host(self, body: dict) -> dict:
         self._claim_alias()
@@ -2979,25 +3042,34 @@ class LauncherApp:
         return {"launched": game["title"], "role": room["role"], "pid": pid, "encrypted": encrypted, "relay": relay}
 
     def shutdown(self) -> None:
-        """Called when the app window closes: leave rooms politely and drop the tunnel."""
-        try:
+        """Called when the app closes: leave rooms politely and drop the tunnel. Runs once (Quit, a restart and the web
+        server's own end can all ask for it, from different threads) and never raises."""
+        with self._shutdown_lock:
+            if self._shut_down:
+                return
+            self._shut_down = True
             for sid in list(self.waits):
-                self.api_mp_cancel_wait({"session_id": sid})
+                try:
+                    self.api_mp_cancel_wait({"session_id": sid})
+                except Exception:
+                    pass
             if self.room is not None:
-                self.api_mp_leave({})
-        except AppError:
-            pass
-        finally:
-            self._close_tunnel()
+                try:
+                    self.api_mp_leave({})
+                except Exception:
+                    pass
+            try:
+                self._close_tunnel()
+            except Exception:
+                pass
 
     def _close_tunnel(self) -> None:
-        if self.tunnel is not None:
-            self.tunnel.stop()
-            self.tunnel = None
-        if getattr(self, "tunnel_direct", None) is not None:
-            self.tunnel_direct.stop()
-            self.tunnel_direct = None
+        tunnel, self.tunnel = self.tunnel, None                     # taken first, so two callers never stop the same one
+        direct, self.tunnel_direct = getattr(self, "tunnel_direct", None), None
         self.dialer = None
+        for t in (tunnel, direct):
+            if t is not None:
+                t.stop()
 
     def _match_path(self) -> str:
         """How this match's traffic travels: 'direct' (computer to computer), 'relay' (through the server) or ''."""
@@ -3112,7 +3184,8 @@ class LauncherApp:
 
     def api_ping(self, body: dict) -> dict:
         self.last_ping, self.bye_at, self.tray_mode = time.time(), 0.0, False
-        return {"ok": True, "report_prompt": self.reports.prompt(), "quitting": bool(self.quit_requested)}
+        return {"ok": True, "report_prompt": self.reports.prompt(), "quitting": bool(self.quit_requested),
+                "settings_problem": str(getattr(self.catalog, "read_only", "") or "")}
 
     def api_status(self, body: dict) -> dict:
         """A tiny summary for the window title (shown when hovering the taskbar button). No network calls."""
@@ -3341,10 +3414,11 @@ class LauncherApp:
         return {"stopped": r["title"]}
 
     def api_quit(self, body: dict) -> dict:
-        """Full close: leave rooms politely, then stop the app."""
-        self.quit_at = time.time()                       # first: the watcher must never see "quit" without the time
-        self.quit_requested = True
+        """Full close: leave rooms politely, then stop the app. The closing work comes first and quit_requested last:
+        the web server stops once it sees quit_requested, and this answer has to reach the page before that."""
         self.shutdown()
+        self.quit_at = time.time()                       # before quit_requested: the watcher must never see "quit" without the time
+        self.quit_requested = True
         return {"ok": True}
 
     def api_bye(self, body: dict) -> dict:
@@ -3470,8 +3544,7 @@ class LauncherApp:
                 self._start_router_renewal(self.port_map)
                 self.fallback_active = False
                 return self.port_map
-            self.reports.capture("router-not-opened", None, self.port_map["message"],
-                                 {"state": self.port_map["state"], "kind": self.port_map.get("kind", "")})
+            # most home routers have UPnP off or missing: that is normal, not a crash, so it is never reported as one
             fallback = self._fallback_code()
             if fallback:
                 try:
