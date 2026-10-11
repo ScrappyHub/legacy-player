@@ -15,7 +15,7 @@ from runtime.sync import InputFrame, LockstepCoordinator, LockstepError
 
 from .events import EventLog
 from .invites import InviteBook, InviteError
-from .throttle import FailureThrottle, wait_text
+from .throttle import FailureThrottle, key_for, wait_text
 
 
 class LobbyError(RuntimeError):
@@ -61,6 +61,7 @@ class LobbyService:
         self.establish_grace = 180.0   # a seat someone is waiting for is freed if its holder never connects in this time
         self.aliases: dict[str, dict] = {}   # "alias#1234" (lowercase) -> {"install": id, "seen": clock time}
         self.alias_active_seconds = 900.0    # a name+tag is taken while its owner's app was heard from this recently
+        self.aliases_per_address = 64        # names one address (an IPv6 /64) may hold at once
         self.last_seen: dict[tuple[str, str], float] = {}
         self.disconnected: set[tuple[str, str]] = set()
         self.max_sessions = max_sessions
@@ -89,25 +90,32 @@ class LobbyService:
             raise LobbyError("session capacity reached")
         host_id = self._required_text(request, "participant_id")
         profile = self._profile(request)
-        session = Session(
-            host_id=host_id,
-            game_id=profile["game_id"],
-            region=profile["region"],
-            adapter_id=self._required_text(request, "adapter_id"),
-            game_pack_id=self._required_text(request, "game_pack_id"),
-        )
-        session.participants[host_id].profile = profile
-        join_code = secrets.token_urlsafe(24)
-        credential = secrets.token_urlsafe(24)
-        self.sessions[session.session_id] = session
-        self.join_codes[session.session_id] = self._digest(join_code)
-        self.credentials[(session.session_id, host_id)] = self._digest(credential)
+        adapter_id = self._required_text(request, "adapter_id")
+        game_pack_id = self._required_text(request, "game_pack_id")
+        # Everything is checked before anything is stored: a refused request must not leave half a room behind.
         max_players = request.get("max_players", self.max_participants)
         if isinstance(max_players, bool) or not isinstance(max_players, int) or not 2 <= max_players <= self.max_participants:
             raise LobbyError(f"max_players must be a whole number from 2 to {self.max_participants}")
         label = str(request.get("label") or "")[:48].strip()
         if label and not re.fullmatch(r"[A-Za-z0-9 _.,'!?-]{1,48}", label):
             raise LobbyError("room label may only use letters, digits, spaces and . , ' ! ? - _")
+        session = Session(
+            host_id=host_id,
+            game_id=profile["game_id"],
+            region=profile["region"],
+            adapter_id=adapter_id,
+            game_pack_id=game_pack_id,
+        )
+        session.participants[host_id].profile = profile
+        join_code = secrets.token_urlsafe(24)
+        credential = secrets.token_urlsafe(24)
+        try:
+            invite_code, invite_info = self.invites.create(session.session_id)
+        except InviteError as exc:
+            raise LobbyError(str(exc)) from exc
+        self.sessions[session.session_id] = session
+        self.join_codes[session.session_id] = self._digest(join_code)
+        self.credentials[(session.session_id, host_id)] = self._digest(credential)
         self.options[session.session_id] = {
             "require_approval": bool(request.get("require_approval", False)),
             "max_players": max_players,
@@ -117,7 +125,6 @@ class LobbyService:
         self.pending[session.session_id] = {}
         self.events[session.session_id] = EventLog()
         self.last_seen[(session.session_id, host_id)] = self.clock()
-        invite_code, invite_info = self.invites.create(session.session_id)
         self.events[session.session_id].emit("session_created", host_id=host_id)
         self.last_activity[session.session_id] = self.clock()
         self.recorders[session.session_id] = ReplayRecorder(
@@ -570,7 +577,7 @@ class LobbyService:
         for key, seen in list(self.last_seen.items()):
             sid, participant_id = key
             session = self.sessions.get(sid)
-            if session is None or session.state in {SessionState.COMPLETED, SessionState.FAILED}:
+            if session is None or sid not in self.events or session.state in {SessionState.COMPLETED, SessionState.FAILED}:
                 continue
             if key not in self.disconnected and now - seen > self.heartbeat_timeout:
                 self.disconnected.add(key)
@@ -609,8 +616,9 @@ class LobbyService:
     def announce_stopping(self) -> None:
         """Tell every live session the server is going down so clients can show it."""
         for sid, session in self.sessions.items():
-            if session.state not in {SessionState.COMPLETED, SessionState.FAILED}:
-                self.events[sid].emit("server_stopping")
+            log = self.events.get(sid)
+            if log is not None and session.state not in {SessionState.COMPLETED, SessionState.FAILED}:
+                log.emit("server_stopping")
 
     def export_state(self) -> dict:
         """Snapshot everything needed to resume lobbies after a stop or restart.
@@ -638,6 +646,8 @@ class LobbyService:
             },
             "finalized_replays": self.finalized_replays,
             "finalized_order": self.finalized_order,
+            # optional (older snapshots lack it): players whose app said their match was running
+            "established": sorted(f"{sid}|{pid}" for sid, pid in self.established),
         }
 
     def import_state(self, data: dict) -> None:
@@ -672,13 +682,34 @@ class LobbyService:
         self.coordinators, self.released_bundles, self.desync_trackers = {}, {}, {}
         self.disconnected = set()
         self.last_seen, self.last_activity = {}, {}
+        self.established = set()
+        for key in data.get("established") or []:
+            sid, _, pid = str(key).partition("|")
+            if sid in self.sessions and pid in self.sessions[sid].participants:
+                self.established.add((sid, pid))
+        # Clock stamps from the old process (time.monotonic) mean nothing now: after a reboot they lie in the future
+        # (seats would never be released), after a restart they lie far in the past (players kicked at once). Every
+        # timer starts again from now, which gives everyone the full grace period again.
+        self.joined_at = {}
+        for sid in [s for s, session in self.sessions.items() if s not in self.events
+                    or (s not in self.options and session.state not in {SessionState.COMPLETED, SessionState.FAILED})]:
+            self._evict(sid)          # half-made rooms saved by older versions: they can never be used or expire
+        for sid, opts in self.options.items():
+            if not isinstance(opts, dict):
+                continue
+            if "endpoint_at" in opts:
+                opts["endpoint_at"] = now
+            if isinstance(opts.get("start"), dict):
+                opts["start"]["at"] = now
         for sid, session in self.sessions.items():
             self.last_activity[sid] = now
             for pid in session.participants:
                 self.last_seen[(sid, pid)] = now  # grace period after a restart
+                self.joined_at[(sid, pid)] = now
             if session.state == SessionState.ACTIVE:
                 session.reopen_barrier()
-                self.recorders[sid].record("session_resumed", {"reason": "server restart"})
+                if sid in self.recorders:
+                    self.recorders[sid].record("session_resumed", {"reason": "server restart"})
                 self.events[sid].emit("session_resumed", reason="server restart")
 
     def _require_host(self, session: Session, participant_id: str) -> None:
@@ -686,7 +717,7 @@ class LobbyService:
             raise LobbyError("only the host can do that")
 
     def _digest(self, value: str) -> str:
-        return hashlib.sha256(value.encode()).hexdigest()
+        return hashlib.sha256(value.encode("utf-8", "surrogatepass")).hexdigest()
 
     def validate_session(self, request: dict) -> dict:
         session, participant_id = self._authorized(request)
@@ -758,6 +789,8 @@ class LobbyService:
             )
             self.lockstep_used.add(session.session_id)
             bundle = self.coordinators[session.session_id].submit(item)
+        except (OverflowError, TypeError) as exc:          # "stick_x": 1e999, a list, ...
+            raise LobbyError("stick_x and stick_y must be whole numbers") from exc
         except (ValueError, LockstepError) as exc:
             raise LobbyError(str(exc)) from exc
         self._touch(session.session_id)
@@ -906,9 +939,13 @@ class LobbyService:
                 if not free:
                     raise LobbyError("that name is used by too many active players; pick another")
                 tag = secrets.choice(free)
-        if f"{low}#{tag}" not in self.aliases and len(self.aliases) >= 50000:
-            raise LobbyError("too many active names on this server")      # checked before adding, so a flood can not grow memory
-        self.aliases[f"{low}#{tag}"] = {"install": install, "seen": now}
+        where = key_for(request.get("_peer"))      # memory only, never in a snapshot; None for this computer
+        if f"{low}#{tag}" not in self.aliases:
+            if len(self.aliases) >= 50000:
+                raise LobbyError("too many active names on this server")      # checked before adding, so a flood can not grow memory
+            if where is not None and sum(1 for v in self.aliases.values() if v.get("where") == where) >= self.aliases_per_address:
+                raise LobbyError("too many names are in use from your network right now; try again in a while")
+        self.aliases[f"{low}#{tag}"] = {"install": install, "seen": now, "where": where}
         return {"alias": alias, "tag": tag, "player": f"{alias}#{tag}"}
 
     def _stats_view(self, session: Session) -> dict:
@@ -980,7 +1017,9 @@ class LobbyService:
             if wait:
                 raise PermissionError(wait_text(wait))
             given = request.get("access_key")
-            if not isinstance(given, str) or not secrets.compare_digest(given, self.access_key):
+            # compared as bytes: compare_digest refuses str with non-ASCII characters (a TypeError, not a "no")
+            if not isinstance(given, str) or not secrets.compare_digest(given.encode("utf-8", "replace"),
+                                                                        self.access_key.encode("utf-8", "replace")):
                 self.key_throttle.fail(peer)
                 raise PermissionError("This server code is out of date or not right. Ask the host for a fresh one.")
         handlers = {
@@ -1089,23 +1128,45 @@ class LobbyService:
         self.desync_trackers.pop(session_id, None)
         self.recorders.pop(session_id, None)
         while len(self.finalized_order) > self.max_retained_sessions:
-            expired_id = self.finalized_order.pop(0)
-            self.finalized_replays.pop(expired_id, None)
-            self.sessions.pop(expired_id, None)
-            self.last_activity.pop(expired_id, None)
+            self._evict(self.finalized_order.pop(0))
         return result
 
+    def _evict(self, sid: str) -> None:
+        """Forget a finished session completely: nothing about it stays in memory or in later snapshots."""
+        self.finalized_replays.pop(sid, None)
+        if sid in self.finalized_order:
+            self.finalized_order.remove(sid)
+        for table in (self.sessions, self.last_activity, self.options, self.events, self.pending, self.join_codes,
+                      self.coordinators, self.released_bundles, self.desync_trackers, self.recorders, self._psk):
+            table.pop(sid, None)
+        self.lockstep_used.discard(sid)
+        for table in (self.removed, self.credentials, self.stats, self.joined_at, self.last_seen):
+            for key in [k for k in table if k[0] == sid]:
+                del table[key]
+        self.established = {k for k in self.established if k[0] != sid}
+        self.disconnected = {k for k in self.disconnected if k[0] != sid}
+        self.invites.revoke_session(sid)
+        if self.relay is not None:
+            self.relay.drop_session(sid)
+
     def _expire(self, session: Session) -> None:
+        sid = session.session_id
         if session.state not in {SessionState.COMPLETED, SessionState.FAILED}:
             session.fail("session expired due to inactivity")
-            self.recorders[session.session_id].record("session_expired")
-            self._finalize_replay(session.session_id)
-        self._drop_secrets(session.session_id)
+            if sid in self.recorders:
+                self.recorders[sid].record("session_expired")
+                self._finalize_replay(sid)
+            else:                                   # half-made (never fully set up): nothing to replay, just let it go
+                self._evict(sid)
+        self._drop_secrets(sid)
 
     def expire_idle_sessions(self) -> None:
         now = self.clock()
         for session_id, session in list(self.sessions.items()):
-            if now - self.last_activity.get(session_id, now) > self.session_idle_seconds:
+            # a session with no activity stamp at all was never fully set up: it goes too, instead of living forever
+            if session_id not in self.last_activity or now - self.last_activity[session_id] > self.session_idle_seconds:
+                if session.state in {SessionState.COMPLETED, SessionState.FAILED} and session_id not in self.last_activity:
+                    continue
                 self._expire(session)
 
     @staticmethod

@@ -68,11 +68,25 @@ class StateStore:
         if not path.exists():
             return None
         try:
-            return json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
+            data = json.loads(path.read_bytes().decode("utf-8"))
+            if not isinstance(data, dict):
+                raise ValueError("not a lobby snapshot")
+            return data
+        except (OSError, ValueError, RecursionError):     # ValueError covers bad JSON and bytes that are not UTF-8
             # A corrupt snapshot must not stop the server from starting.
-            path.replace(self.root / (SNAPSHOT_NAME + ".corrupt"))
+            self.quarantine_snapshot()
             return None
+
+    def quarantine_snapshot(self) -> None:
+        """Move a snapshot that can't be used aside (kept for a look, never loaded again) so the server starts empty."""
+        path = self.root / SNAPSHOT_NAME
+        try:
+            path.replace(self.root / (SNAPSHOT_NAME + ".corrupt"))
+        except OSError:
+            try:
+                path.unlink()
+            except OSError:
+                pass
 
     def write_info(self, info: dict) -> None:
         self._write_atomic("server_info.json", json.dumps(info).encode())

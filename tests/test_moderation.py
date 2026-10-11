@@ -194,8 +194,9 @@ class ConsoleAndApp(unittest.TestCase):
         self.tmp.cleanup()
 
     def _admin(self, path, body=None, token="m0d"):
-        req = urllib.request.Request(self.url + path + ("&" if "?" in path else "?") + "token=" + token, method="POST" if body is not None else "GET",
-                                     data=json.dumps(body).encode() if body is not None else None, headers={"Content-Type": "application/json"})
+        req = urllib.request.Request(self.url + path, method="POST" if body is not None else "GET",
+                                     data=json.dumps(body).encode() if body is not None else None,
+                                     headers={"Content-Type": "application/json", "X-Admin-Token": token})
         try:
             with urllib.request.urlopen(req, timeout=5) as r:
                 return r.status, r.read()
@@ -217,6 +218,7 @@ class ConsoleAndApp(unittest.TestCase):
         self.assertTrue(out["reported"])
         self.assertEqual(["Bea"], [b["name"] for b in out["inbox"]["blocked"]])
         self.assertEqual(401, self._admin("/admin/reports", token="nope")[0])
+        self.assertEqual(401, self._admin("/admin/reports?token=m0d", token="")[0])        # never from the address
         status, body = self._admin("/admin/reports")
         self.assertEqual(200, status)
         rep = json.loads(body)["reports"][0]

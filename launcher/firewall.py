@@ -42,35 +42,50 @@ def _line(args: list[str]) -> str:
     return " ".join(f'"{a}"' if (" " in a or "\\" in a) else a for a in args)
 
 
+def _remove_folder(folder: Path) -> None:
+    for f in (folder / "lp-firewall.cmd", folder / "lp-firewall.log"):
+        try:
+            f.unlink(missing_ok=True)
+        except OSError:
+            pass
+    try:
+        folder.rmdir()
+    except OSError:
+        pass
+
+
 def _elevated(args: list[str], run, before: tuple = ()) -> dict:
     """Run netsh as administrator through the Windows approval box and report what happened. One approval covers everything:
     the commands in `before` (for example deleting an old rule) and then `args`.
     The commands go into a small script file so there is no quoting to get wrong, netsh's own words are written to a log file so a
     failure can say why, and netsh's exit code for the LAST command is recorded (so success does not depend on the language of
     its messages). Returns {"cancelled", "ok", "log", "error"}."""
-    folder = Path(tempfile.gettempdir())
+    # A fresh private folder each time: a fixed name in %TEMP% could be planted or swapped by another program before the
+    # elevated run picks it up, and that script runs as administrator.
+    try:
+        folder = Path(tempfile.mkdtemp(prefix="lp-firewall-"))
+    except OSError as exc:
+        return {"cancelled": False, "ok": False, "log": "", "error": f"Could not prepare the command: {exc}"}
     script, log = folder / "lp-firewall.cmd", folder / "lp-firewall.log"
     lines = ["@echo off"] + [f'netsh {_line(a)} >> "{log}" 2>&1' for a in before]
     lines += [f'netsh {_line(args)} >> "{log}" 2>&1', f'echo LP_EXIT=%errorlevel%>> "{log}"']
     try:
-        log.unlink(missing_ok=True)
         script.write_text("\r\n".join(lines) + "\r\n", encoding="ascii", errors="replace")
     except OSError as exc:
+        _remove_folder(folder)
         return {"cancelled": False, "ok": False, "log": "", "error": f"Could not prepare the command: {exc}"}
     quoted = str(script).replace("'", "''")
-    result = run(["powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command",
-                  f"Start-Process -FilePath '{quoted}' -Verb RunAs -Wait -WindowStyle Hidden"], timeout=120)
-    err = str(getattr(result, "stderr", "") or "").strip()
-    text = ""
     try:
-        text = log.read_text(encoding="utf-8", errors="replace").strip()
-    except OSError:
-        pass
-    for f in (script, log):
+        result = run(["powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command",
+                      f"Start-Process -FilePath '{quoted}' -Verb RunAs -Wait -WindowStyle Hidden"], timeout=120)
+        err = str(getattr(result, "stderr", "") or "").strip()
+        text = ""
         try:
-            f.unlink(missing_ok=True)
+            text = log.read_text(encoding="utf-8", errors="replace").strip()
         except OSError:
             pass
+    finally:
+        _remove_folder(folder)
     ok = bool(re.search(r"LP_EXIT=0\b", text))
     shown = "\n".join(l for l in text.splitlines() if not l.startswith("LP_EXIT=")).strip()
     return {"cancelled": ("cancel" in err.lower()) and not text, "ok": ok, "log": shown[:400], "error": err[:300]}

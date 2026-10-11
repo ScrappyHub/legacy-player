@@ -16,7 +16,9 @@ it works the same on every OS and is refused from other machines.
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import json
+import os
 import socket
 import ssl
 import subprocess
@@ -27,20 +29,49 @@ from pathlib import Path
 from server.state_store import StateStore
 
 
+def _admin_hosts(info_host: str) -> list[str]:
+    """Where to reach the server's admin channel: always loopback first (the server only accepts admin calls from this
+    machine, and listens on loopback too when bound to one address). Its own address is the last resort, for a server
+    that could not also listen on loopback; it accepts a call from itself there."""
+    host = str(info_host or "")
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        ip = None
+    # one loopback try only: on Windows a refused loopback connection takes about two seconds
+    hosts = ["::1"] if ip is not None and ip.version == 6 else ["127.0.0.1"]
+    if ip is not None and not ip.is_loopback and not ip.is_unspecified:
+        hosts.append(host)
+    return hosts
+
+
+def _connect_admin(info: dict, timeout: float) -> socket.socket:
+    last: Exception | None = None
+    for host in _admin_hosts(info.get("host", "")):
+        try:
+            return socket.create_connection((host, info["port"]), timeout=timeout)
+        except OSError as exc:
+            last = exc
+    raise last or ConnectionError("server not reachable")
+
+
 def _admin_call(state_dir: Path, operation: str, timeout: float = 5.0) -> dict:
     store = StateStore(state_dir)
     info = store.read_info()
     if info is None:
         raise ConnectionError("no server info found; is it running?")
-    host = "127.0.0.1" if info["host"] in {"0.0.0.0", "::", ""} else info["host"]
     request = {"operation": operation, "admin_token": store.admin_token()}
-    sock = socket.create_connection((host, info["port"]), timeout=timeout)
+    sock = _connect_admin(info, timeout)
     if info.get("tls"):
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-        # Loopback admin call only: the token already proves we share this machine's state folder.
+        # Admin call to this machine only: the token already proves we share this machine's state folder.
         context.check_hostname = False
         context.verify_mode = ssl.CERT_NONE
-        sock = context.wrap_socket(sock, server_hostname=host)
+        try:
+            sock = context.wrap_socket(sock, server_hostname="localhost")
+        except (OSError, ssl.SSLError):
+            sock.close()
+            raise
     with sock:
         sock.sendall(json.dumps(request).encode() + b"\n")
         data = sock.makefile("rb").readline()
@@ -58,19 +89,41 @@ def _is_running(state_dir: Path) -> bool:
         return False
 
 
+def _child_env() -> dict:
+    """The environment for the server process. A PyInstaller one-file app unpacks itself into a temporary _MEI folder
+    and tells its children about it through the environment; a long-running child that inherited that would reuse
+    (and keep locked) the parent's temporary folder, which the parent deletes when it exits or updates itself."""
+    env = dict(os.environ)
+    if getattr(sys, "frozen", False):
+        env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
+        for key in [k for k in env if k.startswith("_PYI_") or k == "_MEIPASS2"]:
+            del env[key]
+    return env
+
+
+def _child_cwd(args: argparse.Namespace) -> str | None:
+    """Packaged app: start the server in its state folder, never inside the parent's temporary _MEI folder."""
+    if not getattr(sys, "frozen", False):
+        return None
+    folder = Path(args.state_dir).resolve()
+    folder.mkdir(parents=True, exist_ok=True)
+    return str(folder)
+
+
 def _server_command(args: argparse.Namespace) -> list[str]:
     # In the packaged app sys.executable is the app itself, which runs the server for --server-run.
     runner = [sys.executable, "--server-run"] if getattr(sys, "frozen", False) else [sys.executable, "-m", "server.api.json_server"]
+    # absolute paths: the packaged server starts in another folder (see _child_cwd)
     command = runner + [
         "--host", args.host, "--port", str(args.port),
-        "--state-dir", str(args.state_dir), "--replay-dir", str(args.replay_dir),
+        "--state-dir", str(Path(args.state_dir).resolve()), "--replay-dir", str(Path(args.replay_dir).resolve()),
     ]
     for name in ("max_players", "max_rooms", "max_waiting"):
         value = getattr(args, name, None)
         if value is not None:
             command += ["--" + name.replace("_", "-"), str(value)]
     if args.tls_cert:
-        command += ["--tls-cert", str(args.tls_cert), "--tls-key", str(args.tls_key)]
+        command += ["--tls-cert", str(Path(args.tls_cert).resolve()), "--tls-key", str(Path(args.tls_key).resolve())]
     if args.allow_insecure_remote:
         command.append("--allow-insecure-remote")
     return command
@@ -110,15 +163,15 @@ def start(args: argparse.Namespace) -> int:
         return 0
     command = _server_command(args)
     if not args.detach:
-        return subprocess.call(command)
+        return subprocess.call(command, env=_child_env(), cwd=_child_cwd(args))
     args.state_dir.mkdir(parents=True, exist_ok=True)
-    log = open(args.state_dir / "server.log", "ab")
-    kwargs = {"stdout": log, "stderr": log, "stdin": subprocess.DEVNULL}
+    kwargs = {"stdin": subprocess.DEVNULL, "env": _child_env(), "cwd": _child_cwd(args)}
     if sys.platform == "win32":
         kwargs["creationflags"] = 0x00000008 | 0x00000200  # DETACHED_PROCESS | NEW_PROCESS_GROUP
     else:
         kwargs["start_new_session"] = True
-    subprocess.Popen(command, **kwargs)
+    with open(args.state_dir / "server.log", "ab") as log:     # the child keeps its own copy of the handle
+        subprocess.Popen(command, stdout=log, stderr=log, **kwargs)
     for _ in range(50):
         if _is_running(args.state_dir):
             print(f"Server started (log: {args.state_dir / 'server.log'}).")

@@ -7,6 +7,8 @@ import re
 import socket
 import ssl
 
+MAX_ANSWER_BYTES = 8 * 1024 * 1024
+
 
 class LobbyClientError(RuntimeError):
     pass
@@ -150,7 +152,7 @@ class LobbyClient:
                             "Ask the host for the fingerprint shown in their app, or someone may be in the middle.")
             with sock:
                 sock.sendall(json.dumps(request).encode() + b"\n")
-                line = sock.makefile("rb").readline()
+                line = sock.makefile("rb").readline(MAX_ANSWER_BYTES)     # bounded: a wrong server cannot fill memory
         except (OSError, ssl.SSLError) as exc:
             raise LobbyClientError(
                 f"Could not reach the multiplayer server at {self._where()} ({exc}). "

@@ -6,12 +6,14 @@ import ipaddress
 import json
 import signal
 import ssl
+import sys
 import time
 from pathlib import Path
 
 from server.api.control import ServerControl
 from server.lobby import LobbyError, LobbyService
 from server.lobby.invites import InviteBook
+from server.lobby.throttle import key_for
 from server.relay import Relay
 from server.state_store import StateStore
 
@@ -19,15 +21,46 @@ from server.state_store import StateStore
 MAX_REQUEST_BYTES = 64 * 1024
 MAX_REQUESTS_PER_CONNECTION = 256
 CLIENT_IDLE_SECONDS = 30
+CONNECTION_LIFETIME_SECONDS = 120     # a request/answer connection (not a relay pipe) lives at most this long in total
+MAX_FAILED_IN_A_ROW = 8               # this many refused or unreadable requests in a row and the connection is closed
 MAX_CONNECTIONS_PER_IP = 16
-_PER_IP: dict[str, int] = {}
+SHUTDOWN_WAIT_SECONDS = 5.0
+_PER_IP: dict[str, int] = {}          # keyed like the lobby's throttle: an IPv4 address, or an IPv6 /64 (one household)
+
+
+def _log(line: str) -> None:
+    """The server's own log line. Never a client address or anything a client sent."""
+    try:
+        print(f"Legacy Player server: {line}", file=sys.stderr, flush=True)
+    except Exception:
+        pass
 
 
 def _is_loopback(host: str) -> bool:
     try:
-        return ipaddress.ip_address(host).is_loopback
+        ip = ipaddress.ip_address(host)
     except ValueError:
         return False
+    mapped = getattr(ip, "ipv4_mapped", None)
+    return (mapped or ip).is_loopback
+
+
+def _from_this_machine(writer: asyncio.StreamWriter) -> bool:
+    """Loopback, or a connection whose source is the very address it arrived on (this computer talking to its own
+    non-loopback address: nobody else can have that source address and finish a TCP handshake)."""
+    peer = writer.get_extra_info("peername")
+    host = peer[0] if peer else ""
+    if _is_loopback(host):
+        return True
+    local = writer.get_extra_info("sockname")
+    try:
+        return bool(host) and bool(local) and ipaddress.ip_address(host) == ipaddress.ip_address(local[0])
+    except ValueError:
+        return False
+
+
+def _send(writer: asyncio.StreamWriter, response: dict) -> None:
+    writer.write(json.dumps(response, separators=(",", ":")).encode() + b"\n")
 
 
 async def handle_client(
@@ -37,10 +70,14 @@ async def handle_client(
     connection_limit: asyncio.Semaphore | None = None,
     control: ServerControl | None = None,
     relay: Relay | None = None,
+    tracked: set | None = None,
 ) -> None:
     peer = writer.get_extra_info("peername")
     ip = peer[0] if peer else ""
+    ip_key = key_for(ip)
     counted = False
+    if tracked is not None:
+        tracked.add(writer)
     if connection_limit is not None:
         if connection_limit.locked():                        # full: say so at once instead of queueing every stranger forever
             writer.write(b'{"ok":false,"error":"the server is busy, try again in a moment"}\n')
@@ -49,33 +86,44 @@ async def handle_client(
             except (OSError, ConnectionError):
                 pass
             writer.close()
+            if tracked is not None:
+                tracked.discard(writer)
             return
         await connection_limit.acquire()
-    if ip and not _is_loopback(ip):
-        if _PER_IP.get(ip, 0) >= MAX_CONNECTIONS_PER_IP:     # one address cannot hold every slot
+    if ip_key is not None:
+        if _PER_IP.get(ip_key, 0) >= MAX_CONNECTIONS_PER_IP:     # one address (or one IPv6 household) cannot hold every slot
             if connection_limit is not None:
                 connection_limit.release()
             writer.close()
+            if tracked is not None:
+                tracked.discard(writer)
             return
-        _PER_IP[ip] = _PER_IP.get(ip, 0) + 1
+        _PER_IP[ip_key] = _PER_IP.get(ip_key, 0) + 1
         counted = True
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + CONNECTION_LIFETIME_SECONDS
     try:
         request_count = 0
+        failed_in_a_row = 0
         while True:
+            left = deadline - loop.time()
+            if left <= 0:
+                break
             try:
-                line = await asyncio.wait_for(reader.readline(), CLIENT_IDLE_SECONDS)
-            except TimeoutError:
+                line = await asyncio.wait_for(reader.readline(), min(CLIENT_IDLE_SECONDS, left))
+            except (TimeoutError, asyncio.TimeoutError):
                 break
             except ValueError:
-                writer.write(b'{"ok":false,"error":"request is too large"}\n')
+                _send(writer, {"ok": False, "error": "request is too large"})
                 await writer.drain()
+                break
+            except (OSError, ConnectionError, ssl.SSLError):
                 break
             if not line:
                 break
             request_count += 1
             if request_count > MAX_REQUESTS_PER_CONNECTION:
-                response = {"ok": False, "error": "connection request limit reached"}
-                writer.write(json.dumps(response, separators=(",", ":")).encode() + b"\n")
+                _send(writer, {"ok": False, "error": "connection request limit reached"})
                 await writer.drain()
                 break
             if len(line) > MAX_REQUEST_BYTES:
@@ -100,15 +148,9 @@ async def handle_client(
                         await relay.handle_punch(request, reader, writer)
                         return
                     if control is not None and control.is_admin_operation(request.get("operation")):
-                        peer = writer.get_extra_info("peername")
-                        host = peer[0] if peer else ""
-                        try:
-                            loopback = ipaddress.ip_address(host).is_loopback
-                        except ValueError:
-                            loopback = False
                         response = {
                             "ok": True,
-                            "result": control.handle(request, peer_is_loopback=loopback),
+                            "result": control.handle(request, peer_is_loopback=_from_this_machine(writer)),
                         }
                     else:
                         response = {"ok": True, "result": service.dispatch(request)}
@@ -116,26 +158,92 @@ async def handle_client(
                     response = {"ok": False, "error": str(exc)}
                 except (json.JSONDecodeError, LobbyError) as exc:
                     response = {"ok": False, "error": str(exc)}
-            writer.write(json.dumps(response, separators=(",", ":")).encode() + b"\n")
+                except Exception:                      # anything else (huge numbers, odd types, deep nesting): a plain no
+                    response = {"ok": False, "error": "bad request"}
+            failed_in_a_row = 0 if response.get("ok") else failed_in_a_row + 1
+            _send(writer, response)
             await writer.drain()
+            if failed_in_a_row >= MAX_FAILED_IN_A_ROW:
+                break
+    except (OSError, ConnectionError, ssl.SSLError):
+        pass
     finally:
         writer.close()
         try:
             await writer.wait_closed()
-        except (OSError, ConnectionError):
+        except (OSError, ConnectionError, ssl.SSLError):
+            pass
+        except Exception:
             pass
         if connection_limit is not None:
             connection_limit.release()
         if counted:
-            _PER_IP[ip] = max(0, _PER_IP.get(ip, 1) - 1)
-            if not _PER_IP[ip]:
-                _PER_IP.pop(ip, None)
+            _PER_IP[ip_key] = max(0, _PER_IP.get(ip_key, 1) - 1)
+            if not _PER_IP[ip_key]:
+                _PER_IP.pop(ip_key, None)
+        if tracked is not None:
+            tracked.discard(writer)
 
 
-async def _periodic(seconds: float, action) -> None:
+async def _periodic(seconds: float, action, name: str = "background task") -> None:
     while True:
         await asyncio.sleep(seconds)
-        action()
+        try:
+            action()
+        except Exception as exc:          # one failure (an antivirus holding the snapshot file) must not stop it for good
+            _log(f"{name} failed ({type(exc).__name__}); will try again")
+
+
+def _new_service(store: StateStore, replay_dir: Path, heartbeat_timeout: float, max_players: int, max_rooms: int,
+                 max_waiting: int) -> LobbyService:
+    return LobbyService(
+        replay_dir=replay_dir,
+        heartbeat_timeout=heartbeat_timeout,
+        max_participants=max_players,
+        max_sessions=max_rooms,
+        max_waiting=max_waiting,
+        invite_book=InviteBook(pepper=store.pepper(), clock=time.time),
+    )
+
+
+def _loopback_for(host: str) -> str | None:
+    """The loopback address to listen on as well when bound to one specific address, so local admin calls work."""
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return None if host.lower() == "localhost" else "127.0.0.1"
+    if ip.is_loopback or ip.is_unspecified:
+        return None
+    return "::1" if ip.version == 6 else "127.0.0.1"
+
+
+async def drop_connections(server, relay: Relay | None, tracked: set) -> None:
+    """Close the listener and every open connection (parked relay slots included), and wait a bounded time.
+    Since Python 3.12 wait_closed() waits for every connection, so one parked relay could keep the process alive."""
+    server.close()
+    if relay is not None:
+        for sid in list(relay.parked) + list(relay.punch_parked):
+            try:
+                relay.drop_session(sid)
+            except Exception:
+                pass
+    for writer in list(tracked):
+        try:
+            writer.close()
+        except Exception:
+            pass
+    close_clients = getattr(server, "close_clients", None)        # 3.13+
+    if close_clients is not None:
+        try:
+            close_clients()
+        except Exception:
+            pass
+    try:
+        await asyncio.wait_for(server.wait_closed(), SHUTDOWN_WAIT_SECONDS)
+    except (asyncio.TimeoutError, TimeoutError):
+        abort = getattr(server, "abort_clients", None)
+        if abort is not None:
+            abort()
 
 
 async def serve(
@@ -153,18 +261,17 @@ async def serve(
     max_waiting: int = 16,
 ) -> None:
     store = StateStore(state_dir or Path("artifacts/state"))
-    service = LobbyService(
-        replay_dir=replay_dir,
-        heartbeat_timeout=heartbeat_timeout,
-        max_participants=max_players,
-        max_sessions=max_rooms,
-        max_waiting=max_waiting,
-        invite_book=InviteBook(pepper=store.pepper(), clock=time.time),
-    )
+    service = _new_service(store, replay_dir, heartbeat_timeout, max_players, max_rooms, max_waiting)
     snapshot = store.load_snapshot()
     if snapshot is not None:
-        service.import_state(snapshot)
-        print(f"Resumed {len(service.sessions)} session(s) from the saved lobby state")
+        try:
+            service.import_state(snapshot)
+            print(f"Resumed {len(service.sessions)} session(s) from the saved lobby state")
+        except Exception as exc:          # parses but can't be used (another version, a missing part): start empty
+            _log(f"the saved lobby state could not be used ({type(exc).__name__}); kept it as "
+                 "lobby_state.json.corrupt and started with no rooms")
+            store.quarantine_snapshot()
+            service = _new_service(store, replay_dir, heartbeat_timeout, max_players, max_rooms, max_waiting)
     shutdown = asyncio.Event()
     service.access_key = store.access_key()
     control = ServerControl(store.admin_token(), shutdown, service, store)
@@ -176,9 +283,11 @@ async def serve(
         ssl_context.minimum_version = ssl.TLSVersion.TLSv1_2
         ssl_context.load_cert_chain(tls_cert, tls_key)
     connection_limit = asyncio.Semaphore(128)
+    tracked: set = set()
+
     async def listen(where):
         return await asyncio.start_server(
-            lambda reader, writer: handle_client(reader, writer, service, connection_limit, control, relay),
+            lambda reader, writer: handle_client(reader, writer, service, connection_limit, control, relay, tracked),
             where,
             port,
             limit=MAX_REQUEST_BYTES * 2,
@@ -191,6 +300,12 @@ async def serve(
             server = await listen(["0.0.0.0", "::"])
         except OSError:            # no IPv6 on this machine: IPv4 only, as before
             server = None
+    elif _loopback_for(host) is not None and port:
+        # Bound to one specific address: listen on loopback too, so `stop`/`status` (which only talk to loopback) reach it.
+        try:
+            server = await listen([host, _loopback_for(host)])
+        except OSError:            # loopback port taken: the specific address alone (admin calls fall back to it)
+            server = None
     if server is None:
         server = await listen(host)
     bound = server.sockets[0].getsockname()
@@ -202,6 +317,9 @@ async def serve(
     print(f"Legacy Player coordination server listening on {addresses} ({mode})", flush=True)
 
     loop = asyncio.get_running_loop()
+    # asyncio's own error reports can name the connection; write only what kind of error it was
+    loop.set_exception_handler(lambda _loop, context: _log(
+        f"background error ({type(context.get('exception')).__name__ if context.get('exception') else 'no exception'})"))
     for name in ("SIGINT", "SIGTERM"):
         try:
             loop.add_signal_handler(getattr(signal, name), shutdown.set)
@@ -209,21 +327,28 @@ async def serve(
             pass  # Windows: use `python -m server.cli stop` or Ctrl+C
 
     background = [
-        asyncio.create_task(_periodic(5.0, service.sweep_disconnected)),
-        asyncio.create_task(_periodic(autosave_seconds, lambda: store.save_snapshot(service.export_state()))),
+        asyncio.create_task(_periodic(5.0, service.sweep_disconnected, "sweep")),
+        asyncio.create_task(_periodic(autosave_seconds, lambda: store.save_snapshot(service.export_state()), "autosave")),
     ]
     try:
         await shutdown.wait()
     except asyncio.CancelledError:
         pass
     finally:
-        service.announce_stopping()
         for task in background:
             task.cancel()
-        store.save_snapshot(service.export_state())
-        server.close()
-        await server.wait_closed()
-        print("Legacy Player server stopped; lobby state saved", flush=True)
+        try:
+            service.announce_stopping()
+        except Exception as exc:
+            _log(f"could not tell the rooms the server is stopping ({type(exc).__name__})")
+        saved = True
+        try:
+            store.save_snapshot(service.export_state())
+        except Exception as exc:
+            saved = False
+            _log(f"could not save the lobby state ({type(exc).__name__})")
+        await drop_connections(server, relay, tracked)
+        print("Legacy Player server stopped" + ("; lobby state saved" if saved else ""), flush=True)
 
 
 def main() -> None:

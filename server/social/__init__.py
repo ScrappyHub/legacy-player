@@ -22,6 +22,8 @@ import json
 import os
 import re
 import secrets
+import sys
+import tempfile
 import threading
 import time
 from pathlib import Path
@@ -42,6 +44,51 @@ REQUESTS_PER_HOUR = 20                                     # nor send friend req
 REPORTS_PER_DAY = 20
 REPORT_CATEGORIES = ("harassment", "hate", "threats", "spam", "scam", "sexual", "name", "cheating", "other")
 TIMEOUTS = {"1h": 3600, "24h": 86400, "7d": 7 * 86400, "30d": 30 * 86400}
+MAX_PLAYERS = 100_000                                      # the whole service: hello stops making identities beyond this
+SAVE_EVERY = 2.0                                           # seconds: ordinary changes are written at most this often
+TIDY_EVERY = 60.0                                          # seconds (service clock) between full tidy passes
+
+
+def _log(line: str) -> None:
+    """One line for the service's own log. Never a player's words, ids or any address."""
+    try:
+        print(f"friends service: {line}", file=sys.stderr, flush=True)
+    except Exception:
+        pass
+
+
+def _small_int(value, limit: int = 64) -> int:
+    try:
+        number = int(value or 0)
+    except (TypeError, ValueError, OverflowError):
+        return 0
+    return max(0, min(limit, number))
+
+
+def _str_list(value) -> list:
+    return [x for x in value if isinstance(x, str)] if isinstance(value, list) else []
+
+
+def _clean_player(p) -> dict | None:
+    """A player entry as read from disk, with every field the rules rely on; None when it can't be used."""
+    if not isinstance(p, dict) or not all(isinstance(p.get(k), str) and p.get(k) for k in ("code", "secret")):
+        return None
+    out = dict(p)
+    out["name"] = clean_name(p.get("name"))
+    for key in ("friends", "requests_in", "requests_out", "blocked"):
+        out[key] = _str_list(p.get(key))
+    seen = p.get("seen")
+    out["seen"] = float(seen) if isinstance(seen, (int, float)) and not isinstance(seen, bool) else 0.0
+    out["status"] = p.get("status") if isinstance(p.get("status"), str) else ""
+    out["room"] = p.get("room") if isinstance(p.get("room"), dict) else None
+    invites = p.get("invites") if isinstance(p.get("invites"), list) else []
+    out["invites"] = [i for i in invites if isinstance(i, dict) and isinstance(i.get("at"), (int, float))]
+    messages = p.get("messages") if isinstance(p.get("messages"), dict) else {}
+    out["messages"] = {str(k): [m for m in v if isinstance(m, dict) and isinstance(m.get("at"), (int, float))
+                                and isinstance(m.get("from"), str) and isinstance(m.get("text"), str)]
+                       for k, v in messages.items() if isinstance(v, list)}
+    out["requests_open"] = bool(p.get("requests_open", True))
+    return out
 
 
 class SocialError(ValueError):
@@ -73,32 +120,148 @@ class SocialService:
         self.codes: dict[str, str] = {}        # friend code -> player id
         # moderation: bans and timeouts by player id, reports from players, and the service-wide word filter
         self.mod: dict = {"bans": {}, "mutes": {}, "reports": [], "filter": {"on": False, "words": []}, "log": []}
+        self._dirty = False
+        self._last_save = float("-inf")       # time.monotonic() of the last write
+        self._timer: threading.Timer | None = None
+        self._tidied = float("-inf")          # service clock of the last full tidy
         self._load()
 
     # --- storage --------------------------------------------------------------------------------------------------
     def _load(self) -> None:
         if self.folder is None:
             return
+        path = self.folder / "players.json"
         try:
-            data = json.loads((self.folder / "players.json").read_text(encoding="utf-8"))
-            self.players = data.get("players") or {}
-            self.codes = {p["code"]: pid for pid, p in self.players.items()}
-            self.mod.update({k: v for k, v in (data.get("mod") or {}).items() if k in self.mod})
-        except (OSError, ValueError):
-            pass
+            raw = path.read_bytes()
+        except FileNotFoundError:
+            return
+        except OSError as exc:
+            # Unreadable right now (locked, permissions): never start empty, or the next save would wipe the bans.
+            raise RuntimeError(f"could not read {path.name} ({type(exc).__name__}); not starting so it is not overwritten") from exc
+        try:
+            data = json.loads(raw.decode("utf-8"))
+            if not isinstance(data, dict) or not isinstance(data.get("players", {}), dict) or not isinstance(data.get("mod", {}), dict):
+                raise ValueError("not a players file")
+        except (ValueError, RecursionError) as exc:
+            kept = path.with_name(f"players.json.corrupt-{int(time.time())}")
+            try:
+                os.replace(path, kept)
+                where = f"kept it as {kept.name}"
+            except OSError:
+                where = "could not move it aside"
+            _log(f"players.json could not be read ({type(exc).__name__}); {where} and started with an empty list. "
+                 "The bans and reports in it are not active until it is repaired and put back.")
+            return
+        skipped = 0
+        for pid, p in (data.get("players") or {}).items():
+            clean = _clean_player(p)
+            if clean is None or clean["code"] in self.codes:
+                skipped += 1
+                continue
+            self.players[pid] = clean
+            self.codes[clean["code"]] = pid
+        mod = data.get("mod") or {}
+        for key, kind in (("bans", dict), ("mutes", dict), ("reports", list), ("filter", dict), ("log", list)):
+            if isinstance(mod.get(key), kind):
+                self.mod[key] = mod[key]
+        self.mod["bans"] = {str(k): (v if isinstance(v, dict) else {}) for k, v in self.mod["bans"].items()}
+        self.mod["mutes"] = {str(k): v for k, v in self.mod["mutes"].items()
+                             if isinstance(v, dict) and isinstance(v.get("until"), (int, float))}
+        self.mod["reports"] = [r for r in self.mod["reports"] if isinstance(r, dict) and isinstance(r.get("id"), str)
+                               and isinstance(r.get("target"), dict) and isinstance(r["target"].get("id"), str)
+                               and isinstance(r.get("status"), str)]
+        self.mod["log"] = [entry for entry in self.mod["log"] if isinstance(entry, dict)]
+        f = self.mod["filter"]
+        self.mod["filter"] = {"on": bool(f.get("on")), "words": _str_list(f.get("words"))}
+        if skipped:
+            _log(f"skipped {skipped} unreadable player entr{'y' if skipped == 1 else 'ies'} in players.json")
 
     def save(self) -> None:
+        """Write everything now: a whole new file, flushed to disk, then swapped in, so a crash or a power cut leaves
+        either the old file or the new one, never half of one."""
         if self.folder is None:
             return
         with self.lock:
             self.folder.mkdir(parents=True, exist_ok=True)
-            tmp = self.folder / "players.tmp"
-            tmp.write_text(json.dumps({"players": self.players, "mod": self.mod}), encoding="utf-8")
-            os.replace(tmp, self.folder / "players.json")
+            data = json.dumps({"players": self.players, "mod": self.mod}).encode("utf-8")
+            fd, tmp = tempfile.mkstemp(prefix=".players-", suffix=".tmp", dir=self.folder)
+            try:
+                with os.fdopen(fd, "wb") as fh:
+                    fh.write(data)
+                    fh.flush()
+                    os.fsync(fh.fileno())
+                try:
+                    os.chmod(tmp, 0o600)
+                except OSError:
+                    pass
+                os.replace(tmp, self.folder / "players.json")
+            finally:
+                if os.path.exists(tmp):
+                    os.unlink(tmp)
+            if hasattr(os, "O_DIRECTORY"):                 # make the rename itself durable (POSIX)
+                try:
+                    dfd = os.open(self.folder, os.O_RDONLY | os.O_DIRECTORY)
+                    try:
+                        os.fsync(dfd)
+                    finally:
+                        os.close(dfd)
+                except OSError:
+                    pass
+            self._dirty = False
+            self._last_save = time.monotonic()
+
+    def _changed(self, urgent: bool = False) -> None:
+        """Something changed. Moderation and leaving are written at once; everything else at most every SAVE_EVERY
+        seconds (the first change after a quiet spell is written at once, later ones are gathered into one write)."""
+        if self.folder is None:
+            return
+        with self.lock:
+            self._dirty = True
+            wait = SAVE_EVERY - (time.monotonic() - self._last_save)
+            if urgent or wait <= 0:
+                try:
+                    self.save()
+                except OSError as exc:
+                    _log(f"could not save players.json ({type(exc).__name__}); trying again shortly")
+                    self._schedule(SAVE_EVERY)
+                return
+            self._schedule(wait)
+
+    def _schedule(self, delay: float) -> None:
+        if self._timer is not None:
+            return
+        self._timer = threading.Timer(max(0.05, delay), self._timer_fired)
+        self._timer.daemon = True
+        self._timer.start()
+
+    def _timer_fired(self) -> None:
+        with self.lock:
+            self._timer = None
+            if self._dirty:
+                try:
+                    self.save()
+                except OSError as exc:
+                    _log(f"could not save players.json ({type(exc).__name__}); trying again shortly")
+                    self._schedule(SAVE_EVERY)
+
+    def flush(self) -> None:
+        """Write anything not written yet (called when the service stops)."""
+        with self.lock:
+            if self._timer is not None:
+                self._timer.cancel()
+                self._timer = None
+            if self._dirty:
+                self.save()
 
     # --- helpers ------------------------------------------------------------------------------------------------
+    def _maybe_tidy(self) -> None:
+        """The full pass is O(players): run it at most once a minute, not on every call."""
+        if self.clock() - self._tidied >= TIDY_EVERY:
+            self._tidy()
+
     def _tidy(self) -> None:
         now = self.clock()
+        self._tidied = now
         for pid in [p for p, v in self.players.items() if now - v.get("seen", 0) > FORGET_AFTER and p not in self.mod["bans"]]:
             self._forget(pid)
         for pid, m in list(self.mod["mutes"].items()):
@@ -127,7 +290,7 @@ class SocialService:
 
     def _auth(self, pid: str, secret: str) -> dict:
         p = self.players.get(str(pid or ""))
-        if p is None or not hmac.compare_digest(str(secret or ""), p["secret"]):
+        if p is None or not hmac.compare_digest(str(secret or "").encode("utf-8", "replace"), p["secret"].encode("utf-8", "replace")):
             raise SocialError("This app is not known to the friends service any more. Say hello again under Settings > Friends.")
         ban = self.mod["bans"].get(str(pid))
         if ban:
@@ -170,6 +333,12 @@ class SocialService:
     def _online(self, p: dict) -> bool:
         return self.clock() - p.get("seen", 0) < ONLINE_WINDOW
 
+    def _mutual(self, a: str, b: str) -> bool:
+        """Friends on both sides and neither banned: a one-sided leftover never lets anything through."""
+        pa, pb = self.players.get(a), self.players.get(b)
+        return (pa is not None and pb is not None and b in pa.get("friends", []) and a in pb.get("friends", [])
+                and a not in self.mod["bans"] and b not in self.mod["bans"])
+
     def _view(self, me: dict, other_id: str) -> dict:
         o = self.players.get(other_id) or {}
         room = o.get("room") if self._online(o) and o.get("room") else None
@@ -178,7 +347,7 @@ class SocialService:
 
     def _inbox(self, pid: str) -> dict:
         p = self.players[pid]
-        friends = [self._view(p, f) for f in p.get("friends", [])]
+        friends = [self._view(p, f) for f in p.get("friends", []) if self._mutual(pid, f)]
         friends.sort(key=lambda f: (not f["online"], f["name"].lower()))
         return {"me": {"id": pid, "name": p["name"], "code": p["code"], "status": p.get("status", ""), "room": p.get("room")},
                 "friends": friends,
@@ -213,7 +382,11 @@ class SocialService:
     def hello(self, name) -> dict:
         """A new identity: id, secret (kept only by that app) and a friend code."""
         with self.lock:
-            self._tidy()
+            self._maybe_tidy()
+            if len(self.players) >= MAX_PLAYERS:
+                self._tidy()
+                if len(self.players) >= MAX_PLAYERS:
+                    raise SocialError("This friends service is full right now. Try again later.")
             if self._filtered(clean_name(name)):
                 raise SocialError("This friends service doesn't allow that name. Pick another under Settings > You.")
             pid = secrets.token_hex(8)
@@ -224,25 +397,35 @@ class SocialService:
                                  "requests_out": [], "seen": self.clock(), "status": "", "room": None, "invites": [], "messages": {}, "blocked": [],
                                  "requests_open": True}
             self.codes[code] = pid
-            self.save()
+            self._changed()
             return {"id": pid, "secret": self.players[pid]["secret"], "code": code, "name": self.players[pid]["name"]}
 
     def heartbeat(self, pid, secret, name=None, status="", room=None, requests_open=None) -> dict:
         """The app says it is open (every 30 s), what the player is doing, and the room to share, then gets its inbox."""
         with self.lock:
             p = self._auth(pid, secret)
+            before = (p["name"], p.get("requests_open", True))
             if name is not None and not self._filtered(clean_name(name)):
                 p["name"] = clean_name(name)
             if requests_open is not None:
                 p["requests_open"] = bool(requests_open)
-            p["status"] = clean_text(status, 60)
+            if (p["name"], p.get("requests_open", True)) != before:
+                self._changed()        # presence itself is not written on every heartbeat (the tidy pass keeps it)
+            muted = self._muted(str(pid)) is not None
+            status = clean_text(status, 60)
+            p["status"] = "" if muted or self._filtered(status) else status          # free text: the same rules as a message
             if isinstance(room, dict) and room.get("invite_code"):
-                p["room"] = {"invite_code": clean_text(room.get("invite_code"), 14), "game": clean_text(room.get("game"), 80),
-                             "server_code": clean_text(room.get("server_code"), 60), "players": int(room.get("players") or 0),
-                             "max_players": int(room.get("max_players") or 0), "at": self.clock()}
+                invite_code, server_code = clean_text(room.get("invite_code"), 14), clean_text(room.get("server_code"), 60)
+                game = clean_text(room.get("game"), 80)
+                p["room"] = None if self._filtered(invite_code + " " + server_code) else {
+                    "invite_code": invite_code, "game": "" if muted or self._filtered(game) else game,
+                    "server_code": server_code, "players": _small_int(room.get("players")),
+                    "max_players": _small_int(room.get("max_players")), "at": self.clock()}
             else:
                 p["room"] = None
-            self._tidy()
+            now = self.clock()
+            p["invites"] = [i for i in p.get("invites", []) if now - i["at"] < 3600]
+            self._maybe_tidy()
             return self._inbox(pid)
 
     def request(self, pid, secret, code) -> dict:
@@ -258,25 +441,27 @@ class SocialService:
                 raise SocialError("That is your own code.")
             if other_id in p.get("blocked", []):
                 raise SocialError("You blocked this player. Unblock them first (Friends > Blocked).")
-            if pid in self.players[other_id].get("blocked", []):
+            if pid in self.players[other_id].get("blocked", []) or other_id in self.mod["bans"]:
                 raise SocialError("No player has that friend code. Check it with your friend (it looks like MK7-4Q2X).")
             other = self.players[other_id]
-            if other_id not in p["friends"] and pid not in p["requests_in"] and other_id not in p["requests_in"]:
+            if other_id in p["friends"] and pid not in other.get("friends", []):
+                p["friends"].remove(other_id)                            # a one-sided leftover is not a friendship
+            if other_id not in p["friends"] and other_id not in p["requests_in"]:
                 self._may_talk(pid)
                 if not other.get("requests_open", True):
                     raise SocialError("That player isn't taking friend requests right now. Ask them to add your code instead.")
                 self._bump(p, "req_times", 3600, REQUESTS_PER_HOUR, "friend requests")
-            if other_id in p["friends"]:
+            if other_id in p["friends"] and pid in other.get("friends", []):
                 return {"ok": True, "already": True, **self._inbox(pid)}
             if len(p["friends"]) >= MAX_FRIENDS:
                 raise SocialError("Your friends list is full.")
-            if pid in p["requests_in"] or other_id in p["requests_in"]:   # they asked first: this is a yes
+            if other_id in p["requests_in"]:                              # they asked first: this is a yes
                 return self.decide(pid, secret, other_id, True)
             if other_id not in p["requests_out"]:
                 p["requests_out"].append(other_id)
             if pid not in other["requests_in"]:
                 other["requests_in"].append(pid)
-            self.save()
+            self._changed()
             return {"ok": True, "already": False, **self._inbox(pid)}
 
     def decide(self, pid, secret, other_id, accept) -> dict:
@@ -284,16 +469,28 @@ class SocialService:
             p = self._auth(pid, secret)
             other_id = str(other_id or "")
             other = self.players.get(other_id)
+            asked = other is not None and other_id in p["requests_in"]
+            refused = not asked or self._blocks(pid, other_id) or other_id in self.mod["bans"]
+            if accept and not refused:
+                # checked before anything changes, so a full list leaves the request where it was
+                if other_id not in p["friends"] and len(p["friends"]) >= MAX_FRIENDS:
+                    raise SocialError("Your friends list is full.")
+                if pid not in other["friends"] and len(other["friends"]) >= MAX_FRIENDS:
+                    raise SocialError("That player's friends list is full.")
             if other_id in p["requests_in"]:
                 p["requests_in"].remove(other_id)
             if other and pid in other.get("requests_out", []):
                 other["requests_out"].remove(pid)
-            if accept and other is not None:
+            if accept:
+                # only a request that is really there, from someone neither side blocked, becomes a friendship
+                if refused:
+                    self._changed()
+                    raise SocialError("That friend request is no longer here.")
                 if other_id not in p["friends"]:
                     p["friends"].append(other_id)
                 if pid not in other["friends"]:
                     other["friends"].append(pid)
-            self.save()
+            self._changed()
             return {"ok": True, **self._inbox(pid)}
 
     def remove(self, pid, secret, other_id) -> dict:
@@ -310,7 +507,7 @@ class SocialService:
                         other[key].remove(pid)
                 other.get("messages", {}).pop(pid, None)
             p.get("messages", {}).pop(other_id, None)
-            self.save()
+            self._changed()
             return {"ok": True, **self._inbox(pid)}
 
     def invite(self, pid, secret, to, invite_code, game, server_code="") -> dict:
@@ -318,33 +515,36 @@ class SocialService:
         with self.lock:
             p = self._auth(pid, secret)
             to = str(to or "")
-            if to not in p["friends"] or to not in self.players or self._blocks(pid, to):
+            if not self._mutual(str(pid), to) or self._blocks(pid, to):
                 raise SocialError("You can only invite someone on your friends list.")
             self._may_talk(pid)
             code = clean_text(invite_code, 14)
             if not code:
                 raise SocialError("Host a room first; the invite carries its code.")
-            inv = {"from": pid, "name": p["name"], "invite_code": code, "game": clean_text(game, 80), "server_code": clean_text(server_code, 60),
-                   "at": self.clock()}
+            server_code, game = clean_text(server_code, 60), clean_text(game, 80)
+            if self._filtered(code + " " + server_code):
+                raise SocialError("This friends service doesn't allow some words in that invite, so it wasn't sent.")
+            inv = {"from": pid, "name": p["name"], "invite_code": code, "game": "" if self._filtered(game) else game,
+                   "server_code": server_code, "at": self.clock()}
             box = self.players[to]["invites"]
             box[:] = [i for i in box if i["from"] != pid]
             box.append(inv)
             del box[:-20]
-            self.save()
+            self._changed()
             return {"ok": True}
 
     def dismiss_invite(self, pid, secret, from_id) -> dict:
         with self.lock:
             p = self._auth(pid, secret)
             p["invites"] = [i for i in p.get("invites", []) if i["from"] != str(from_id or "")]
-            self.save()
+            self._changed()
             return {"ok": True, **self._inbox(pid)}
 
     def message(self, pid, secret, to, text) -> dict:
         with self.lock:
             p = self._auth(pid, secret)
             to = str(to or "")
-            if to not in p["friends"] or to not in self.players or self._blocks(pid, to):
+            if not self._mutual(str(pid), to) or self._blocks(pid, to):
                 raise SocialError("You can only message someone on your friends list.")
             self._may_talk(pid)
             text = clean_text(text)
@@ -358,7 +558,7 @@ class SocialService:
                 box = self.players[owner].setdefault("messages", {}).setdefault(other, [])
                 box.append(dict(m, read=(owner == pid)))
                 del box[:-MESSAGES_PER_PAIR]
-            self.save()
+            self._changed()
             return {"ok": True, "messages": self._thread(pid, to)}
 
     def _thread(self, pid: str, other: str) -> list[dict]:
@@ -374,7 +574,7 @@ class SocialService:
             if other not in self.players:
                 return {"messages": []}
             out = {"messages": self._thread(pid, other), "name": self.players[other]["name"]}
-            self.save()
+            self._changed()
             return out
 
     def block(self, pid, secret, other) -> dict:
@@ -394,7 +594,7 @@ class SocialService:
             p.setdefault("blocked", [])
             if other not in p["blocked"]:
                 p["blocked"].append(other)
-            self.save()
+            self._changed()
             return {"ok": True, **self._inbox(pid)}
 
     def unblock(self, pid, secret, other) -> dict:
@@ -403,7 +603,7 @@ class SocialService:
             other = str(other or "")
             if other in p.get("blocked", []):
                 p["blocked"].remove(other)
-            self.save()
+            self._changed()
             return {"ok": True, **self._inbox(pid)}
 
     def clear_thread(self, pid, secret, other) -> dict:
@@ -411,7 +611,7 @@ class SocialService:
         with self.lock:
             p = self._auth(pid, secret)
             p.get("messages", {}).pop(str(other or ""), None)
-            self.save()
+            self._changed()
             return {"ok": True, **self._inbox(pid)}
 
     def read_all(self, pid, secret) -> dict:
@@ -420,7 +620,7 @@ class SocialService:
             for msgs in p.get("messages", {}).values():
                 for m in msgs:
                     m["read"] = True
-            self.save()
+            self._changed()
             return {"ok": True, **self._inbox(pid)}
 
     # --- reports from players ------------------------------------------------------------------------------
@@ -457,7 +657,7 @@ class SocialService:
                                         "details": clean_text(details, 800), "reporter": {"id": pid, "name": p["name"]},
                                         "target": {"id": target, "name": o["name"], "code": o["code"]}, "message": quoted, "context": context})
             del self.mod["reports"][:-5000]
-            self.save()
+            self._changed(urgent=True)
         if also_block:
             return {"ok": True, "report": rid, **self.block(pid, secret, target)}
         with self.lock:
@@ -506,16 +706,16 @@ class SocialService:
                 elif action == "ban":
                     self.mod["bans"][pid] = {"at": self.clock(), "reason": reason}
                     self.mod["mutes"].pop(pid, None)
-                    p = self.players.get(pid, {})
-                    for other in list(p.get("friends", [])):        # a banned player disappears from everyone's lists
-                        o = self.players.get(other, {})
-                        if pid in o.get("friends", []):
-                            o["friends"].remove(pid)
-                    for o in self.players.values():
-                        for key in ("requests_in", "requests_out"):
+                    for o in self.players.values():                  # a banned player disappears from everyone's lists
+                        for key in ("friends", "requests_in", "requests_out"):
                             if pid in o.get(key, []):
                                 o[key].remove(pid)
                         o["invites"] = [i for i in o.get("invites", []) if i.get("from") != pid]
+                    p = self.players.get(pid)
+                    if p:                                            # and their own lists go too, so an unban starts afresh
+                        for key in ("friends", "requests_in", "requests_out"):
+                            p[key] = []
+                        p["invites"], p["room"], p["status"] = [], None, ""
                 else:
                     self.mod["bans"].pop(pid, None)
                 if rep is not None and rep["status"] == "open":
@@ -525,7 +725,7 @@ class SocialService:
             self.mod["log"].append({"at": self.clock(), "action": action, "player": pid, "name": self.players.get(pid, {}).get("name", ""),
                                     "report": report or "", "length": length or "", "reason": reason})
             del self.mod["log"][:-1000]
-            self.save()
+            self._changed(urgent=True)
             return {"ok": True, "player": self._player_view(pid) if pid else None}
 
     def admin_filter(self, on=None, words=None) -> dict:
@@ -534,7 +734,7 @@ class SocialService:
                 self.mod["filter"]["on"] = bool(on)
             if words is not None:
                 self.mod["filter"]["words"] = textfilter.clean_words(words)
-            self.save()
+            self._changed(urgent=True)
             return {"filter": self.mod["filter"], "base": sorted(textfilter.BASE_WORDS)}
 
     def goodbye(self, pid, secret) -> dict:
@@ -542,5 +742,5 @@ class SocialService:
         with self.lock:
             self._auth(pid, secret)
             self._forget(pid)
-            self.save()
+            self._changed(urgent=True)
             return {"ok": True}

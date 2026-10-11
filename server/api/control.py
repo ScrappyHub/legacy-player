@@ -22,7 +22,9 @@ class ServerControl:
         token = request.get("admin_token")
         if not peer_is_loopback:
             raise PermissionError("admin operations are only accepted from this machine")
-        if not isinstance(token, str) or not secrets.compare_digest(token, self._token):
+        # bytes on both sides: compare_digest raises TypeError for a str with non-ASCII characters
+        if not isinstance(token, str) or not secrets.compare_digest(token.encode("utf-8", "replace"),
+                                                                    self._token.encode("utf-8", "replace")):
             raise PermissionError("invalid admin token")
         operation = request["operation"]
         if operation == "admin_status":

@@ -192,9 +192,9 @@ class WrittenReportsAndAdminConsole(unittest.TestCase):
         self.httpd.shutdown()
 
     def _get(self, path, token="adm1n", body=None):
-        req = urllib.request.Request(self.url.rstrip("/") + path + ("&" if "?" in path else "?") + "token=" + token,
+        req = urllib.request.Request(self.url.rstrip("/") + path,
                                      data=json.dumps(body).encode() if body is not None else None, method="POST" if body is not None else "GET",
-                                     headers={"Content-Type": "application/json"})
+                                     headers={"Content-Type": "application/json", "X-Admin-Token": token})
         try:
             with urllib.request.urlopen(req, timeout=5) as r:
                 return r.status, r.read()
@@ -225,11 +225,14 @@ class WrittenReportsAndAdminConsole(unittest.TestCase):
     def test_admin_console_needs_its_token_and_keeps_triage(self):
         c, _, _ = center("auto", url=self.url)
         c.file("display", "the picture tears")
-        self.assertEqual(401, self._get("/admin", token="wrong")[0])
+        self.assertEqual(401, self._get("/admin/list", token="wrong")[0])
         self.assertEqual(401, self._get("/admin/list", token="")[0])
-        status, body = self._get("/admin")
+        self.assertEqual(401, self._get("/admin/list?token=adm1n", token="")[0])      # the token never travels in the address
+        status, body = self._get("/admin", token="")                                  # the page itself asks for the token
         self.assertEqual(200, status)
         self.assertIn(b"<title>Legacy Player reports</title>", body)
+        self.assertNotIn(b"token=", body)
+        self.assertIn(b"X-Admin-Token", body)
         status, body = self._get("/admin/list")
         rows = json.loads(body)["reports"]
         self.assertEqual(1, len(rows))

@@ -7,6 +7,14 @@ from launcher import firewall
 from launcher.app import LauncherApp
 
 
+def _script_folder(cmd) -> Path:
+    """The private folder the elevated firewall script was written to (a fresh one each time, never a fixed %TEMP% name)."""
+    import re
+    script = Path(re.search(r"-FilePath '(.+?)' -Verb", cmd[-1]).group(1).replace("''", "'"))
+    assert script.parent != Path(tempfile.gettempdir()), "the script must not sit directly in the shared temp folder"
+    return script.parent
+
+
 class RouterTidyTests(unittest.TestCase):
     def setUp(self):
         p = mock.patch.dict("os.environ", {"LEGACY_PLAYER_NO_BACKGROUND": "1"})
@@ -145,7 +153,7 @@ class Round4Tests(unittest.TestCase):
 
         def run(cmd, timeout=0):
             seen["cmd"] = cmd
-            folder = P(tempfile.gettempdir())
+            folder = _script_folder(cmd)
             seen["script"] = (folder / "lp-firewall.cmd").read_text(encoding="ascii")
             (folder / "lp-firewall.log").write_text("The requested operation requires elevation.\nLP_EXIT=1\n", encoding="utf-8")
             return mock.Mock(stderr="")
@@ -326,7 +334,7 @@ class FirewallTrustsNetshTests(unittest.TestCase):
 
         def run(cmd, timeout=15.0):
             if cmd[0] == "powershell":
-                (P(tempfile.gettempdir()) / "lp-firewall.log").write_text("Ok.\nLP_EXIT=0\n", encoding="utf-8")
+                (_script_folder(cmd) / "lp-firewall.log").write_text("Ok.\nLP_EXIT=0\n", encoding="utf-8")
                 return mock.Mock(stderr="")
             return mock.Mock(returncode=1, stdout="")          # reading the rule never matches
         with mock.patch("launcher.firewall.supported", return_value=True):
@@ -340,8 +348,8 @@ class FirewallTrustsNetshTests(unittest.TestCase):
 
         def run(cmd, timeout=15.0):
             if cmd[0] == "powershell":
-                seen["script"] = (P(tempfile.gettempdir()) / "lp-firewall.cmd").read_text(encoding="ascii")
-                (P(tempfile.gettempdir()) / "lp-firewall.log").write_text("LP_EXIT=0\n", encoding="utf-8")
+                seen["script"] = (_script_folder(cmd) / "lp-firewall.cmd").read_text(encoding="ascii")
+                (_script_folder(cmd) / "lp-firewall.log").write_text("LP_EXIT=0\n", encoding="utf-8")
                 return mock.Mock(stderr="")
             if "show" in cmd:
                 return mock.Mock(returncode=0, stdout="Rule Name: Legacy Player server\nLocalPort: 1111\n")        # stale rule

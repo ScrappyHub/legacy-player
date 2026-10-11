@@ -29,8 +29,10 @@ import re
 import threading
 import time
 from datetime import datetime, timezone
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path
+
+from server.http_guard import BoundedHTTPServer
 
 MAX_BODY = 64 * 1024
 PER_MINUTE = 120
@@ -208,9 +210,11 @@ tr.row{cursor:pointer}tr.row:hover{background:#ffffff0a}.pill{display:inline-blo
  <table><thead><tr><th>When</th><th>Kind</th><th>Category</th><th>Message</th><th>Version</th><th>Times</th><th>Status</th></tr></thead><tbody id="rows"></tbody></table>
 </main>
 <script>
-const TOKEN=new URLSearchParams(location.search).get("token")||"";
+let TOKEN="";try{TOKEN=sessionStorage.getItem("lpadminkey")||""}catch(e){}if(location.search){try{history.replaceState(null,"",location.pathname)}catch(e){}}
 const $=s=>document.querySelector(s);let ROWS=[];
-async function api(path,body){const r=await fetch(path+(path.includes("?")?"&":"?")+"token="+encodeURIComponent(TOKEN),body?{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}:{});if(!r.ok)throw new Error("HTTP "+r.status);return r.json()}
+async function api(path,body){const h={"X-Admin-Token":TOKEN};if(body)h["Content-Type"]="application/json";const r=await fetch(path,body?{method:"POST",headers:h,body:JSON.stringify(body)}:{headers:h});if(!r.ok)throw new Error("HTTP "+r.status);return r.json()}
+function askKey(why){$("#rows").innerHTML='<tr><td colspan="7"><p class="muted small">'+esc(why||"Paste the admin token this receiver was started with (--admin-token).")+'</p><form id="kf" style="display:flex;gap:8px"><input id="key" type="password" autocomplete="off" style="flex:1"><button class="primary">Open</button></form></td></tr>';
+ $("#kf").onsubmit=e=>{e.preventDefault();TOKEN=$("#key").value.trim();try{sessionStorage.setItem("lpadminkey",TOKEN)}catch(x){}load()}}
 function esc(t){return String(t==null?"":t).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}
 function draw(){const k=$("#fkind").value,st=$("#fstatus").value,q=$("#fq").value.toLowerCase();
  const list=ROWS.filter(r=>(!k||r.kind===k)&&(!st||r.status===st)&&(!q||(r.message+" "+r.category+" "+r.version+" "+r.error).toLowerCase().includes(q)));
@@ -229,7 +233,7 @@ async function open(key,id){const r=ROWS.find(x=>x.key===key);const rep=await ap
  <h3 class="small muted" style="margin:14px 0 6px">The whole report</h3><pre>${esc(rep?JSON.stringify(rep,null,2):"(could not read the file)")}</pre>`;
  document.body.append(d);d.querySelector("#st").value=r.status;d.querySelector("#close").onclick=()=>d.remove();
  d.querySelector("#save").onclick=async()=>{const t=await api("/admin/triage",{key,status:d.querySelector("#st").value,note:d.querySelector("#note").value});r.status=t.status;r.note=t.note;draw()}}
-async function load(){try{const d=await api("/admin/list");ROWS=d.reports;$("#where").textContent=d.folder;draw()}catch(e){$("#rows").innerHTML='<tr><td colspan="7">Could not load: '+esc(e.message)+' (is the token right?)</td></tr>'}}
+async function load(){if(!TOKEN)return askKey();try{const d=await api("/admin/list");ROWS=d.reports;$("#where").textContent=d.folder;draw()}catch(e){if(/401/.test(e.message)){try{sessionStorage.removeItem("lpadminkey")}catch(x){}TOKEN="";askKey("That token was not accepted. Paste it again.")}else $("#rows").innerHTML='<tr><td colspan="7">Could not load: '+esc(e.message)+'</td></tr>'}}
 ["#fkind","#fstatus","#fq"].forEach(s=>$(s).addEventListener("input",draw));load();
 </script></body></html>"""
 
@@ -252,10 +256,10 @@ def make_handler(store: Store, token: str | None, admin_token: str | None = None
             self.wfile.write(body)
 
         def _admin_ok(self) -> bool:
+            """Only the X-Admin-Token header: a ?token= in the address would be kept in browser history and proxy logs."""
             if not admin_token:
                 return False
-            from urllib.parse import parse_qs, urlsplit
-            given = (self.headers.get("X-Admin-Token") or parse_qs(urlsplit(self.path).query).get("token", [""])[0])
+            given = self.headers.get("X-Admin-Token") or ""
             return hmac.compare_digest(given.encode("utf-8", "replace"), admin_token.encode("utf-8"))
 
         def do_GET(self) -> None:
@@ -263,11 +267,11 @@ def make_handler(store: Store, token: str | None, admin_token: str | None = None
             u = urlsplit(self.path)
             if u.path in ("/", "/health"):
                 return self._answer(200, "Legacy Player report receiver\n")
+            if u.path in ("/admin", "/admin/") and admin_token:
+                return self._answer(200, ADMIN_PAGE, "text/html; charset=utf-8")     # the page asks for the token itself
             if u.path.startswith("/admin"):
                 if not self._admin_ok():
                     return self._answer(401, "admin token needed")
-                if u.path == "/admin":
-                    return self._answer(200, ADMIN_PAGE, "text/html; charset=utf-8")
                 if u.path == "/admin/list":
                     return self._answer(200, json.dumps({"reports": store.index(), "folder": str(store.folder)}), "application/json")
                 if u.path == "/admin/report":
@@ -284,7 +288,7 @@ def make_handler(store: Store, token: str | None, admin_token: str | None = None
                     length = int(self.headers.get("Content-Length", "-1"))
                     body = json.loads(self.rfile.read(length)) if 0 < length <= MAX_BODY else {}
                     out = store.set_triage(str(body.get("key", "")), str(body.get("status", "")), str(body.get("note", "")))
-                except (ValueError, TypeError):
+                except (ValueError, TypeError, AttributeError, RecursionError):
                     return self._answer(400)
                 return self._answer(200, json.dumps(out), "application/json")
             if token and not hmac.compare_digest((self.headers.get("X-Report-Token") or "").encode("utf-8", "replace"), token.encode("utf-8")):
@@ -297,11 +301,20 @@ def make_handler(store: Store, token: str | None, admin_token: str | None = None
                 return self._answer(413)
             try:
                 report = json.loads(self.rfile.read(length))
-            except ValueError:
+            except (ValueError, RecursionError):
                 return self._answer(400)
-            result = store.accept(report)
+            try:
+                result = store.accept(report)
+            except (ValueError, TypeError, RecursionError):
+                result = "bad"
             self._answer({"ok": 202, "limit": 429, "bad": 400}[result])
     return Handler
+
+
+class ReceiverHTTPServer(BoundedHTTPServer):
+    """At most MAX_CONCURRENT requests at once, each with a total deadline, and never the sender's address in a log
+    (the stock error report would print it with a traceback)."""
+    label = "report receiver"
 
 
 def main() -> None:
@@ -311,12 +324,12 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=8790)
     parser.add_argument("--token", default=os.environ.get("LP_REPORT_TOKEN") or None)
     parser.add_argument("--admin-token", default=os.environ.get("LP_ADMIN_TOKEN") or None,
-                        help="opens the admin console at /admin?token=... (without it the console is off)")
+                        help="turns on the admin console at /admin (the page asks for this token; without it the console is off)")
     args = parser.parse_args()
-    httpd = ThreadingHTTPServer((args.host, args.port), make_handler(Store(Path(args.dir)), args.token, args.admin_token))
+    httpd = ReceiverHTTPServer((args.host, args.port), make_handler(Store(Path(args.dir)), args.token, args.admin_token))
     print(f"Receiving reports on http://{args.host}:{args.port}/ into {args.dir}  (put HTTPS in front of it)", flush=True)
     if args.admin_token:
-        print(f"Admin console: http://{args.host}:{args.port}/admin?token=...  (the --admin-token)", flush=True)
+        print(f"Admin console: http://{args.host}:{args.port}/admin  (paste the --admin-token when it asks)", flush=True)
     else:
         print("Admin console is off: start with --admin-token SOMETHING-LONG to read and triage reports in a browser.", flush=True)
     try:

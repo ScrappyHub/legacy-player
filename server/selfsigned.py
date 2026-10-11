@@ -9,8 +9,9 @@ from __future__ import annotations
 import base64
 import hashlib
 import os
-import threading
 import secrets
+import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -159,22 +160,86 @@ def make_certificate(common_name: str = "legacy-player", days: int = 3650, bits:
 
 
 _CERT_LOCK = threading.Lock()
+LOCK_NAME = ".cert.lock"
+STALE_LOCK_SECONDS = 300.0        # a lock older than this was left by a process that died while making the key
+LOCK_WAIT_SECONDS = 600.0
+
+
+def _write_new(folder: Path, prefix: str, text: str) -> str:
+    """Write text to a fresh, uniquely named file in folder (owner-only), flushed to disk; returns its path."""
+    fd, tmp = tempfile.mkstemp(prefix=prefix, suffix=".tmp", dir=folder)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(text)
+            fh.flush()
+            os.fsync(fh.fileno())
+        try:
+            os.chmod(tmp, 0o600)
+        except OSError:
+            pass
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+    return tmp
+
+
+def _take_lock(lock: Path, done) -> bool:
+    """Take the folder's lock file (shared by every process). Returns False when another process finished the work
+    while we waited, so there is nothing left to do."""
+    end = time.monotonic() + LOCK_WAIT_SECONDS
+    while True:
+        try:
+            fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+            os.write(fd, str(os.getpid()).encode())
+            os.close(fd)
+            return True
+        except FileExistsError:
+            if done():
+                return False
+            try:
+                if time.time() - lock.stat().st_mtime > STALE_LOCK_SECONDS:
+                    lock.unlink()
+                    continue
+            except OSError:
+                continue                               # gone in the meantime: try again at once
+            if time.monotonic() > end:
+                raise TimeoutError("another program has been making the certificate for too long")
+            time.sleep(0.1)
 
 
 def ensure_certificate(folder: Path, common_name: str = "legacy-player") -> tuple[Path, Path, str]:
-    """Create cert.pem/key.pem in folder if missing; return their paths and the fingerprint."""
+    """Create cert.pem/key.pem in folder if missing; return their paths and the fingerprint.
+
+    Two callers (threads, or two processes such as the app and its server starting together) never write one half
+    each: a lock file in the folder lets only one make the pair, the others wait and then use it. The key goes in
+    first and the certificate last, so "cert.pem exists" means the matching key is already in place."""
     folder = Path(folder)
     folder.mkdir(parents=True, exist_ok=True)
     cert_path, key_path = folder / "cert.pem", folder / "key.pem"
-    with _CERT_LOCK:                                   # two callers must never write one half each
-        if not (cert_path.exists() and key_path.exists()):
-            cert_pem, key_pem, _ = make_certificate(common_name)
-            tmp_key, tmp_cert = key_path.with_suffix(".tmp"), cert_path.with_suffix(".tmp")
-            tmp_key.touch(mode=0o600)
-            tmp_key.write_text(key_pem, encoding="utf-8")
-            tmp_cert.write_text(cert_pem, encoding="utf-8")
-            os.replace(tmp_key, key_path)
-            os.replace(tmp_cert, cert_path)
+
+    def done() -> bool:
+        return cert_path.exists() and key_path.exists()
+
+    with _CERT_LOCK:
+        if not done():
+            lock = folder / LOCK_NAME
+            if _take_lock(lock, done):
+                try:
+                    if not done():                     # someone may have finished just before we got the lock
+                        cert_pem, key_pem, _ = make_certificate(common_name)
+                        tmp_key = _write_new(folder, ".key-", key_pem)
+                        tmp_cert = _write_new(folder, ".cert-", cert_pem)
+                        cert_path.unlink(missing_ok=True)     # a lone old certificate must not pair with the new key
+                        os.replace(tmp_key, key_path)
+                        os.replace(tmp_cert, cert_path)
+                finally:
+                    try:
+                        lock.unlink()
+                    except OSError:
+                        pass
     return cert_path, key_path, fingerprint_of(cert_path)
 
 

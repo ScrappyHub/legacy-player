@@ -23,12 +23,15 @@ import json
 import os
 import threading
 import time
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path
+
+from server.http_guard import AddressWindow, BoundedHTTPServer
 
 from . import SocialError, SocialService
 
 MAX_BODY = 16 * 1024
+HELLO_PER_HOUR = 10                 # new identities per address per hour (this computer itself is not limited)
 OPS = {"hello", "heartbeat", "request", "decide", "remove", "invite", "dismiss_invite", "message", "thread", "goodbye",
        "block", "unblock", "clear_thread", "read_all", "report"}
 
@@ -93,8 +96,8 @@ table{width:100%;border-collapse:collapse}td,th{padding:8px 10px;border-bottom:1
  <span class="row tabs"><button data-t="reports" class="on">Reports</button><button data-t="players">Players</button><button data-t="filter">Word filter</button><button data-t="log">Log</button></span><button onclick="load()">Refresh</button></header>
 <main id="main"></main>
 <script>
-let TOKEN=new URLSearchParams(location.search).get("token")||"";try{TOKEN=TOKEN||sessionStorage.getItem("lpmodkey")||""}catch(e){}const $=s=>document.querySelector(s);let tab="reports",D=null,status="open";
-async function api(path,body){const r=await fetch(path+(path.includes("?")?"&":"?")+"token="+encodeURIComponent(TOKEN),body?{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}:{});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||("HTTP "+r.status));return j}
+let TOKEN="";try{TOKEN=sessionStorage.getItem("lpmodkey")||""}catch(e){}if(location.search){try{history.replaceState(null,"",location.pathname)}catch(e){}}const $=s=>document.querySelector(s);let tab="reports",D=null,status="open";
+async function api(path,body){const h={"X-Admin-Token":TOKEN};if(body)h["Content-Type"]="application/json";const r=await fetch(path,body?{method:"POST",headers:h,body:JSON.stringify(body)}:{headers:h});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||("HTTP "+r.status));return j}
 const esc=t=>String(t==null?"":t).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const when=t=>t?new Date(t*1000).toLocaleString():"";
 const state=p=>!p?"":p.banned?'<span class="pill banned">banned</span>':p.muted?'<span class="pill muted">timed out until '+esc(when(p.muted.until))+'</span>':"";
@@ -134,7 +137,15 @@ load();
 </script></body></html>"""
 
 
-def make_handler(service: SocialService, admin_token: str | None = None):
+class FriendsHTTPServer(BoundedHTTPServer):
+    """At most MAX_CONCURRENT requests at once, each with a total deadline, and no client address in the log."""
+    label = "friends service"
+
+
+def make_handler(service: SocialService, admin_token: str | None = None, hello_limit: AddressWindow | None = None):
+    # New identities per address (an IPv6 /64 counts as one): the address is used only here, in memory, never stored.
+    hello_limit = hello_limit if hello_limit is not None else AddressWindow(HELLO_PER_HOUR, 3600.0)
+
     class Handler(BaseHTTPRequestHandler):
         server_version = "LegacyPlayerFriends"
         timeout = 10
@@ -152,10 +163,11 @@ def make_handler(service: SocialService, admin_token: str | None = None):
             self.wfile.write(body)
 
         def _admin_ok(self) -> bool:
+            """The key travels only in the X-Admin-Token header: a ?token= in the address would end up in browser
+            history, proxy logs and screenshots, so it is not accepted."""
             if not admin_token:
                 return False
-            from urllib.parse import parse_qs, urlsplit
-            given = self.headers.get("X-Admin-Token") or parse_qs(urlsplit(self.path).query).get("token", [""])[0]
+            given = self.headers.get("X-Admin-Token") or ""
             return hmac.compare_digest(given.encode("utf-8", "replace"), admin_token.encode("utf-8"))
 
         def _page(self, html: str) -> None:
@@ -209,7 +221,7 @@ def make_handler(service: SocialService, admin_token: str | None = None):
                         return self._json(404, {"ok": False, "error": "not found"})
                 except SocialError as exc:
                     return self._json(400, {"ok": False, "error": str(exc)})
-                except (ValueError, TypeError):
+                except (ValueError, TypeError, RecursionError, AttributeError):
                     return self._json(400, {"ok": False, "error": "bad request"})
                 return self._json(200, {"ok": True, **out})
             try:
@@ -222,8 +234,10 @@ def make_handler(service: SocialService, admin_token: str | None = None):
                 body = json.loads(self.rfile.read(length))
                 if not isinstance(body, dict):
                     raise ValueError
-            except ValueError:
+            except (ValueError, RecursionError):
                 return self._json(400, {"ok": False, "error": "invalid JSON"})
+            if body.get("op") == "hello" and not hello_limit.allow(self.client_address[0]):
+                return self._json(429, {"ok": False, "error": "Too many new identities from this address; try again in an hour."})
             try:
                 out = dispatch(service, body)
             except SocialError as exc:
@@ -267,7 +281,7 @@ def main(argv=None) -> None:
     folder = Path(args.dir)
     key = args.admin_token or moderator_key(folder)
     service = SocialService(folder)
-    httpd = ThreadingHTTPServer((args.host, args.port), make_handler(service, key))
+    httpd = FriendsHTTPServer((args.host, args.port), make_handler(service, key))
     scheme = "http"
     if args.tls_cert:
         import ssl
@@ -281,9 +295,12 @@ def main(argv=None) -> None:
     def tidy() -> None:
         while True:
             time.sleep(600)
-            with service.lock:
-                service._tidy()
-                service.save()
+            try:
+                with service.lock:
+                    service._tidy()
+                    service._changed()
+            except Exception as exc:                       # one bad pass must not end tidying for good
+                print(f"friends service: tidy failed ({type(exc).__name__})", flush=True)
     threading.Thread(target=tidy, daemon=True).start()
     print(f"Friends service on {scheme}://{args.host}:{httpd.server_address[1]}/ keeping its players in {folder}"
           + ("" if scheme == "https" else "  (put HTTPS in front of it)"), flush=True)
@@ -291,12 +308,17 @@ def main(argv=None) -> None:
           + (" you chose" if args.admin_token else f" from {folder / 'moderator.key'}")
           + ", or paste it once in Legacy Player (Friends > Moderation).", flush=True)
     try:
+        import signal
+        signal.signal(signal.SIGTERM, lambda *_: threading.Thread(target=httpd.shutdown, daemon=True).start())
+    except (AttributeError, ValueError, OSError):
+        pass                                               # stopped some other way: /admin/stop or Ctrl+C still save
+    try:
         httpd.serve_forever()
     except KeyboardInterrupt:
         pass
     finally:
-        with service.lock:
-            service.save()
+        httpd.server_close()
+        service.flush()
 
 
 if __name__ == "__main__":
