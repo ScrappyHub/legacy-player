@@ -10,6 +10,8 @@ import sys
 import webbrowser
 from pathlib import Path
 
+from .childenv import child_cwd, clean_env
+
 
 def find_app_browser() -> str | None:
     candidates: list[str] = []
@@ -45,7 +47,8 @@ def make_opener(data_dir: Path):
         if browser:
             try:
                 subprocess.Popen(app_window_command(browser, url, Path(data_dir) / "window_profile"),
-                                 stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                                 stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                 cwd=child_cwd(data_dir), env=clean_env())    # never inside the exe's temporary folder
                 return
             except OSError:
                 pass
@@ -62,7 +65,8 @@ def make_overlay_opener(data_dir: Path):
         try:
             subprocess.Popen([browser, f"--app={url}", f"--user-data-dir={Path(data_dir) / 'overlay_profile'}", "--no-first-run",
                               "--no-default-browser-check", "--window-size=400,600"],
-                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                             cwd=child_cwd(data_dir), env=clean_env())
             return True
         except OSError:
             return False

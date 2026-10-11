@@ -14,6 +14,7 @@ needs a confirmation in the app.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import re
 import shutil
@@ -23,6 +24,7 @@ import threading
 import time
 from pathlib import Path
 
+from .childenv import clean_env
 from .installer import GITHUB_HOSTS, InstallError, _open, extract_zip_safe, latest_release
 from .version import REPO, VERSION
 
@@ -58,15 +60,41 @@ def _git(*args: str, timeout: float = 60) -> subprocess.CompletedProcess:
                           creationflags=_NO_WINDOW)
 
 
+INSTALLER_FOLDER_PARTS = ("Programs", "LegacyPlayer")   # %LOCALAPPDATA%\Programs\LegacyPlayer: where the installer puts the app
+
+
+def installer_folder() -> Path | None:
+    base = os.environ.get("LOCALAPPDATA")
+    return Path(base).joinpath(*INSTALLER_FOLDER_PARTS) if base else None
+
+
+def folder_writable(folder: Path) -> bool:
+    """Can this process create (and remove) a file in the folder? (Program Files cannot, without administrator rights.)"""
+    probe = Path(folder) / f".lp-write-test-{os.getpid()}"
+    try:
+        with open(probe, "wb") as f:
+            f.write(b"ok")
+        probe.unlink()
+        return True
+    except OSError:
+        try:
+            probe.unlink()
+        except OSError:
+            pass
+        return False
+
+
 class SelfUpdate:
     """One update at a time. `state` is idle / checking / downloading / ready / restarting / problem."""
 
     def __init__(self, data_dir: Path) -> None:
         self.data_dir = Path(data_dir)
         self.lock = threading.Lock()
-        self.status: dict = {"state": "idle", "mode": mode(), "current": VERSION, "message": ""}
+        self._work = threading.Lock()                     # one download or pull at a time (Update everything and the button)
+        self.status: dict = {"state": "idle", "mode": mode(), "current": VERSION, "message": "", "latest": "", "done": 0, "total": 0}
         self.staged: dict | None = None
         self.mode = mode
+        self.last_result: dict | None = self._read_result()
 
     def snapshot(self) -> dict:
         with self.lock:
@@ -75,6 +103,45 @@ class SelfUpdate:
     def _set(self, **kw) -> None:
         with self.lock:
             self.status.update(kw)
+
+    # --- how the last update went (written by the helper that swapped the files) ---------------------------------
+    def result_file(self) -> Path:
+        return self.data_dir / "update" / "result.json"
+
+    def _read_result(self) -> dict | None:
+        """{'ok', 'tag', 'error', 'at'} from the last update, read once at start-up (the file is removed when delivered)."""
+        try:
+            raw = json.loads(self.result_file().read_text(encoding="utf-8-sig"))     # PowerShell writes UTF-8 with a BOM
+        except FileNotFoundError:
+            return None
+        except (OSError, ValueError):
+            return {"ok": False, "tag": "", "error": "The last update left a result that could not be read.", "at": 0}
+        if not isinstance(raw, dict):
+            return None
+        out = {"ok": bool(raw.get("ok")), "tag": str(raw.get("tag") or "")[:40], "error": str(raw.get("error") or "")[:400],
+               "at": raw.get("at") or 0}
+        if out["ok"] and out["tag"] and nums(out["tag"]) and nums(out["tag"]) != nums(VERSION):
+            out["ok"] = False
+            out["error"] = f"The new files were put in place, but this is still version {VERSION}."
+        return out
+
+    def take_last_result(self) -> dict | None:
+        """The last update's result, once: after this it is forgotten (and its file removed)."""
+        with self.lock:
+            out, self.last_result = self.last_result, None
+        if out is not None:
+            try:
+                self.result_file().unlink()
+            except OSError:
+                pass
+        return out
+
+    def _write_result(self, ok: bool, tag: str, error: str = "") -> None:
+        try:
+            self.result_file().parent.mkdir(parents=True, exist_ok=True)
+            self.result_file().write_text(json.dumps({"ok": ok, "tag": tag, "error": error, "at": time.time()}), encoding="utf-8")
+        except OSError:
+            pass
 
     # --- what is newer --------------------------------------------------------------------------------------
     def check(self) -> dict:
@@ -103,6 +170,10 @@ class SelfUpdate:
     # --- get it ready ---------------------------------------------------------------------------------------
     def prepare(self, info: dict | None = None) -> dict:
         """Download and check (exe) or pull (git). Leaves self.staged set so restart() can finish the job."""
+        with self._work:
+            return self._prepare(info)
+
+    def _prepare(self, info: dict | None) -> dict:
         info = info or self.check()
         if not info.get("newer"):
             self._set(state="idle", message=info["message"])
@@ -124,6 +195,14 @@ class SelfUpdate:
             return self.snapshot()
         if sys.platform != "win32":
             raise InstallError("The downloadable app is for Windows. On this system, update with git (lp source).")
+        dest = Path(sys.executable).resolve().parent      # the copy that is running is the copy that gets updated
+        exe = Path(sys.executable).resolve()
+        if not folder_writable(dest):
+            msg = (f"Legacy Player cannot change the folder it runs from ({dest}), for example because it is under Program Files. "
+                   "Nothing was downloaded. Move LegacyPlayer.exe to a folder of your own (the installer uses "
+                   r"%LOCALAPPDATA%\Programs\LegacyPlayer), or download the new version from the releases page.")
+            self._set(state="problem", message=msg)
+            raise InstallError(msg)
         rel = info.get("release") or latest_release(REPO)
         zip_asset = next((a for a in rel["assets"] if re.fullmatch(r"LegacyPlayer-.*-win64\.zip", a["name"])), None)
         sum_asset = next((a for a in rel["assets"] if re.fullmatch(r"LegacyPlayer-.*-win64\.zip\.sha256", a["name"])), None)
@@ -157,7 +236,7 @@ class SelfUpdate:
         if not (stage / "LegacyPlayer.exe").exists():
             raise InstallError("The package has no LegacyPlayer.exe, so nothing was installed.")
         archive.unlink(missing_ok=True)
-        self.staged = {"mode": "exe", "version": rel["tag"], "stage": str(stage), "dest": str(Path(sys.executable).resolve().parent)}
+        self.staged = {"mode": "exe", "version": rel["tag"], "stage": str(stage), "dest": str(dest), "exe": str(exe)}
         self._set(state="ready", message=f"Version {rel['tag']} is downloaded and checked. Legacy Player restarts to use it.")
         return self.snapshot()
 
@@ -168,17 +247,27 @@ class SelfUpdate:
             raise InstallError("There is no update ready yet.")
         pid = str(os.getpid())
         if self.staged["mode"] == "exe":
-            script = Path(self.data_dir) / "update" / "apply.ps1"
+            folder = Path(self.data_dir) / "update"
+            folder.mkdir(parents=True, exist_ok=True)
+            script = folder / "apply.ps1"
             script.write_text(APPLY_PS1, encoding="utf-8")
+            exe = self.staged.get("exe") or str(Path(self.staged["dest"]) / "LegacyPlayer.exe")
+            installed = installer_folder()
             return ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", str(script),
-                    "-WaitPid", pid, "-Stage", self.staged["stage"], "-Dest", self.staged["dest"], "-Tag", self.staged["version"],
-                    "-Log", str(Path(self.data_dir) / "update" / "apply.log")]
-        again = [sys.executable, "-m", "launcher", *sys.argv[1:]]
-        return [sys.executable, "-c", RELAUNCH_PY, pid, str(ROOT), *again]
+                    "-WaitPid", pid, "-Stage", self.staged["stage"], "-Dest", self.staged["dest"], "-Exe", exe,
+                    "-Tag", self.staged["version"], "-Log", str(folder / "apply.log"), "-Result", str(self.result_file()),
+                    *(["-Installed", str(installed)] if installed else [])]
+        again = [sys.executable, "-m", "launcher", *sys.argv[1:]]       # the same arguments: a window again, or a browser tab again
+        return [sys.executable, "-c", RELAUNCH_PY, pid, str(ROOT), "--log", str(Path(self.data_dir) / "launcher.log"), *again]
 
     def launch_helper(self) -> None:
         command = self.restart_plan()
-        kwargs: dict = {"stdin": subprocess.DEVNULL, "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL, "cwd": str(ROOT)}
+        if self.staged["mode"] == "git":
+            self._write_result(True, self.staged["version"])          # the restarted app says "Updated to …"
+        # never the onefile temporary folder (ROOT in the exe) as working folder, and no onefile state for the new exe
+        cwd = str(ROOT) if self.staged["mode"] == "git" else str(Path(self.data_dir) / "update")
+        kwargs: dict = {"stdin": subprocess.DEVNULL, "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL,
+                        "cwd": cwd, "env": clean_env()}
         if sys.platform == "win32":
             kwargs["creationflags"] = _DETACHED | _NO_WINDOW
         else:
@@ -187,59 +276,132 @@ class SelfUpdate:
         self._set(state="restarting", message=f"Restarting into {self.staged['version']}…")
 
 
-# Waits for the old app to exit, then starts it again (git checkouts). Argument 1 is the old process, 2 the folder.
+# Waits for the old app to exit (and ends it if it is still there after 90 seconds: it asked to be replaced), then starts
+# it again with the same arguments (git checkouts). Arguments: the old process, the folder to start in, optionally
+# "--log <file>" (the new app's output goes there), then the command.
 RELAUNCH_PY = r"""
 import os, subprocess, sys, time
 pid, root, cmd = int(sys.argv[1]), sys.argv[2], sys.argv[3:]
-def alive(p):
+log = None
+if cmd[:1] == ["--log"]:
+    log, cmd = cmd[1], cmd[2:]
+handle = None
+if os.name == "nt":
+    import ctypes
+    k = ctypes.windll.kernel32
+    k.OpenProcess.restype = ctypes.c_void_p
+    k.WaitForSingleObject.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
+    k.TerminateProcess.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
+    k.CloseHandle.argtypes = [ctypes.c_void_p]
+    handle = k.OpenProcess(0x00100000 | 0x0001, False, pid)      # SYNCHRONIZE | PROCESS_TERMINATE: this very process
+def alive():
     if os.name == "nt":
-        import ctypes
-        k = ctypes.windll.kernel32
-        h = k.OpenProcess(0x00100000, False, p)
-        if not h:
-            return False
-        try:
-            return k.WaitForSingleObject(h, 0) == 0x102
-        finally:
-            k.CloseHandle(h)
+        return bool(handle) and k.WaitForSingleObject(handle, 0) == 0x102
     try:
-        os.kill(p, 0)
+        os.kill(pid, 0)
         return True
     except OSError:
         return False
-end = time.time() + 90
-while alive(pid) and time.time() < end:
+end = time.time() + float(os.environ.get("LP_RELAUNCH_WAIT") or 90)
+while alive() and time.time() < end:
     time.sleep(0.3)
+if alive():                                    # it asked to be replaced, so it must not keep the port and the data folder
+    try:
+        if os.name == "nt":
+            k.TerminateProcess(handle, 1)
+            k.WaitForSingleObject(handle, 5000)
+        else:
+            import signal
+            os.kill(pid, signal.SIGKILL)
+            time.sleep(0.5)
+    except Exception:
+        pass
+if handle:
+    k.CloseHandle(handle)
 time.sleep(1.0)
-kw = {"cwd": root}
+kw = {"cwd": root, "stdin": subprocess.DEVNULL}
+out = None
+if log:
+    try:
+        out = open(log, "ab")
+        kw["stdout"] = out
+        kw["stderr"] = out
+    except OSError:
+        out = None
 if os.name == "nt":
-    kw["creationflags"] = 0x00000010   # CREATE_NEW_CONSOLE: the restarted app gets its own window, like `lp source`
+    kw["creationflags"] = 0x08000000 | 0x00000200   # CREATE_NO_WINDOW (no console to close by accident) | NEW_PROCESS_GROUP
 else:
     kw["start_new_session"] = True
 subprocess.Popen(cmd, **kw)
 """
 
-# Waits for the old app to exit, swaps in the checked files and starts the new LegacyPlayer.exe (Windows app).
-APPLY_PS1 = r"""param([int]$WaitPid, [string]$Stage, [string]$Dest, [string]$Tag, [string]$Log)
+# Waits for the old app to exit, swaps in the checked files and starts the new version (Windows app).
+#   -Exe     the exact program that was running (it may be a renamed or downloaded LegacyPlayer-x.y.z-win64.exe): that
+#            file is replaced, so the player keeps starting the program they know
+#   -Dest    its folder; other files from the package (READ ME, LICENSE, VERSION.txt) are only put there when it is
+#            the installer's folder (-Installed), never in Downloads or a folder of the player's own
+#   -Result  result.json for the app to read when it starts: {ok, tag, error, at}
+# Only the files copied here lose their "downloaded from the internet" mark; nothing else in the folder is touched.
+APPLY_PS1 = r"""param([int]$WaitPid, [string]$Stage, [string]$Dest, [string]$Exe, [string]$Tag, [string]$Log, [string]$Result, [string]$Installed)
 $ErrorActionPreference = 'Stop'
-function Say($t) { Add-Content -Path $Log -Value ("{0:u}  {1}" -f (Get-Date), $t) }
+function Say($t) { try { Add-Content -LiteralPath $Log -Value ("{0:u}  {1}" -f (Get-Date), $t) } catch {} }
+function Done($ok, $err) {
+    try {
+        $r = [ordered]@{ ok = [bool]$ok; tag = $Tag; error = [string]$err; at = [double]([DateTimeOffset]::UtcNow.ToUnixTimeSeconds()) }
+        Set-Content -LiteralPath $Result -Value ($r | ConvertTo-Json -Compress) -Encoding UTF8
+    } catch { Say ("Could not write the result: " + $_.Exception.Message) }
+}
+function Ours { Get-Process -Name $script:ExeName -ErrorAction SilentlyContinue | Where-Object { try { $_.Path -eq $Exe } catch { $false } } }
+if (-not $Exe) { $Exe = Join-Path $Dest 'LegacyPlayer.exe' }
+$ExeName = [System.IO.Path]::GetFileNameWithoutExtension($Exe)
+$ok = $false; $err = ''
 try {
     Say "Waiting for Legacy Player ($WaitPid) to close"
     try { Wait-Process -Id $WaitPid -Timeout 90 -ErrorAction SilentlyContinue } catch {}
-    $exe = Join-Path $Dest 'LegacyPlayer.exe'
+    Stop-Process -Id $WaitPid -Force -ErrorAction SilentlyContinue        # still there after 90 seconds: it asked to be replaced
     # the multiplayer server and friends service run from the same program; they start again with the new version
-    Get-Process -Name LegacyPlayer -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $exe } | ForEach-Object { Say "Stopping $($_.Id)"; Stop-Process -Id $_.Id -Force }
-    Start-Sleep -Milliseconds 800
+    Ours | ForEach-Object { Say "Stopping $($_.Id)"; Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue }
+    $until = (Get-Date).AddSeconds(30)
+    while ((Ours) -and (Get-Date) -lt $until) { Start-Sleep -Milliseconds 300 }
+    Start-Sleep -Milliseconds 500
+    $copied = @()
     for ($i = 0; $i -lt 10; $i++) {
-        try { Copy-Item -Path (Join-Path $Stage '*') -Destination $Dest -Recurse -Force; break }
+        try { Copy-Item -LiteralPath (Join-Path $Stage 'LegacyPlayer.exe') -Destination $Exe -Force; break }
         catch { if ($i -eq 9) { throw }; Start-Sleep 1 }
     }
-    Get-ChildItem $Dest -Recurse -File | Unblock-File
-    $Tag | Set-Content (Join-Path $Dest 'VERSION.txt') -Encoding ASCII
-    Remove-Item $Stage -Recurse -Force -ErrorAction SilentlyContinue
-    Say "Installed $Tag; starting it"
+    $copied += $Exe
+    $inInstalled = $false
+    if ($Installed) {
+        try {
+            $a = [System.IO.Path]::GetFullPath($Dest).TrimEnd('\')
+            $b = [System.IO.Path]::GetFullPath($Installed).TrimEnd('\')
+            $inInstalled = ($a -ieq $b)
+        } catch {}
+    }
+    if ($inInstalled) {
+        Get-ChildItem -LiteralPath $Stage -Force | Where-Object { $_.Name -ne 'LegacyPlayer.exe' } | ForEach-Object {
+            $target = Join-Path $Dest $_.Name
+            Copy-Item -LiteralPath $_.FullName -Destination $target -Recurse -Force
+            if ($_.PSIsContainer) { $copied += (Get-ChildItem -LiteralPath $target -Recurse -File | ForEach-Object { $_.FullName }) }
+            else { $copied += $target }
+        }
+        $versionFile = Join-Path $Dest 'VERSION.txt'
+        Set-Content -LiteralPath $versionFile -Value $Tag -Encoding ASCII
+    }
+    foreach ($f in $copied) { try { Unblock-File -LiteralPath $f -ErrorAction SilentlyContinue } catch {} }
+    Remove-Item -LiteralPath $Stage -Recurse -Force -ErrorAction SilentlyContinue
+    Say "Installed $Tag into $Exe; starting it"
+    $ok = $true
 } catch {
-    Say ("The update did not finish: " + $_.Exception.Message)
+    $err = $_.Exception.Message
+    Say ("The update did not finish: " + $err)
 }
-Start-Process (Join-Path $Dest 'LegacyPlayer.exe')
+Done $ok $err
+try {
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $Exe                       # no wildcard parsing here, so folders with [ ] work
+    $psi.WorkingDirectory = $Dest
+    $psi.UseShellExecute = $true
+    [void][System.Diagnostics.Process]::Start($psi)
+} catch { Say ("Could not start Legacy Player again: " + $_.Exception.Message) }
 """

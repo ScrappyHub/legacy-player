@@ -458,4 +458,9 @@ class TrayController:
                 self.app.api_server_control({"action": "stop"})
             except Exception:
                 pass
-        self.app.api_quit({})
+        lock = getattr(self.app, "api_lock", None)
+        if lock is not None:
+            with lock:                  # like the page's Quit: never in the middle of another call that touches the room
+                self.app.api_quit({})
+        else:
+            self.app.api_quit({})

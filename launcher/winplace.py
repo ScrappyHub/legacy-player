@@ -239,8 +239,35 @@ def arrange_async(pid: int, monitor: dict | None, mode: str, has_flag: bool, exp
         threading.Thread(target=run, daemon=True).start()
 
 
-APP_TITLE_MARK = "Legacy Player \u2014"        # every app window's title starts like this (the overlay's does not)
+APP_TITLE_MARK = "Legacy Player \u2014"        # the app window: see is_app_title (the overlay's title never matches)
+APP_NAME = "Legacy Player"
+_APP_SEPARATORS = (" \u2014", " \u2013", " - ")     # em dash (what the page uses), en dash, and the " - Browser name" a tab gets
 _BROWSER_CLASSES = {"Chrome_WidgetWin_1", "MozillaWindowClass"}     # Edge, Chrome, Brave, Firefox
+
+
+def is_app_title(title: str) -> bool:
+    """Is this the title of a Legacy Player app window (or browser tab)?
+
+    The page's titles all start with "Legacy Player \u2014 " ("Legacy Player \u2014 Home", "Legacy Player \u2014 restarting",
+    "Legacy Player \u2014 closed"); older pages used just "Legacy Player". A browser tab adds " - Microsoft Edge" and so on.
+    The overlay ("Legacy Player overlay") never matches."""
+    t = (title or "").strip()
+    if t == APP_NAME:
+        return True
+    if not t.startswith(APP_NAME):
+        return False
+    rest = t[len(APP_NAME):]
+    return any(rest.startswith(sep) for sep in _APP_SEPARATORS)
+
+
+_BROWSER_NAMES = ("Google Chrome", "Microsoft Edge", "Mozilla Firefox", "Firefox", "Brave", "Chromium", "Opera", "Vivaldi")
+
+
+def is_browser_tab_title(title: str) -> bool:
+    """A normal browser window shows the active tab's title plus the browser's name ("… - Google Chrome"). Closing such
+    a window would close the player's other tabs too, so the app only ever closes its own app-style window."""
+    t = (title or "").replace("​", "").strip()
+    return any(t.endswith(name) for name in _BROWSER_NAMES)
 
 
 def _class_of(hwnd) -> str:
@@ -251,13 +278,14 @@ def _class_of(hwnd) -> str:
 
 
 def _titled(fragment: str) -> list[dict]:
+    """Visible windows whose title contains the text. The app's own mark (APP_TITLE_MARK) is special: it finds the app
+    window by is_app_title, and only browser windows, never another program that happens to say "Legacy Player"."""
     if sys.platform != "win32":
         return []
     try:
-        found = [w for w in _windows_of(None) if fragment.lower() in w["title"].lower()]
-        if fragment == APP_TITLE_MARK:        # only our own browser window, never another program that happens to say "Legacy Player -"
-            found = [w for w in found if _class_of(w["hwnd"]) in _BROWSER_CLASSES]
-        return found
+        if fragment == APP_TITLE_MARK:
+            return [w for w in _windows_of(None) if is_app_title(w["title"]) and _class_of(w["hwnd"]) in _BROWSER_CLASSES]
+        return [w for w in _windows_of(None) if fragment.lower() in w["title"].lower()]
     except Exception:
         return []
 
@@ -266,7 +294,7 @@ def overlay_open(fragment: str) -> bool:
     return bool(_titled(fragment))
 
 
-def window_exists(fragment: str) -> bool:
+def window_exists(fragment: str = APP_TITLE_MARK) -> bool:
     return bool(_titled(fragment))
 
 
@@ -299,6 +327,8 @@ def focus_titled(fragment: str) -> bool:
 def close_titled(fragment: str) -> bool:
     """Politely close every window whose title contains the text (the same as pressing its X)."""
     wins = _titled(fragment)
+    if fragment == APP_TITLE_MARK:                     # never a whole browser window with the player's other tabs in it
+        wins = [w for w in wins if not is_browser_tab_title(w["title"])]
     if wins and sys.platform == "win32":
         import ctypes
         for w in wins:
