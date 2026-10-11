@@ -23,6 +23,7 @@ services:
     command: ["python", "-m", "server.report_receiver", "--dir", "/data/reports", "--host", "0.0.0.0", "--port", "8790"]
     environment:
       LP_REPORT_TOKEN: ${REPORT_TOKEN:-}
+      LP_ADMIN_TOKEN: ${ADMIN_TOKEN:-}       # opens the admin console at /admin (paste it into the form there); empty: no console
     volumes: ["lp-reports:/data/reports"]
     mem_limit: 256m
     pids_limit: 128

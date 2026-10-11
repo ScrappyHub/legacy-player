@@ -72,17 +72,32 @@ def check(url: str, pages=PAGES, min_normal=4.5, min_large=3.0, themes=("dark", 
     with sync_playwright() as p:
         browser = p.chromium.launch()
         page = browser.new_page(viewport={"width": 1280, "height": 860})
-        page.goto(url)
+        page.goto(url)              # the one-time ?k= address: the app sets a session cookie, so reloading "/" works after this
         page.wait_for_selector("#nav button, #nav a", state="attached")
         page.wait_for_timeout(1500)
-        page.add_style_tag(content="*{animation:none!important;transition:none!important}")
         for theme in themes:
             name_, _, when = theme.partition(":")             # "dark", "light", or a World theme like "meadow:day"
-            page.evaluate("([t,w])=>{S.settings=S.settings||{};if(w){S.settings.time_of_day=w;applyBg('scene')}applyTheme(t)}", [name_, when])
-            page.wait_for_timeout(300)
+            # Save the theme as the app's own settings (key "theme" in launcher/catalog.py) and reload, rather than only
+            # calling applyTheme(): some pages (Library) re-apply the saved theme, which would draw every later page in
+            # the saved (dark) theme and let the light pass "pass" without ever being looked at.
+            page.evaluate("""async ([t, w]) => {
+              await api('settings', {key: 'theme', value: t});
+              await api('settings', {key: 'background', value: w ? 'scene' : 'waves'});
+              if (w) await api('settings', {key: 'time_of_day', value: w});
+            }""", [name_, when])
+            page.reload()
+            page.wait_for_selector("#nav button, #nav a", state="attached")
+            page.wait_for_timeout(1500)
+            page.add_style_tag(content="*{animation:none!important;transition:none!important}")
+            shown = page.evaluate("() => [document.documentElement.dataset.theme, document.documentElement.dataset.time || '']")
+            if shown[0] != name_ or (when and shown[1] != when):
+                raise RuntimeError(f"asked for theme {theme!r} but the page shows {shown!r}")
             for name in pages:
                 page.evaluate(f'nav("{name}")')
                 page.wait_for_timeout(1200)
+                now = page.evaluate("() => document.documentElement.dataset.theme")
+                if now != name_:                                  # a page switched the theme back: that would be a false pass
+                    raise RuntimeError(f"page {name!r} is drawn in theme {now!r} during the {theme!r} pass")
                 items = page.evaluate(JS_ITEMS)
                 page.add_style_tag(content="*{color:transparent!important;text-shadow:none!important;-webkit-text-fill-color:transparent!important} svg text{fill:transparent!important}")
                 shot = Image.open(io.BytesIO(page.screenshot())).convert("RGB")
@@ -94,7 +109,7 @@ def check(url: str, pages=PAGES, min_normal=4.5, min_large=3.0, themes=("dark", 
                     if box[2] <= box[0] or box[3] <= box[1]:
                         continue
                     crop = shot.crop(box)
-                    pixels = list(crop.getdata())
+                    pixels = list(crop.get_flattened_data() if hasattr(crop, "get_flattened_data") else crop.getdata())
                     (r, g, b), alpha = parse_color(it["color"])
                     alpha *= it["op"]
                     worst = 99.0
@@ -106,7 +121,7 @@ def check(url: str, pages=PAGES, min_normal=4.5, min_large=3.0, themes=("dark", 
                     large = it["size"] >= 24 or (it["size"] >= 18.66 and it["weight"] >= 700)
                     need = min_large if large else min_normal
                     if worst < need:
-                        failures.append({"theme": theme, "cls": it["cls"][:50], "page": name, "text": it["text"], "ratio": round(worst, 2), "need": need, "size": it["size"]})
+                        failures.append({"theme": theme, "cls": it["cls"][:50], "page": name, "text": it["text"], "ratio": round(worst, 3), "need": need, "size": it["size"]})
         browser.close()
     return failures
 
@@ -137,7 +152,7 @@ def main(pages=PAGES, themes=("dark", "light")):
         if key in seen:
             continue
         seen.add(key)
-        print(f'{f["theme"]:<5}{f["page"]:<11} {f["ratio"]:>5} (need {f["need"]})  {f["size"]:.0f}px  {f["text"]!r}  [{f["cls"]}]')
+        print(f'{f["theme"]:<13} {f["page"]:<11} {f["ratio"]:>6} (need {f["need"]})  {f["size"]:.0f}px  {f["text"]!r}  [{f["cls"]}]')
     print(f"{len(seen)} text items below the guide")
     return 1 if seen else 0
 

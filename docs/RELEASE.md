@@ -8,14 +8,22 @@
 
 
 ## Build and publish (on GitHub)
-1. Merge the work into `main` (the installer one-liner below reads `install.ps1` from `main`), then:
+1. Merge the work into `main`, then tag a commit **on `main`**. The workflow refuses a tag whose commit is not on `main`
+   (the installer one-liner below also reads `install.ps1` from `main`). Installed copies of Legacy Player update themselves
+   to the newest release (`releases/latest`), so a bad release reaches everyone who has the app: tag only what you would
+   install yourself.
    ```
    git tag v0.7.43
    git push origin v0.7.43
    ```
-2. The `release` workflow (GitHub > Actions) builds `LegacyPlayer.exe` on a Windows runner, starts it once as a smoke
-   check, and publishes the release files: `LegacyPlayer-0.7.0-win64.zip` (what the installer downloads), the bare `LegacyPlayer-0.7.0-win64.exe`, a `.sha256` for each and `SHA256SUMS.txt`. The tag should match `VERSION`
-   in `launcher/version.py`.
+2. The `release` workflow (GitHub > Actions), on a Windows runner: checks the tagged commit is on `main` and the tag
+   matches `VERSION` in `launcher/version.py`; runs `python tools/release_check.py` (all tests and the repository check;
+   nothing is built if they fail); builds `LegacyPlayer.exe`; signs it when signing is set up; then starts the built exe
+   three ways as a smoke check (the app's own page server, the friends service's `/health`, and the multiplayer server's
+   port) and only then publishes `LegacyPlayer-<version>-win64.zip` (what the installer downloads), the bare
+   `LegacyPlayer-<version>-win64.exe`, a `.sha256` for each and `SHA256SUMS.txt`. The release is created as a draft, the
+   files are uploaded, and only then is it made public; re-running the workflow for a tag that already has a release
+   replaces its files.
 3. To try a build without publishing: Actions > release > Run workflow; the zip is attached to that run.
 
 ## Install on another computer (PowerShell, no administrator needed)
@@ -31,9 +39,11 @@ copy of the script, or make the repository public first.
 ```
 git clone https://github.com/Alpallyoop/legacy-player
 cd legacy-player
-.\lp install      # or: .\lp install v0.7.43     (update / run / version / path / uninstall / source / help)
+.\lp.cmd install      # or: .\lp.cmd install v0.7.43     (update / run / version / path / uninstall / source / help)
 ```
-`lp.cmd` lets it run from cmd.exe too. `lp source` runs straight from the checkout with Python (for developers).
+In PowerShell use `.\lp.cmd`: a plain `.\lp` runs `lp.ps1` directly, which the default execution policy (Restricted)
+blocks; `lp.cmd` starts it with `-ExecutionPolicy Bypass`. From cmd.exe `lp install` is enough. Without `lp.cmd`:
+`powershell -ExecutionPolicy Bypass -File .\lp.ps1 install`. `lp source` runs straight from the checkout with Python (for developers).
 
 ## Without GitHub
 On a Windows computer with Python 3.13+: `powershell -ExecutionPolicy Bypass -File tools\package_release.ps1`.
@@ -52,4 +62,5 @@ double-click `LegacyPlayer.exe`.
   `gh attestation verify LegacyPlayer-<version>-win64.exe --repo Alpallyoop/legacy-player`; and `SHA256SUMS.txt` lists the hashes.
 - Hosting the shared server and report receiver: `deploy/README.md`; check a deployment with `python tools/check_deployment.py`.
 - Data lives in `%USERPROFILE%\.legacy-player`; the log is `%LOCALAPPDATA%\LegacyPlayer\app.log`.
-- Nothing about the build has been run on Windows yet. If the workflow fails, the Actions log shows which step.
+- The build has run on GitHub's `windows-latest` runners (releases 0.7.35 to 0.7.37 and 0.7.43). The parts listed in
+  `docs/WINDOWS_CHECKLIST.md` still need a real Windows computer. If the workflow fails, the Actions log shows which step.

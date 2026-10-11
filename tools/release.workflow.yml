@@ -16,9 +16,22 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0       # full history, so the next step can tell whether the tagged commit is on main
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
+      # Installed apps update themselves to releases/latest, so a bad release reaches everyone: only commits that are
+      # already on main may be released (docs/CODE_SIGNING_POLICY.md, docs/RELEASE.md).
+      - name: The tagged commit must be on main
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          git fetch --no-tags origin main
+          if ($LASTEXITCODE) { Write-Error "Could not fetch origin/main"; exit 1 }
+          git merge-base --is-ancestor $env:GITHUB_SHA origin/main
+          if ($LASTEXITCODE) { Write-Error "Tag ${{ github.ref_name }} ($env:GITHUB_SHA) is not on main. Merge into main first, then tag a commit from main."; exit 1 }
+          Write-Host "$env:GITHUB_SHA is on main."
       - name: The tag must match the app version
         if: startsWith(github.ref, 'refs/tags/v')
         shell: pwsh
@@ -28,6 +41,13 @@ jobs:
       - name: Python has what the app needs bundled
         shell: pwsh
         run: python -c "import tkinter, ctypes; print('tkinter', tkinter.TkVersion)"
+      - name: Run the tests (nothing is built or published if they fail)
+        shell: pwsh
+        run: |
+          python -m pip install -r tools/memory_probe/requirements.txt
+          if ($LASTEXITCODE) { exit 1 }
+          python tools/release_check.py
+          if ($LASTEXITCODE) { Write-Error "The release check failed; nothing was published."; exit 1 }
       - name: Build the exe
         shell: pwsh
         run: ./tools/package_release.ps1 -BuildOnly
@@ -65,15 +85,79 @@ jobs:
         shell: pwsh
         run: |
           $zip = Get-ChildItem dist/release/*.zip | Select-Object -First 1
-          Expand-Archive $zip.FullName -DestinationPath smoke
-          $p = Start-Process smoke/LegacyPlayer.exe -ArgumentList '--no-browser','--port','18780','--data-dir',"$PWD/smoke-data" -PassThru
-          Start-Sleep 12
-          try { $r = Invoke-WebRequest http://127.0.0.1:18780/ -UseBasicParsing -SkipHttpErrorCheck; Write-Host "Server answered $($r.StatusCode)" }
-          catch { Write-Error "The app started but its page did not answer: $($_.Exception.Message)"; exit 1 }
-          if ($p.HasExited) { Write-Error "LegacyPlayer.exe exited early (code $($p.ExitCode))"; exit 1 }
+          Expand-Archive -LiteralPath $zip.FullName -DestinationPath smoke
+          $exe = (Resolve-Path smoke/LegacyPlayer.exe).Path
+          function Wait-Port([int]$port, [int]$seconds = 60) {
+            $until = (Get-Date).AddSeconds($seconds)
+            while ((Get-Date) -lt $until) {
+              $c = New-Object Net.Sockets.TcpClient
+              try { $c.Connect('127.0.0.1', $port); return $true } catch { Start-Sleep 1 } finally { $c.Dispose() }
+            }
+            return $false
+          }
+          $procs = @()
+          $failed = @()
           $log = Join-Path $env:LOCALAPPDATA 'LegacyPlayer/app.log'
-          if ((Test-Path $log) -and (Select-String -Path $log -Pattern 'Traceback' -Quiet)) { Get-Content $log; exit 1 }
-          taskkill /f /t /pid $p.Id | Out-Null      # the one-file exe starts a child: end both
+          $logs = @('smoke-out.txt', 'smoke-err.txt', 'smoke-social-out.txt', 'smoke-social-err.txt', 'smoke-server-out.txt', 'smoke-server-err.txt', $log)
+          try {
+            # 1. The app: its own page server must answer. GET / without the one-time key or a session cookie is refused
+            #    by design (403 with a JSON error from the "LegacyPlayerUI" server); a 200 must be the real page.
+            $p = Start-Process $exe -ArgumentList '--no-browser', '--port', '18780', '--data-dir', "$PWD/smoke-data" -PassThru `
+                   -RedirectStandardOutput smoke-out.txt -RedirectStandardError smoke-err.txt
+            $procs += $p
+            if (-not (Wait-Port 18780)) { $failed += "the app did not open port 18780" }
+            else {
+              $r = Invoke-WebRequest http://127.0.0.1:18780/ -UseBasicParsing -SkipHttpErrorCheck
+              $server = "$($r.Headers['Server'])"
+              Write-Host "App page server: $($r.StatusCode) $server"
+              if ($server -notlike 'LegacyPlayerUI*') { $failed += "port 18780 is not Legacy Player's page server (Server: $server)" }
+              elseif ($r.StatusCode -eq 403) {
+                try { $err = ($r.Content | ConvertFrom-Json).error } catch { $err = $null }
+                if (-not $err) { $failed += "the app's 403 carried no JSON error: $($r.Content)" }
+              }
+              elseif ($r.StatusCode -eq 200) { if ($r.Content -notlike '*<title>Legacy Player*') { $failed += "the app's page is not the Legacy Player page" } }
+              else { $failed += "the app's page answered $($r.StatusCode)" }
+              # If the app printed its one-time address (with ?k=), that address must open the real page (302, cookie, 200).
+              $text = (@('smoke-out.txt', $log) | Where-Object { Test-Path -LiteralPath $_ } | ForEach-Object { Get-Content -LiteralPath $_ -Raw }) -join "`n"
+              $m = [regex]::Matches($text, 'http://127\.0\.0\.1:18780/\?k=[A-Za-z0-9_\-]+')
+              if ($m.Count) {
+                $page = Invoke-WebRequest $m[$m.Count - 1].Value -UseBasicParsing -SessionVariable web -SkipHttpErrorCheck
+                Write-Host "One-time address opened: $($page.StatusCode)"
+                if ($page.StatusCode -ne 200 -or $page.Content -notlike '*<title>Legacy Player*') { $failed += "the one-time address did not open the page ($($page.StatusCode))" }
+              } else { Write-Host "The app did not print a one-time address; checked its refusal only." }
+            }
+            if ($p.HasExited) { $failed += "LegacyPlayer.exe exited early (code $($p.ExitCode))" }
+
+            # 2. The friends service (Friends > Run a friends service on this computer).
+            $s = Start-Process $exe -ArgumentList '--social-run', '--dir', "$PWD/smoke-social", '--port', '18791' -PassThru `
+                   -RedirectStandardOutput smoke-social-out.txt -RedirectStandardError smoke-social-err.txt
+            $procs += $s
+            if (-not (Wait-Port 18791)) { $failed += "the friends service did not open port 18791" }
+            else {
+              $h = Invoke-WebRequest http://127.0.0.1:18791/health -UseBasicParsing -SkipHttpErrorCheck
+              Write-Host "Friends service /health: $($h.StatusCode) $($h.Content)"
+              if ($h.StatusCode -ne 200 -or $h.Content -notlike '*legacy-player-friends*') { $failed += "the friends service health check failed ($($h.StatusCode))" }
+            }
+
+            # 3. The multiplayer server ("Let friends connect").
+            $g = Start-Process $exe -ArgumentList '--server-run', '--host', '127.0.0.1', '--port', '18765', '--state-dir', "$PWD/smoke-state", '--replay-dir', "$PWD/smoke-replays" -PassThru `
+                   -RedirectStandardOutput smoke-server-out.txt -RedirectStandardError smoke-server-err.txt
+            $procs += $g
+            if (-not (Wait-Port 18765)) { $failed += "the multiplayer server did not open port 18765" } else { Write-Host "Multiplayer server is listening on 18765." }
+
+            foreach ($f in $logs) {
+              if ((Test-Path -LiteralPath $f) -and (Select-String -LiteralPath $f -Pattern 'Traceback' -Quiet)) { $failed += "a Traceback in $f" }
+            }
+          } finally {
+            foreach ($x in $procs) { taskkill /f /t /pid $x.Id 2>&1 | Out-Null }    # the one-file exe starts a child: end both
+          }
+          if ($failed.Count) {
+            foreach ($f in $logs) { if (Test-Path -LiteralPath $f) { Write-Host "----- $f"; Get-Content -LiteralPath $f } }
+            foreach ($x in $failed) { Write-Host "::error::$x" }
+            exit 1
+          }
+          Write-Host "Smoke check passed: the app, the friends service and the multiplayer server all answered."
+          exit 0
       - name: Attest build provenance
         if: startsWith(github.ref, 'refs/tags/v')
         continue-on-error: true      # some private repositories cannot attest; the release must not fail for that
@@ -89,7 +173,18 @@ jobs:
           # PowerShell does not expand * for a program like gh, so list the files ourselves
           $files = Get-ChildItem dist/release -File | ForEach-Object { $_.FullName }
           if (-not $files) { Write-Error "Nothing to publish in dist/release"; exit 1 }
-          gh release create "${{ github.ref_name }}" @files --title "Legacy Player ${{ github.ref_name }}" --generate-notes
+          $tag = "${{ github.ref_name }}"
+          # Safe to run again: a draft is created first and only made public once every file is on it; if the release
+          # already exists (an earlier run that stopped half way), its files are replaced instead.
+          gh release view $tag 2>$null | Out-Null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $tag --draft --verify-tag --title "Legacy Player $tag" --generate-notes
+            if ($LASTEXITCODE) { Write-Error "Could not create the draft release $tag"; exit 1 }
+          } else { Write-Host "Release $tag already exists; replacing its files." }
+          gh release upload $tag @files --clobber
+          if ($LASTEXITCODE) { Write-Error "Could not upload the release files"; exit 1 }
+          gh release edit $tag --draft=false
+          if ($LASTEXITCODE) { Write-Error "Could not publish the release $tag"; exit 1 }
       - name: Keep the build for manual runs
         if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
         uses: actions/upload-artifact@v4

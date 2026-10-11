@@ -90,3 +90,36 @@ class UpdaterTargetsRunningCopyTests(unittest.TestCase):
         self.assertIn("Path(sys.executable).resolve().parent", updater)     # the in-app update replaces the copy that is running
         self.assertIn("The update did not finish", updater)
         self.assertIn("did not finish", text)
+
+
+class ReleaseGateTests(unittest.TestCase):
+    def test_only_tested_commits_on_main_are_built_and_published(self):
+        wf = text("tools/release.workflow.yml")
+        main_check, tests, build = (wf.index(x) for x in ("merge-base --is-ancestor", "tools/release_check.py", "-BuildOnly"))
+        self.assertLess(main_check, build)
+        self.assertLess(tests, build)
+        self.assertIn("fetch-depth: 0", wf)            # a shallow clone cannot answer the ancestry question
+
+    def test_publishing_is_a_draft_first_and_can_run_again(self):
+        wf = text("tools/release.workflow.yml")
+        publish = wf[wf.index("- name: Publish the release"):]
+        self.assertIn("--draft", publish)
+        self.assertIn("--clobber", publish)
+        self.assertIn("--draft=false", publish)
+        self.assertLess(publish.index("gh release upload"), publish.index("--draft=false"))
+
+    def test_smoke_check_requires_real_answers(self):
+        wf = text("tools/release.workflow.yml")
+        smoke = wf[wf.index("- name: Check the built app starts"):wf.index("- name: Attest build provenance")]
+        for needle in ("LegacyPlayerUI", "--social-run", "legacy-player-friends", "--server-run", "18765"):
+            self.assertIn(needle, smoke)
+
+
+class InstallerNeverClosesTheWindowTests(unittest.TestCase):
+    def test_no_exit_through_iex(self):
+        inst = text("install.ps1")
+        self.assertNotIn("trap", inst)
+        exits = [line for line in inst.splitlines() if re.search(r"\bexit\b", line) and not line.lstrip().startswith("#")]
+        self.assertEqual(["if ($lpFailed -and -not $lpViaIex) { exit 1 }"], [e.strip() for e in exits])
+        self.assertIn("$ProgressPreference = 'SilentlyContinue'", inst)
+        self.assertIn("WaitForExit(5000)", inst)

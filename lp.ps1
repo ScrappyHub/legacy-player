@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-lp - one small command for Legacy Player. Run  .\lp help  for the list.
+lp - one small command for Legacy Player. Run  .\lp.cmd help  for the list (in PowerShell a bare .\lp runs this .ps1, which the default execution policy blocks).
 #>
 param(
     [Parameter(Position = 0)][string]$Command = 'help',
@@ -14,15 +14,17 @@ $usage = @'
 
    git clone https://github.com/Alpallyoop/legacy-player
    cd legacy-player
-   .\lp install                 download the newest release, check its SHA-256, install it for you (no administrator)
-   .\lp install v0.7.43          the same, for one exact version
-   .\lp update                  install the newest release over the current one (your saves and settings stay)
-   .\lp run                     start the installed app
-   .\lp version                 what is installed, and what is the newest
-   .\lp path                    where it is installed
-   .\lp uninstall               remove the program and its Start menu shortcut (your data stays; the in-app doctor removes that)
-   .\lp source                  run straight from this git checkout with Python 3.13+ (no download, for developers)
-   .\lp help
+   .\lp.cmd install             download the newest release, check its SHA-256, install it for you (no administrator)
+   .\lp.cmd install v0.7.43     the same, for one exact version
+   .\lp.cmd update              install the newest release over the current one (your saves and settings stay)
+   .\lp.cmd run                 start the installed app
+   .\lp.cmd version             what is installed, and what is the newest
+   .\lp.cmd path                where it is installed
+   .\lp.cmd uninstall           remove the program and its Start menu shortcut (your data stays; the in-app doctor removes that)
+   .\lp.cmd source              run straight from this git checkout with Python 3.13+ (no download, for developers)
+   .\lp.cmd help
+
+ From cmd.exe plain  lp install  works. Without lp.cmd:  powershell -ExecutionPolicy Bypass -File .\lp.ps1 install
 
  Add  -Repo owner/name  to use a fork, or  -Token <github token>  for a private repository.
 '@
@@ -50,14 +52,22 @@ function Invoke-Install {
     if ($NoLaunch) { $args2['NoLaunch'] = $true }
     & $script @args2
 }
-function Stop-App { Get-Process -Name LegacyPlayer -ErrorAction SilentlyContinue | ForEach-Object { $_.CloseMainWindow() | Out-Null; Start-Sleep 2; if (-not $_.HasExited) { $_.Kill() } } }
+function Stop-App {
+    foreach ($p in @(Get-Process -Name LegacyPlayer -ErrorAction SilentlyContinue)) {
+        try {
+            $p.CloseMainWindow() | Out-Null; Start-Sleep 2
+            if (-not $p.HasExited) { $p.Kill(); $p.WaitForExit(5000) | Out-Null }
+        } catch { }
+        if (-not $p.HasExited) { Write-Host "Could not close Legacy Player (process $($p.Id)); close it yourself and try again." -ForegroundColor Yellow }
+    }
+}
 
 switch ($Command.ToLower()) {
     { $_ -in 'install', 'update', 'upgrade' } {
         Invoke-Install
     }
     'run' {
-        if (-not (Test-Path $exe)) { throw "Legacy Player is not installed yet. Run:  .\lp install" }
+        if (-not (Test-Path $exe)) { throw "Legacy Player is not installed yet. Run:  .\lp.cmd install" }
         Start-Process $exe
     }
     'version' {
@@ -65,7 +75,7 @@ switch ($Command.ToLower()) {
         $latest = Get-Latest
         Write-Host ("Installed: " + $(if ($have) { $have } else { 'not installed' }))
         Write-Host ("Newest:    " + $(if ($latest) { $latest } else { 'could not reach GitHub' }))
-        if ($have -and $latest -and $have -ne $latest -and $have -ne 'unknown version') { Write-Host "An update is available:  .\lp update" }
+        if ($have -and $latest -and $have -ne $latest -and $have -ne 'unknown version') { Write-Host "An update is available:  .\lp.cmd update" }
     }
     'path' { Write-Output $dest }
     'uninstall' {
