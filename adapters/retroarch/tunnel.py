@@ -17,6 +17,7 @@ from __future__ import annotations
 import secrets
 import socket
 import ssl
+import sys
 import threading
 import time
 
@@ -85,6 +86,66 @@ class Meter:
 METER = Meter()
 
 
+def _exclusive_bind_option(sock: socket.socket) -> None:
+    """Windows' SO_REUSEADDR lets a second socket take a port that is already in use, so there the port is claimed
+    exclusively instead; elsewhere SO_REUSEADDR only allows quick rebinding after a close, which is what we want."""
+    if sys.platform == "win32":
+        option = getattr(socket, "SO_EXCLUSIVEADDRUSE", None)
+        if option is not None:
+            sock.setsockopt(socket.SOL_SOCKET, option, 1)
+    else:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+
+
+def _close(sock) -> None:
+    if sock is None:
+        return
+    try:
+        sock.shutdown(socket.SHUT_RDWR)
+    except OSError:
+        pass
+    try:
+        sock.close()
+    except OSError:
+        pass
+
+
+class _Connections:
+    """The live sockets of a tunnel, so stop() can cut every match that is still running. After a socket is wrapped
+    in TLS the raw one is detached (closing it does nothing), so the wrapped socket is what gets tracked."""
+
+    def _init_connections(self) -> None:
+        self._conn_lock = threading.Lock()
+        self.open_sockets: set = set()
+
+    def _track(self, sock) -> None:
+        with self._conn_lock:
+            if not self.stopped.is_set():
+                self.open_sockets.add(sock)
+                return
+        _close(sock)                                    # arrived after stop(): never left running
+
+    def _swap(self, old, new) -> None:
+        """`old` became `new` (wrapped in TLS)."""
+        with self._conn_lock:
+            self.open_sockets.discard(old)
+        self._track(new)
+
+    def _forget(self, *socks) -> None:
+        with self._conn_lock:
+            for s in socks:
+                self.open_sockets.discard(s)
+        for s in socks:
+            _close(s)
+
+    def _close_all(self) -> None:
+        with self._conn_lock:
+            socks = list(self.open_sockets)
+            self.open_sockets.clear()
+        for s in socks:
+            _close(s)
+
+
 def _pipe(a: socket.socket, b: socket.socket, direction: str = "") -> None:
     try:
         while data := a.recv(65536):
@@ -101,7 +162,16 @@ def _pipe(a: socket.socket, b: socket.socket, direction: str = "") -> None:
                 pass
 
 
-class Tunnel:
+def _nodelay(*socks) -> None:
+    for s in socks:
+        s.settimeout(None)
+        try:
+            s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        except (OSError, AttributeError):
+            pass
+
+
+class Tunnel(_Connections):
     """mode 'host': TLS in -> plain out to RetroArch. mode 'guest': plain in from RetroArch -> TLS out."""
 
     def __init__(self, mode: str, key: str, listen_host: str, listen_port: int, target_host: str, target_port: int,
@@ -112,12 +182,13 @@ class Tunnel:
             raise ValueError("mode must be host or guest")
         self.mode, self.target, self.dial = mode, (target_host, target_port), dial
         self.context = _context(mode == "host", key)
+        self.stopped = threading.Event()
+        self._init_connections()
         self.listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        _exclusive_bind_option(self.listener)
         self.listener.bind((listen_host, listen_port))
         self.listener.listen(8)
         self.port = self.listener.getsockname()[1]
-        self.stopped = threading.Event()
         self.thread = threading.Thread(target=self._accept, daemon=True)
 
     def start(self) -> "Tunnel":
@@ -125,11 +196,13 @@ class Tunnel:
         return self
 
     def stop(self) -> None:
+        """Stop listening and cut every connection still running through the tunnel."""
         self.stopped.set()
         try:
             self.listener.close()
         except OSError:
             pass
+        self._close_all()
 
     def _accept(self) -> None:
         while not self.stopped.is_set():
@@ -140,38 +213,32 @@ class Tunnel:
             threading.Thread(target=self._serve, args=(conn,), daemon=True).start()
 
     def _serve(self, conn: socket.socket) -> None:
-        upstream = None
+        upstream = raw = None
+        self._track(conn)
         try:
             conn.settimeout(10)
             if self.mode == "host":
-                conn = self.context.wrap_socket(conn, server_side=True)  # bad key -> handshake fails -> dropped
+                wrapped = self.context.wrap_socket(conn, server_side=True)  # bad key -> handshake fails -> dropped
+                self._swap(conn, wrapped)
+                conn = wrapped
                 upstream = socket.create_connection(self.target, timeout=10)
+                self._track(upstream)
             else:
                 raw = self.dial() if self.dial else socket.create_connection(self.target, timeout=10)
+                self._track(raw)
                 upstream = self.context.wrap_socket(raw, server_hostname=None)
-            for s in (conn, upstream):
-                s.settimeout(None)
-                try:
-                    s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-                except (OSError, AttributeError):
-                    pass
+                self._swap(raw, upstream)
+            if self.stopped.is_set():
+                raise OSError("tunnel stopped")
+            _nodelay(conn, upstream)
         except (OSError, ssl.SSLError, RuntimeError):
-            for s in (conn, upstream):
-                if s:
-                    try:
-                        s.close()
-                    except OSError:
-                        pass
+            self._forget(*(s for s in (conn, upstream, raw) if s is not None))
             return
         outward = "tx" if self.mode == "guest" else "rx"
         inward = "rx" if self.mode == "guest" else "tx"
         threading.Thread(target=_pipe, args=(conn, upstream, outward), daemon=True).start()
         _pipe(upstream, conn, inward)
-        for s in (conn, upstream):
-            try:
-                s.close()
-            except OSError:
-                pass
+        self._forget(conn, upstream)
 
 
 def _wants_tracker(fn) -> bool:
@@ -182,7 +249,7 @@ def _wants_tracker(fn) -> bool:
         return False
 
 
-class RelayHost:
+class RelayHost(_Connections):
     """Host side of relay mode: keep a few connections parked at the lobby server; when the
     server pairs one with a guest, speak TLS-PSK over it and pipe to the local RetroArch."""
 
@@ -193,8 +260,7 @@ class RelayHost:
         self.threads: list[threading.Thread] = []
         self.errors: list[str] = []
         self.served = 0
-        self.open_sockets: set[socket.socket] = set()
-        self._lock = threading.Lock()
+        self._init_connections()
 
     def start(self) -> "RelayHost":
         for _ in range(self.slots):
@@ -204,22 +270,9 @@ class RelayHost:
         return self
 
     def stop(self) -> None:
+        """Stop parking connections and cut every relayed match that is still running."""
         self.stopped.set()
-        with self._lock:
-            for s in list(self.open_sockets):
-                try:
-                    s.shutdown(socket.SHUT_RDWR)
-                except OSError:
-                    pass
-                try:
-                    s.close()
-                except OSError:
-                    pass
-            self.open_sockets.clear()
-
-    def _track(self, sock) -> None:
-        with self._lock:
-            self.open_sockets.add(sock)
+        self._close_all()
 
     def _slot(self) -> None:
         while not self.stopped.is_set():
@@ -233,26 +286,20 @@ class RelayHost:
                 if self.stopped.wait(2.0):
                     return
                 continue
+            self._track(raw)                 # a dial that did not track it itself
+            conn = upstream = None
             try:
                 conn = self.context.wrap_socket(raw, server_side=True)
+                self._swap(raw, conn)
                 upstream = socket.create_connection(self.local, timeout=10)
-                for s in (conn, upstream):
-                    s.settimeout(None)
-                    try:
-                        s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-                    except (OSError, AttributeError):
-                        pass
+                self._track(upstream)
+                if self.stopped.is_set():
+                    raise OSError("relay stopped")
+                _nodelay(conn, upstream)
             except (OSError, ssl.SSLError):
-                try:
-                    raw.close()
-                except OSError:
-                    pass
+                self._forget(*(s for s in (raw, conn, upstream) if s is not None))
                 continue
             self.served += 1
             threading.Thread(target=_pipe, args=(conn, upstream, "rx"), daemon=True).start()
             _pipe(upstream, conn, "tx")
-            for s in (conn, upstream):
-                try:
-                    s.close()
-                except OSError:
-                    pass
+            self._forget(conn, upstream)

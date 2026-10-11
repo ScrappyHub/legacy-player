@@ -62,6 +62,43 @@ class DsuProtocolTests(unittest.TestCase):
         self.assertEqual(100, len(packet))
 
 
+    def test_packet_fields_match_the_dolphin_profile(self):
+        """Decode the bytes the way Dolphin's DualShockUDPClient does (PadDataResponse) and check every GameCube button
+        lands on the DSU input the managed Dolphin profile reads for it."""
+        from adapters.dolphin.configurator import PAD_TEMPLATE
+        # Dolphin input name -> byte offset in the packet (header 16 + type 4 + PadDataResponse fields)
+        offsets = {"Pad W": 44, "Pad S": 45, "Pad E": 46, "Pad N": 47, "Square": 48, "Cross": 49, "Circle": 50, "Triangle": 51,
+                   "R1": 52, "L1": 53, "R2": 54, "L2": 55}
+        profile = {}
+        for line in PAD_TEMPLATE.format(number=1, index=0).splitlines():
+            key, sep, value = line.partition(" = ")
+            if sep:
+                profile[key] = value.strip("`")
+        expected = {
+            GameCubeButtons.A: ["Buttons/A"], GameCubeButtons.B: ["Buttons/B"], GameCubeButtons.X: ["Buttons/X"],
+            GameCubeButtons.Y: ["Buttons/Y"], GameCubeButtons.Z: ["Buttons/Z"],
+            GameCubeButtons.L: ["Triggers/L", "Triggers/L-Analog"], GameCubeButtons.R: ["Triggers/R", "Triggers/R-Analog"],
+            GameCubeButtons.DPAD_UP: ["D-Pad/Up"], GameCubeButtons.DPAD_DOWN: ["D-Pad/Down"],
+            GameCubeButtons.DPAD_LEFT: ["D-Pad/Left"], GameCubeButtons.DPAD_RIGHT: ["D-Pad/Right"],
+        }
+        for button, controls in expected.items():
+            packet = pad_data_packet(0, ControllerState(buttons=int(button)), 1, 1)
+            pressed = {name for name, at in offsets.items() if packet[at] == 255}
+            idle = {name for name, at in offsets.items() if packet[at] == 0}
+            self.assertEqual(set(offsets), pressed | idle, button)
+            for control in controls:
+                self.assertEqual({profile[control]}, pressed, f"{button!r} -> {control} reads {profile[control]}")
+        start = pad_data_packet(0, ControllerState(buttons=int(GameCubeButtons.START)), 1, 1)
+        self.assertEqual("Options", profile["Buttons/Start"])
+        self.assertEqual(0x08, start[36])                            # button_states1 Options bit
+        z = pad_data_packet(0, ControllerState(buttons=int(GameCubeButtons.Z)), 1, 1)
+        self.assertEqual(0x08, z[37])                                # button_states2 R1 bit, for other DSU clients
+        idle = pad_data_packet(0, ControllerState(buttons=0), 1, 1)
+        self.assertEqual(bytes(12), idle[44:56])
+        self.assertEqual((0, 0), (idle[36], idle[37]))
+        self.assertEqual((128, 128), (idle[40], idle[41]))           # sticks centred, right before the analog bytes
+
+
 class DsuNetworkTests(unittest.IsolatedAsyncioTestCase):
     async def test_virtual_pad_server_answers_version_request(self):
         transport, protocol = await create_dsu_server("127.0.0.1", 0)

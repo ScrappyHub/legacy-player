@@ -40,6 +40,73 @@ class DolphinPadTests(unittest.TestCase):
         self.assertEqual("[GCPad1]\nDevice = mine\n", ini.read_text())
         self.assertFalse(backup.exists())
 
+    def test_only_the_written_players_sections_are_replaced(self):
+        exe, ini = dolphin_install()
+        mine = ("[GCPad1]\nDevice = mine/1\nButtons/A = `X`\n"
+                "[GCPad2]\nDevice = mine/2\nButtons/A = `Y`\n"
+                "[GCPad3]\nDevice = SDL/0/Steam Deck\n")
+        ini.write_text(mine)
+        out = dolphinpads.apply(exe, {"2": "xbox"}, {"xbox": STANDARD}, None)
+        self.assertTrue(out["applied"])
+        text = ini.read_text()
+        self.assertIn("Device = mine/1", text)                  # player 1, set up in Dolphin, untouched
+        self.assertIn("Device = SDL/0/Steam Deck", text)        # player 3 too
+        self.assertNotIn("Device = mine/2", text)               # player 2 is ours now
+        self.assertEqual(1, text.count("[GCPad2]"))
+        self.assertIn("Device = XInput/1/Gamepad", text)
+        self.assertLess(text.index("[GCPad1]"), text.index("[GCPad2]"))
+        self.assertLess(text.index("[GCPad2]"), text.index("[GCPad3]"))
+        # next launch player 2 is unassigned and player 1 is ours: player 2 goes back to the player's own section
+        dolphinpads.apply(exe, {"1": "xbox"}, {"xbox": STANDARD}, None)
+        text = ini.read_text()
+        self.assertIn("Device = mine/2", text)
+        self.assertNotIn("Device = mine/1", text)
+        self.assertIn("Device = SDL/0/Steam Deck", text)
+        self.assertTrue(dolphinpads.restore(exe)["restored"])
+        self.assertEqual(mine, ini.read_text())
+
+    def test_new_section_is_added_after_the_players_own(self):
+        exe, ini = dolphin_install()
+        ini.write_text("[GCPad1]\nDevice = mine/1\n")
+        dolphinpads.apply(exe, {"4": "xbox"}, {"xbox": dict(STANDARD, index=2)}, None)
+        text = ini.read_text()
+        self.assertIn("Device = mine/1", text)
+        self.assertIn("[GCPad4]\nDevice = XInput/2/Gamepad", text)
+
+    def test_windows_registry_user_folder_is_honoured(self):
+        import sys
+        import types
+        from unittest import mock
+        base = Path(tempfile.mkdtemp())
+        exe = base / "Dolphin" / "Dolphin.exe"
+        exe.parent.mkdir()
+        exe.write_bytes(b"x")
+        custom = base / "Elsewhere" / "Dolphin"
+        (custom / "Config").mkdir(parents=True)
+        values = {"UserConfigPath": str(custom)}
+
+        class Key:
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+
+        def query(key, name):
+            if name not in values:
+                raise FileNotFoundError(name)
+            return values[name], 1
+        fake = types.SimpleNamespace(HKEY_CURRENT_USER=1, OpenKey=lambda *a: Key(), QueryValueEx=query)
+        with mock.patch.dict(sys.modules, {"winreg": fake}), mock.patch.object(dolphinpads.sys, "platform", "win32"), \
+                mock.patch.object(dolphinpads, "documents_dir", return_value=base / "OneDrive" / "Documents"):
+            self.assertEqual(custom, dolphinpads.find_user_dir(exe))
+            self.assertIn(base / "OneDrive" / "Documents" / "Dolphin Emulator", dolphinpads.user_dirs(exe))
+            values.clear()
+            values["LocalUserConfig"] = 1
+            (exe.parent / "User" / "Config").mkdir(parents=True)
+            self.assertEqual(exe.parent / "User", dolphinpads.find_user_dir(exe))
+
+    def test_documents_folder_falls_back_to_home(self):
+        if dolphinpads.sys.platform != "win32":
+            self.assertEqual(Path(dolphinpads.os.path.expanduser("~")) / "Documents", dolphinpads.documents_dir())
+
     def test_restore_removes_our_file_when_there_was_none(self):
         exe, ini = dolphin_install()
         dolphinpads.apply(exe, {"2": "xbox"}, {"xbox": STANDARD}, None)

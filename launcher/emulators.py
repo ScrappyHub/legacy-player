@@ -161,25 +161,55 @@ def close_pid(pid: int, grace: float = 8.0) -> None:
     stop_pid(pid)
 
 
+def _reap(pid: int) -> bool:
+    """Collect a finished child of ours so it does not linger as a zombie. True when it has exited."""
+    try:
+        done, _ = os.waitpid(pid, os.WNOHANG)
+        return done == pid
+    except ChildProcessError:          # not our child (or already collected)
+        return False
+    except OSError:
+        return False
+
+
+def _zombie(pid: int) -> bool:
+    """A process that has exited but not been collected by its parent still answers kill(pid, 0)."""
+    try:
+        with open(f"/proc/{pid}/stat", "rb") as f:
+            stat = f.read().decode(errors="replace")
+        return stat[stat.rindex(")") + 2:][:1] == "Z"
+    except (OSError, ValueError):
+        return False
+
+
 def _alive(pid: int) -> bool:
     try:
         if sys.platform == "win32":
             out = subprocess.run(["tasklist", "/FI", f"PID eq {pid}", "/NH"], capture_output=True, text=True, timeout=10, creationflags=_NOWIN).stdout
             return str(pid) in out
+        if _reap(pid):
+            return False
         os.kill(pid, 0)
-        return True
+        return not _zombie(pid)
     except (OSError, subprocess.SubprocessError):
         return False
 
 
-def stop_pid(pid: int) -> None:
+def stop_pid(pid: int, wait: float = 2.0) -> None:
+    """Stop it for good: taskkill /F on Windows, SIGKILL elsewhere (then collect it so it does not look alive)."""
+    import time
     try:
         if sys.platform == "win32":
             subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True, timeout=10, creationflags=_NOWIN)
-        else:
-            os.kill(pid, signal.SIGTERM)
+            return
+        os.kill(pid, signal.SIGKILL)
     except (OSError, subprocess.SubprocessError):
-        pass
+        return
+    deadline = time.time() + wait
+    while time.time() < deadline:
+        if not _alive(pid):
+            return
+        time.sleep(0.05)
 
 
 def launch_command(command: list[str]) -> int:

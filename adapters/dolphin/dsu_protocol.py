@@ -42,6 +42,45 @@ class GameCubeButtons(IntFlag):
     Z = 1 << 11
 
 
+# How a GameCube pad rides on a DualShock-shaped DSU pad. This must agree with configurator.PAD_TEMPLATE:
+#   A = Cross, B = Circle, X = Square, Y = Triangle, Start = Options, Z = R1, L = L2 trigger, R = R2 trigger.
+# Dolphin's DualShockUDPClient reads face buttons, d-pad and L1/R1 from the analog bytes and L2/R2 from the trigger
+# bytes; the digital bit fields are filled the same way for other DSU clients.
+STATES1_BITS = {  # button_states1: Share 0x01, L3 0x02, R3 0x04, Options 0x08, Up 0x10, Right 0x20, Down 0x40, Left 0x80
+    GameCubeButtons.START: 0x08,
+    GameCubeButtons.DPAD_UP: 0x10,
+    GameCubeButtons.DPAD_RIGHT: 0x20,
+    GameCubeButtons.DPAD_DOWN: 0x40,
+    GameCubeButtons.DPAD_LEFT: 0x80,
+}
+STATES2_BITS = {  # button_states2: L2 0x01, R2 0x02, L1 0x04, R1 0x08, Triangle 0x10, Circle 0x20, Cross 0x40, Square 0x80
+    GameCubeButtons.L: 0x01,
+    GameCubeButtons.R: 0x02,
+    GameCubeButtons.Z: 0x08,
+    GameCubeButtons.Y: 0x10,
+    GameCubeButtons.B: 0x20,
+    GameCubeButtons.A: 0x40,
+    GameCubeButtons.X: 0x80,
+}
+# The 12 analog bytes after the sticks, in packet order (Dolphin's PadDataResponse):
+# d-pad left, down, right, up, square, cross, circle, triangle, R1, L1, R2 trigger, L2 trigger.
+ANALOG_ORDER = (
+    GameCubeButtons.DPAD_LEFT,
+    GameCubeButtons.DPAD_DOWN,
+    GameCubeButtons.DPAD_RIGHT,
+    GameCubeButtons.DPAD_UP,
+    GameCubeButtons.X,      # square
+    GameCubeButtons.A,      # cross
+    GameCubeButtons.B,      # circle
+    GameCubeButtons.Y,      # triangle
+    GameCubeButtons.Z,      # R1
+    None,                   # L1 (unused)
+    GameCubeButtons.R,      # R2 trigger
+    GameCubeButtons.L,      # L2 trigger
+)
+PAD_ANALOG_OFFSET = HEADER.size + PAD_PREFIX.size        # first d-pad analog byte (byte 44, right after the sticks)
+
+
 def _packet(message_type: int, payload: bytes, server_uid: int) -> bytes:
     body = struct.pack("<I", message_type) + payload
     packet = bytearray(
@@ -76,24 +115,17 @@ def port_info_packet(pad_id: int, server_uid: int) -> bytes:
 def pad_data_packet(
     pad_id: int, state: ControllerState, packet_counter: int, server_uid: int
 ) -> bytes:
-    buttons = GameCubeButtons(state.buttons)
-    states1 = 0x08 if buttons & GameCubeButtons.START else 0
+    buttons = GameCubeButtons(state.buttons & 0xFFF)
+    states1 = 0
+    for button, bit in STATES1_BITS.items():
+        if buttons & button:
+            states1 |= bit
     states2 = 0
+    for button, bit in STATES2_BITS.items():
+        if buttons & button:
+            states2 |= bit
     left_x = max(0, min(255, state.stick_x + 128))
     left_y = max(0, min(255, 128 - state.stick_y))
-    analog = {
-        GameCubeButtons.DPAD_LEFT: 255,
-        GameCubeButtons.DPAD_DOWN: 255,
-        GameCubeButtons.DPAD_RIGHT: 255,
-        GameCubeButtons.DPAD_UP: 255,
-        GameCubeButtons.X: 255,
-        GameCubeButtons.A: 255,
-        GameCubeButtons.B: 255,
-        GameCubeButtons.Y: 255,
-        GameCubeButtons.R: 255,
-        GameCubeButtons.L: 255,
-        GameCubeButtons.Z: 255,
-    }
     prefix = PAD_PREFIX.pack(
         PAD_DATA_TYPE,
         pad_id,
@@ -113,21 +145,7 @@ def pad_data_packet(
         128,
         128,
     )[4:]
-    ordered = (
-        GameCubeButtons.DPAD_LEFT,
-        GameCubeButtons.DPAD_DOWN,
-        GameCubeButtons.DPAD_RIGHT,
-        GameCubeButtons.DPAD_UP,
-        GameCubeButtons.X,
-        GameCubeButtons.A,
-        GameCubeButtons.B,
-        GameCubeButtons.Y,
-        GameCubeButtons.R,
-        GameCubeButtons.L,
-        GameCubeButtons.Z,
-        GameCubeButtons.Z,
-    )
-    analog_bytes = bytes(analog.get(button, 0) if buttons & button else 0 for button in ordered)
+    analog_bytes = bytes(255 if button is not None and buttons & button else 0 for button in ANALOG_ORDER)
     touch_and_motion = bytes(12) + bytes(8) + bytes(24)
     return _packet(PAD_DATA_TYPE, prefix + analog_bytes + touch_and_motion, server_uid)
 

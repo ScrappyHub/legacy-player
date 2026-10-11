@@ -24,6 +24,36 @@ class DesyncTrackerTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "window exceeded"):
             tracker.submit(1, "host", "b" * 64)
 
+    def test_window_overflow_stores_nothing_and_keeps_the_waiting_frame(self):
+        tracker = DesyncTracker({"host", "peer"}, max_pending=2)
+        tracker.submit(0, "host", "a" * 64)
+        tracker.submit(1, "host", "a" * 64)
+        with self.assertRaisesRegex(RuntimeError, "not recorded"):
+            tracker.submit(2, "host", "a" * 64)
+        self.assertEqual({0, 1}, set(tracker.pending))           # the refused frame left no trace, frame 0 was not dropped
+        self.assertTrue(tracker.submit(0, "peer", "a" * 64).matched)
+        self.assertFalse(tracker.submit(2, "host", "a" * 64).complete)   # room again: accepted now
+
+    def test_completed_frames_cannot_be_resubmitted(self):
+        tracker = DesyncTracker({"host", "peer"})
+        tracker.submit(5, "host", "a" * 64)
+        self.assertTrue(tracker.submit(5, "peer", "a" * 64).matched)
+        for who in ("host", "peer"):
+            for frame in (5, 4, 0):
+                with self.assertRaisesRegex(ValueError, "already settled"):
+                    tracker.submit(frame, who, "b" * 64)          # a different hash for a settled frame is refused
+        self.assertEqual({}, tracker.pending)
+        self.assertTrue(tracker.submit(6, "host", "a" * 64) is not None)
+
+    def test_older_waiting_frames_are_settled_by_a_newer_complete_one(self):
+        tracker = DesyncTracker({"host", "peer"})
+        tracker.submit(1, "host", "a" * 64)                       # the peer never checks frame 1
+        tracker.submit(2, "host", "a" * 64)
+        tracker.submit(2, "peer", "a" * 64)
+        self.assertEqual({}, tracker.pending)
+        with self.assertRaisesRegex(ValueError, "already settled"):
+            tracker.submit(1, "peer", "a" * 64)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -65,8 +65,13 @@ def run(core_path: str, rom: str, system_dir: str, save_dir: str, scale: int = 3
     return 0
 
 
-if __name__ == "__main__":
-    if len(sys.argv) < 3:
+def main(argv: list[str]) -> int:
+    if len(argv) < 3:
         print("usage: python -m frontend.window <core> <rom> [system_dir] [save_dir]")
-        raise SystemExit(2)
-    raise SystemExit(run(sys.argv[1], sys.argv[2], *(sys.argv[3:5] or ["", ""])))
+        return 2
+    system_dir, save_dir = (argv[3:5] + ["", ""])[:2]       # either folder may be left out
+    return run(argv[1], argv[2], system_dir, save_dir)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv))

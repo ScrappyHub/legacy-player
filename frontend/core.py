@@ -84,7 +84,11 @@ class Core:
         self.buttons: dict[int, set[int]] = {0: set(), 1: set(), 2: set(), 3: set()}
         self.variables: dict[str, str] = {}
         self.log: list[str] = []
-        self._keep = []                   # ctypes callbacks must outlive the core
+        self._keep = []                   # ctypes callbacks and buffers handed to the core must outlive it
+        # strings the core is given pointers to: long-lived C buffers, never temporaries
+        self._system_buf = C.create_string_buffer(self.system_dir)
+        self._save_buf = C.create_string_buffer(self.save_dir)
+        self._var_bufs: dict[str, C.Array] = {}
         self._bind()
 
     # -- callbacks ---------------------------------------------------------------
@@ -93,10 +97,8 @@ class Core:
             self.pixel_format = C.cast(data, C.POINTER(C.c_int)).contents.value
             return True
         if cmd in (ENV_GET_SYSTEM_DIRECTORY, ENV_GET_SAVE_DIRECTORY):
-            value = self.system_dir if cmd == ENV_GET_SYSTEM_DIRECTORY else self.save_dir
-            buf = C.c_char_p(value)
-            self._keep.append(buf)
-            C.cast(data, C.POINTER(C.c_char_p))[0] = buf.value
+            buf = self._system_buf if cmd == ENV_GET_SYSTEM_DIRECTORY else self._save_buf
+            C.cast(data, C.POINTER(C.c_void_p))[0] = C.addressof(buf)   # lives as long as this Core
             return True
         if cmd == ENV_GET_CAN_DUPE:
             C.cast(data, C.POINTER(C.c_bool))[0] = True
@@ -110,9 +112,16 @@ class Core:
             value = self.variables.get(key)
             if value is None:
                 return False
-            buf = C.c_char_p(value.encode())
-            self._keep.append(buf)
-            var.value = buf.value
+            # The core keeps this pointer until it asks again, so the bytes must stay put: one buffer per key, kept on
+            # self and replaced only when the value changes (assigning bytes to a c_char_p field would point into a
+            # temporary Python object instead).
+            raw = value.encode()
+            buf = self._var_bufs.get(key)
+            if buf is None or buf.value != raw:
+                buf = C.create_string_buffer(raw)
+                self._var_bufs[key] = buf
+                self._keep.append(buf)                 # an older buffer may still be held by the core: never freed
+            C.cast(C.addressof(var) + retro_variable.value.offset, C.POINTER(C.c_void_p))[0] = C.addressof(buf)
             return True
         if cmd == ENV_GET_VARIABLE_UPDATE:
             C.cast(data, C.POINTER(C.c_bool))[0] = False
