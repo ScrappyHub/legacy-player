@@ -21,7 +21,7 @@ import urllib.request
 from pathlib import Path
 
 WIKI_HOSTS = {"en.wikipedia.org", "www.wikidata.org"}
-USER_AGENT = "LegacyPlayer/1.0 (https://github.com/ScrappyHub/legacy-player; game card lookup)"
+USER_AGENT = "LegacyPlayer/1.0 (https://github.com/Alpallyoop/legacy-player; game card lookup)"
 MAX_BODY = 3_000_000
 
 # Wikidata properties

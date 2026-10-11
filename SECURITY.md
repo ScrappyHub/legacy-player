@@ -1,7 +1,7 @@
 # Security
 
 Report a vulnerability privately through GitHub: Security > "Report a vulnerability" on
-https://github.com/ScrappyHub/legacy-player, rather than in a public issue. Please include the version
+https://github.com/Alpallyoop/legacy-player, rather than in a public issue. Please include the version
 (see `launcher/version.py`) and the steps to reproduce.
 
 What is protected and how: see `docs/THREAT_MODEL_v1.md`. In short, servers use encrypted connections with a pinned

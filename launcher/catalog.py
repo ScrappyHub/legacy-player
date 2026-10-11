@@ -58,7 +58,7 @@ SETTINGS_SCHEMA: dict[str, dict] = {
         "label": "Featured: text", "help": "One or two sentences shown under the title.",
     },
     "featured_link": {
-        "type": "text", "default": "https://github.com/ScrappyHub", "optional": True, "max": 300, "group": "Home page",
+        "type": "text", "default": "https://github.com/Alpallyoop", "optional": True, "max": 300, "group": "Home page",
         "label": "Featured: link", "help": "An https:// address the card opens. Always labelled Featured so nobody mistakes it for part of the app.",
     },
     "setup_done": {
@@ -305,19 +305,38 @@ class Catalog:
         self.path = self.dir / "user_data.json"
         self.data = json.loads(json.dumps(DEFAULT_DATA))
         self._lock = threading.RLock()
+        self.read_only = ""                       # set when the settings file exists but could not be read: never save over it
         if self.path.exists():
-            try:
-                loaded = json.loads(self.path.read_text(encoding="utf-8"))
-                if not isinstance(loaded, dict):
-                    raise ValueError("the settings file is not a settings object")
-                # keep only values of the same kind as the defaults, so a damaged file can not put text where a list belongs
-                self.data.update({k: v for k, v in loaded.items()
-                                  if k in DEFAULT_DATA and (DEFAULT_DATA[k] is None or isinstance(v, type(DEFAULT_DATA[k])))})
-            except (OSError, ValueError):                       # includes bad JSON and bad text encoding
+            text = None
+            for attempt in range(6):              # antivirus, OneDrive or a backup tool can hold the file for a moment
                 try:
-                    self.path.replace(self.path.with_name("user_data." + time.strftime("%Y%m%d-%H%M%S") + ".corrupt"))
-                except OSError:
-                    pass
+                    text = self.path.read_text(encoding="utf-8")
+                    break
+                except UnicodeDecodeError:
+                    text = b"\xff"               # bad encoding: treated as damaged below
+                    break
+                except OSError as exc:
+                    if attempt == 5:
+                        self.read_only = f"Could not read your settings file ({exc}). Nothing will be saved until Legacy Player is restarted."
+                    else:
+                        time.sleep(0.25)
+            if text is not None:
+                try:
+                    if isinstance(text, bytes):
+                        raise ValueError("bad text encoding")
+                    loaded = json.loads(text)
+                    if not isinstance(loaded, dict):
+                        raise ValueError("the settings file is not a settings object")
+                    # keep only values of the same kind as the defaults, so a damaged file can not put text where a list belongs
+                    self.data.update({k: v for k, v in loaded.items()
+                                      if k in DEFAULT_DATA and (DEFAULT_DATA[k] is None or isinstance(v, type(DEFAULT_DATA[k])))})
+                except ValueError:                    # really damaged (bad JSON or encoding): keep it aside, start fresh
+                    try:
+                        self.path.replace(self.path.with_name("user_data." + time.strftime("%Y%m%d-%H%M%S") + ".corrupt"))
+                    except OSError:
+                        self.read_only = "Your settings file is damaged and could not be set aside, so it was left as it is."
+        if self.data.get("settings", {}).get("featured_link") == "https://github.com/ScrappyHub":
+            self.data["settings"]["featured_link"] = "https://github.com/Alpallyoop"      # the account was renamed
         for key in ("roots", "emulator_folders"):
             if isinstance(self.data.get(key), list):
                 self.data[key] = dedupe_paths(self.data[key])
@@ -331,6 +350,8 @@ class Catalog:
         return f"{self.settings()['display_name']}#{self.data.get('alias_tag') or self.data['install_id']}"
 
     def save(self) -> None:
+        if self.read_only:                         # never overwrite a settings file we could not read
+            return
         with self._lock:
             fd, tmp = tempfile.mkstemp(prefix=".ud-", dir=self.dir)
             try:

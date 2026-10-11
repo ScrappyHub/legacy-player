@@ -35,4 +35,4 @@ Turn problem reports off in Settings, uninstall at any time (it asks nothing and
 
 ## Changes and contact
 Changes to this policy are made in this file and visible in the repository history. Questions: open an issue at
-https://github.com/ScrappyHub/legacy-player/issues.
+https://github.com/Alpallyoop/legacy-player/issues.

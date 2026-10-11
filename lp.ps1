@@ -5,14 +5,14 @@ lp - one small command for Legacy Player. Run  .\lp help  for the list.
 param(
     [Parameter(Position = 0)][string]$Command = 'help',
     [Parameter(Position = 1)][string]$Tag = '',
-    [string]$Repo = 'ScrappyHub/legacy-player',
+    [string]$Repo = 'Alpallyoop/legacy-player',
     [string]$Token = "",
     [switch]$NoLaunch
 )
 $usage = @'
  lp - one small command for Legacy Player (Windows PowerShell or PowerShell 7).
 
-   git clone https://github.com/ScrappyHub/legacy-player
+   git clone https://github.com/Alpallyoop/legacy-player
    cd legacy-player
    .\lp install                 download the newest release, check its SHA-256, install it for you (no administrator)
    .\lp install v0.7.43          the same, for one exact version

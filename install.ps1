@@ -1,14 +1,14 @@
 <#
  Installs the latest Legacy Player release for the current user (no administrator needed).
 
-   irm https://raw.githubusercontent.com/ScrappyHub/legacy-player/main/install.ps1 | iex
+   irm https://raw.githubusercontent.com/Alpallyoop/legacy-player/main/install.ps1 | iex
 
  (or, with the repository cloned:  .\lp install)
 
  Options (run the file instead of piping):  .\install.ps1 -Tag v0.7.43  -NoLaunch  -Token <github token, for a private repo>
 #>
 param(
-    [string]$Repo = 'ScrappyHub/legacy-player',
+    [string]$Repo = 'Alpallyoop/legacy-player',
     [string]$Tag = '',
     [string]$Token = "",
     [switch]$NoLaunch,

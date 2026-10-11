@@ -6,7 +6,7 @@ TCP 80 and 443 open.
 
 ## Quickest: one command on a fresh Ubuntu/Debian machine
 ```
-curl -fsSL https://raw.githubusercontent.com/ScrappyHub/legacy-player/main/deploy/setup-vps.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/Alpallyoop/legacy-player/main/deploy/setup-vps.sh | sudo bash
 ```
 It installs what it needs, starts the server (and restarts it after a reboot), opens TCP 8765 in the machine's own firewall and prints the server code. Open TCP 8765 in your provider's cloud firewall too. The server listens on IPv4 and IPv6. The rest of this page is the Docker route.
 

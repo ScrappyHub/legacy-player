@@ -11,13 +11,13 @@ can download emulators from their official release pages when you ask it to.
 PowerShell, no administrator needed. Either one line:
 
 ```powershell
-irm https://raw.githubusercontent.com/ScrappyHub/legacy-player/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/Alpallyoop/legacy-player/main/install.ps1 | iex
 ```
 
 From **Command Prompt (cmd)**, **Windows Terminal**, **Git Bash** or **WSL** (anything that can run `powershell.exe`), the same install in one line:
 
 ```
-powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/ScrappyHub/legacy-player/main/install.ps1 | iex"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/Alpallyoop/legacy-player/main/install.ps1 | iex"
 ```
 
 (In Git Bash or WSL write `powershell.exe` instead of `powershell`.) Legacy Player is a Windows app, so there is no macOS or Linux install.
@@ -25,13 +25,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubus
 or, through git, with the small `lp` command that comes with the repository:
 
 ```powershell
-git clone https://github.com/ScrappyHub/legacy-player
+git clone https://github.com/Alpallyoop/legacy-player
 cd legacy-player
 .\lp install            # newest release; or  .\lp install v0.7.43  for one exact version
 .\lp run                # later:  .\lp update   .\lp version   .\lp path   .\lp uninstall   .\lp help
 ```
 
-Both download the release from [Releases](https://github.com/ScrappyHub/legacy-player/releases), check its SHA-256, install to
+Both download the release from [Releases](https://github.com/Alpallyoop/legacy-player/releases), check its SHA-256, install to
 `%LOCALAPPDATA%\Programs\LegacyPlayer`, add a Start menu shortcut and open the app. Or download the files yourself: each
 release has `LegacyPlayer-<version>-win64.zip` (the exe plus a read-me) and the bare `LegacyPlayer-<version>-win64.exe`, each
 with a `.sha256` and a combined `SHA256SUMS.txt`. Releases are signed only once a code-signing certificate has been added (see

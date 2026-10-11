@@ -10,7 +10,7 @@ with GitHub's own sign-in (OIDC).
 3. Account > **Certificate profiles** > create a **Public Trust** profile. Note its name.
 4. Microsoft Entra ID > **App registrations** > New registration. Note the Application (client) ID and Directory (tenant) ID.
    - Certificates & secrets > **Federated credentials** > Add > *GitHub Actions deploying Azure resources*:
-     organization `ScrappyHub`, repository `legacy-player`, entity type **Tag**, tag `v*` (or **Branch** `main` for manual runs).
+     organization `Alpallyoop`, repository `legacy-player`, entity type **Tag**, tag `v*` (or **Branch** `main` for manual runs).
 5. Signing account > **Access control (IAM)** > Add role assignment > **Artifact Signing Certificate Profile Signer**
    (older name: *Trusted Signing Certificate Profile Signer*) > assign to the app registration.
 

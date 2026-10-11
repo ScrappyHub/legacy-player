@@ -22,4 +22,4 @@ The signed program follows [PRIVACY.md](../PRIVACY.md): it sends nothing to anyo
 
 ## Verifying a download
 Compare its SHA-256 with `SHA256SUMS.txt` on the release page, and check the build attestation:
-`gh attestation verify LegacyPlayer-<version>-win64.exe --repo ScrappyHub/legacy-player`.
+`gh attestation verify LegacyPlayer-<version>-win64.exe --repo Alpallyoop/legacy-player`.

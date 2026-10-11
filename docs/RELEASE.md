@@ -20,7 +20,7 @@
 
 ## Install on another computer (PowerShell, no administrator needed)
 ```
-irm https://raw.githubusercontent.com/ScrappyHub/legacy-player/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/Alpallyoop/legacy-player/main/install.ps1 | iex
 ```
 It downloads the latest release, checks its SHA-256, installs to `%LOCALAPPDATA%\Programs\LegacyPlayer`, adds a Start
 menu shortcut and starts the app. Pin a version: save the script and run `.\install.ps1 -Tag v0.7.43`.
@@ -29,7 +29,7 @@ copy of the script, or make the repository public first.
 
 ## Install through git (the `lp` command)
 ```
-git clone https://github.com/ScrappyHub/legacy-player
+git clone https://github.com/Alpallyoop/legacy-player
 cd legacy-player
 .\lp install      # or: .\lp install v0.7.43     (update / run / version / path / uninstall / source / help)
 ```
@@ -49,7 +49,7 @@ double-click `LegacyPlayer.exe`.
   before `build_exe.bat`. Without a certificate the release says so in its read-me and Windows SmartScreen shows "unknown
   publisher": More info > Run anyway. A new certificate also needs time (or an EV certificate) to build SmartScreen reputation.
 - Every tagged release also gets a GitHub build-provenance attestation (where the repository supports it). Check a download:
-  `gh attestation verify LegacyPlayer-<version>-win64.exe --repo ScrappyHub/legacy-player`; and `SHA256SUMS.txt` lists the hashes.
+  `gh attestation verify LegacyPlayer-<version>-win64.exe --repo Alpallyoop/legacy-player`; and `SHA256SUMS.txt` lists the hashes.
 - Hosting the shared server and report receiver: `deploy/README.md`; check a deployment with `python tools/check_deployment.py`.
 - Data lives in `%USERPROFILE%\.legacy-player`; the log is `%LOCALAPPDATA%\LegacyPlayer\app.log`.
 - Nothing about the build has been run on Windows yet. If the workflow fails, the Actions log shows which step.
