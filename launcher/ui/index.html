@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Legacy Player</title>
+<title>Legacy Player — Home</title>
 <meta name="theme-color" content="#050816">
 <style>
 :root{--bg:#050816;--panel:rgba(22,30,64,.58);--panel2:rgba(255,255,255,.07);--line:rgba(255,255,255,.13);--text:#eef1ff;--mute:#b9c5ea;--link:#8fb2ff;--grad-btn:linear-gradient(135deg,#2f62e0,#6a48f0 55%,#07805e);--accent:#4f8cff;--accent2:#3be0a8;--warn:#ffb454;--bad:#ff8c98;--r:16px;--grad:linear-gradient(135deg,#4f8cff,#7a5cff 55%,#3be0a8);--glow:0 0 22px rgba(79,140,255,.45);--chrome:rgba(8,12,30,.72)}
@@ -146,7 +146,7 @@ input:focus,select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 
 .game::before{content:"";position:absolute;inset:0 0 auto 0;height:3px;background:var(--grad);opacity:.7}
 .game:hover,.game:focus-visible{border-color:var(--accent);outline:none;transform:translateY(-4px);box-shadow:0 14px 30px rgba(0,0,0,.4),var(--glow)}
 .game .t{font-weight:650;line-height:1.25;padding-right:28px}.game .m{color:var(--mute);font-size:.82rem}
-.star{z-index:4;position:absolute;top:8px;right:8px;background:none;border:0;font-size:1.25rem;cursor:pointer;color:var(--mute);transition:transform .15s}.star:hover{transform:scale(1.25) rotate(12deg)}.star.on{color:#ffcf40;text-shadow:0 0 10px #ffcf4088}
+.star{z-index:4;position:absolute;top:8px;right:8px;background:#000000b3;border:0;border-radius:50%;width:32px;height:32px;line-height:32px;padding:0;text-align:center;font-size:1.15rem;cursor:pointer;color:#fff;transition:transform .15s}.star:hover{transform:scale(1.25) rotate(12deg)}.star.on{color:#ffcf40;text-shadow:0 0 10px #ffcf4088}
 .badge{display:inline-block;font-size:.72rem;padding:2px 9px;border-radius:999px;border:1px solid var(--line);color:var(--mute)}
 .badge.strong,.badge.good{color:var(--accent2);border-color:var(--accent2)}.badge.per-game{color:var(--accent);border-color:var(--accent)}
 .badge.experimental,.badge.not-practical{color:var(--warn);border-color:var(--warn)}
@@ -163,7 +163,7 @@ tr.avg td{border-top:2px solid var(--line)}
 #toasts{position:fixed;right:16px;bottom:16px;display:flex;flex-direction:column;gap:8px;z-index:70;max-width:380px}
 .toast{background:var(--chrome);backdrop-filter:blur(18px);border:1px solid var(--line);border-left:4px solid var(--accent);padding:10px 14px;border-radius:12px;box-shadow:0 10px 28px #0007;animation:toastin .3s cubic-bezier(.2,.9,.3,1.2) both}
 @keyframes toastin{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:none}}
-.toast.warn{border-left-color:var(--warn)}.toast.err{border-left-color:var(--bad)}
+.toast{overflow-wrap:anywhere;max-width:min(440px,calc(100vw - 32px))}.toast.warn{border-left-color:var(--warn)}.toast.err{border-left-color:var(--bad)}
 .feed{max-height:240px;overflow:auto;display:flex;flex-direction:column;gap:6px}.feed div{padding:6px 10px;background:var(--panel2);border-radius:8px}.feed .warn{border-left:3px solid var(--warn)}
 .pad{display:flex;gap:6px;flex-wrap:wrap}.pad span{padding:4px 10px;border-radius:8px;border:1px solid var(--line)}.pad span.hit{background:var(--accent2);color:#04251c;border-color:var(--accent2)}
 .dot{width:10px;height:10px;border-radius:50%;display:inline-block;background:var(--bad)}.dot.on{background:var(--accent2);animation:pulse 2s ease-out infinite}
@@ -538,7 +538,11 @@ textarea{background:var(--panel2);color:var(--text);border:1px solid var(--line)
 .inpill{display:inline-flex;align-items:center;gap:8px;font:inherit;font-size:.82rem;background:var(--glass,#ffffff14);color:var(--text);border:1px solid var(--line);border-radius:999px;padding:5px 12px;cursor:pointer;margin-right:8px;max-width:300px}
 .inpill #intxt{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.inpill .dot{width:8px;height:8px;border-radius:50%;background:#ffb454;flex:none}.inpill.ok{border-color:#3be0a8}.inpill.ok .dot{background:#3be0a8}
 @media(max-width:900px){.inpill #intxt{display:none}}
-.inbanner{padding:10px 14px;border-radius:10px;border:1px solid var(--line);margin:8px 0 12px;font-size:.9rem}.inbanner.ok{border-color:#3be0a8;background:#3be0a81a}.inbanner.warn{border-color:#ffb454;background:#ffb4541a}
+.inbanner{padding:10px 14px;border-radius:10px;border:1px solid var(--line);margin:8px 0 12px;font-size:.9rem}.inbanner.ok{border-color:#3be0a8;background:#3be0a81a}.inbanner.warn{border-color:#ffb454;background:#ffb4541a;color:var(--text)}
+[data-theme=light] .pvnote{color:var(--text)}
+@media(max-width:640px){#menubar{overflow-x:auto;scrollbar-width:none}#nav{overflow-x:auto;scrollbar-width:none;max-width:100%}header{gap:6px}
+ .hero{flex-direction:column}.menu .dd{max-width:calc(100vw - 16px)}table{display:block;overflow-x:auto;max-width:100%}code{overflow-wrap:anywhere;word-break:break-all}
+ body{overflow-x:hidden}.inpill{max-width:100%}}
 .kbgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:6px 18px;margin-top:6px}.kbrow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:4px 0;border-bottom:1px solid var(--line)}
 .keycap{min-width:64px;padding:6px 12px;border-radius:8px;border:1px solid var(--line);border-bottom-width:4px;background:#ffffff14;color:var(--text);font:700 13px ui-monospace,Consolas,monospace;cursor:pointer}.keycap.learning{border-color:#ffd23f;color:#ffd23f;animation:blinkc 1s steps(1) infinite}
 .artopts{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:10px}
@@ -733,9 +737,21 @@ function h(tag,attrs,...kids){const e=document.createElement(tag);for(const[k,v]
 /* A thin shimmer bar at the top and a hopping Martin show the app is working. Quiet background polls do not trigger it. */
 let pending=0,busyT=null;const QUIET=new Set(["ping","mp_state","status","scan_pc","server_status","notices","pads","bye","network_last","setup_status","specs","keyboard","home","server_control","friends","game_card"]);
 async function api(name,body={}){const loud=!QUIET.has(name);if(loud){pending++;if(pending===1)busyT=setTimeout(()=>document.body.classList.add("busy"),200)}
- try{const r=await fetch("/api/"+name,{method:"POST",headers:{"Content-Type":"application/json","X-LP-Token":TOKEN},body:JSON.stringify(body)});
+ try{let r;try{r=await fetch("/api/"+name,{method:"POST",headers:{"Content-Type":"application/json","X-LP-Token":TOKEN},body:JSON.stringify(body)})}
+  catch(e){S.netFails=(S.netFails||0)+1;if(S.netFails>=2)showLost();const x=new Error("Legacy Player is not answering. It was closed or restarted.");x.lost=true;throw x}
+  if(S.netFails){S.netFails=0;hideLost()}
   const j=await r.json();if(!r.ok)throw new Error(j.error||"Request failed");return j}
  finally{if(loud){pending=Math.max(0,pending-1);if(!pending){clearTimeout(busyT);document.body.classList.remove("busy")}}}}
+/* the app behind this window has stopped (closed, crashed or restarted into a new window): say so once, plainly */
+function showLost(){if(S.saidBye||OVERLAY||$("#lost"))return;
+ const msg=h("p",{class:"muted"},"This window belongs to a Legacy Player that has closed or restarted. If it restarted for an update, the new version opened in its own window.");
+ const retry=h("button",{class:"btn primary",onclick:async()=>{retry.disabled=true;retry.textContent="Checking…";
+   try{await fetch("/api/ping",{method:"POST",headers:{"Content-Type":"application/json","X-LP-Token":TOKEN},body:"{}"}).then(r=>{if(r.status===200){hideLost();S.netFails=0;go()}else msg.textContent="A different Legacy Player is running now. Use its window (or its tray icon), and close this one."})}
+   catch(e){msg.textContent="Still not answering. Start Legacy Player again from the Start menu (or its tray icon), then close this window."}
+   retry.disabled=false;retry.textContent="Try again"}},"Try again");
+ document.body.append(h("div",{id:"lost",class:"bye",role:"alertdialog","aria-live":"assertive"},martin(120),h("h2",{},"Legacy Player isn't answering"),msg,
+  h("div",{class:"row",style:"justify-content:center"},retry,h("button",{class:"btn",onclick:()=>{try{window.close()}catch(e){}}},"Close this window"))))}
+function hideLost(){const l=$("#lost");if(l)l.remove()}
 function fld(label,el){return h("label",{class:"fld"},h("span",{class:"small muted"},label),el)}
 /* number boxes get tidy - / + buttons instead of the browser's tiny stacked arrows */
 function stepify(root){(root||document).querySelectorAll("input[type=number]:not([data-stepped])").forEach(inp=>{if(!inp.isConnected)return;inp.dataset.stepped="1";
@@ -744,7 +760,7 @@ function stepify(root){(root||document).querySelectorAll("input[type=number]:not
  const wrap=h("span",{class:"stepper"});inp.replaceWith(wrap);wrap.append(minus,inp,plus);inp.style.width="";
  inp.addEventListener("keydown",e=>{if(e.key==="ArrowUp"){e.preventDefault();bump(1)}else if(e.key==="ArrowDown"){e.preventDefault();bump(-1)}})})}
 new MutationObserver(()=>stepify()).observe(document.documentElement,{childList:true,subtree:true});
-function toast(text,level){const t=h("div",{class:"toast "+(level||"")},text);$("#toasts").append(t);setTimeout(()=>t.remove(),level==="warn"?9000:5000)}
+function toast(text,level,ms){const t=h("div",{class:"toast "+(level||"")},text);$("#toasts").append(t);setTimeout(()=>t.remove(),ms||(level==="warn"?9000:5000))}
 /* Play options: how this game opens, asked before it starts (or on request). Everything here is what Legacy Player passes to the
    emulator on start-up; the emulator's own graphics menu is untouched. */
 async function playOptionsModal(o){return new Promise(res=>{const done=v=>{ov.remove();res(v)};
@@ -789,7 +805,7 @@ async function launchGame(g,opts){opts=opts||{};
  if(r){S.running={title:r.launched};toast("Opening "+r.launched+" in "+r.emulator+"…")}
  return r}
 function ask(text,yes){return new Promise(res=>{const done=v=>{ov.remove();res(v)};const ov=h("div",{class:"modal",role:"dialog","aria-modal":"true"},h("div",{class:"modalbox"},h("p",{},text),h("div",{class:"row",style:"justify-content:flex-end;gap:8px"},h("button",{class:"btn",onclick:()=>done(false)},"Cancel"),h("button",{class:"btn primary",onclick:()=>done(true)},yes||"OK"))));document.body.append(ov);ov.querySelector(".primary").focus()})}
-async function act(fn,ok){try{const r=await fn();if(ok)toast(ok);return r}catch(e){toast(e.message,"err")}}
+async function act(fn,ok){try{const r=await fn();if(ok)toast(ok);return r}catch(e){if(!e.lost)toast(e.message,"err")}}
 function why(text){const box=h("div",{class:"why",hidden:true},text);const b=h("button",{class:"i","aria-label":"What is this?",title:"What is this?",onclick:()=>{box.hidden=!box.hidden}},"i");return[b,box]}
 function whyInline(label,text){const[b,box]=why(text);return h("span",{},label,b,box)}
 const NETPLAY={strong:"Good fit",["per-game"]:"Needs a game pack","experimental":"Experimental","not-practical":"Not practical yet"};
@@ -903,14 +919,16 @@ function renderNav(){const n=$("#nav");n.replaceChildren(...primaryTabs().map(([
 function renderWho(){const w=$("#who");if(!w)return;const p=S.profile||{alias:"Player",avatar:"martin",player:"Player"};
  w.replaceChildren(avatarEl(p.avatar,26),h("span",{class:"nm"},p.player||p.alias))}
 async function go(){if(S.tab==="together"){S.tab="servers";S.anchor=S.anchor||"rooms"}closeMenus();renderNav();const old=$("#main"),m=old.cloneNode(false);old.replaceWith(m);window.scrollTo(0,0);
- Promise.resolve(({home:viewHome,library:viewLibrary,servers:viewServers,console:viewConsole,setup:viewSetup,engines:viewEngines,controllers:viewControllers,saves:viewSaves,emulators:viewEmulators,settings:viewSettings,preferences:viewPreferences,credits:viewCredits,welcome:viewWelcome,help:viewHelp,storage:viewStorage,probe:viewProbe,profile:viewProfile,display:viewDisplay,friends:viewFriends,privacy:viewPrivacy})[S.tab](m)).then(()=>{if(S.tab==="home")homeArtTip()}).catch(e=>{console.error("page error",e);reportClientError(e&&e.message||e,"draw:"+S.tab,e&&e.stack);toast("Something went wrong drawing this page: "+(e&&e.message||e),"err")})}
+ Promise.resolve(({home:viewHome,library:viewLibrary,servers:viewServers,console:viewConsole,setup:viewSetup,engines:viewEngines,controllers:viewControllers,saves:viewSaves,emulators:viewEmulators,settings:viewSettings,preferences:viewPreferences,credits:viewCredits,welcome:viewWelcome,help:viewHelp,storage:viewStorage,probe:viewProbe,profile:viewProfile,display:viewDisplay,friends:viewFriends,privacy:viewPrivacy})[S.tab](m)).then(()=>{if(S.tab==="home")homeArtTip();if(S.anchor){const el=document.getElementById(S.anchor);if(el)setTimeout(()=>el.scrollIntoView({behavior:"smooth",block:"start"}),150)}}).catch(e=>{if(e&&e.lost)return;console.error("page error",e);reportClientError(e&&e.message||e,"draw:"+S.tab,e&&e.stack);
+  const m=$("#main");if(m&&!m.children.length)m.append(h("div",{class:"card"},h("p",{},"This page could not be drawn: "+(e&&e.message||e)),h("button",{class:"btn",onclick:()=>go()},"Try again")));
+  toast("Something went wrong drawing this page: "+(e&&e.message||e),"err")})}
 function nav(tab,anchor){S.tab=tab;S.anchor=anchor||null;go()}
 
 /* ---------- menu bar ---------- */
 function menuDefs(){return[
  ["Account",[["Your account: name, picture, theme and background",()=>nav("profile")],["Preferences (look, home, overlay, controller)",()=>nav("preferences")],["Settings (library, privacy, server)",()=>nav("settings")],["Privacy: what goes online",()=>nav("privacy")],"-",["Update everything",updateEverything],["Check for updates",checkUpdates],"-",["Exit Legacy Player",quitApp]]],
  ["Games",[["Library",()=>nav("library")],["Console mode",()=>nav("console")],["Rescan my games",()=>rescan()],"-",[S.showHidden?"Hide the hidden games again":"Show hidden games",()=>{S.showHidden=!S.showHidden;nav("library")}]]],
- ["Configure",[["Display and video",()=>nav("display")],["Play options (how games open)",()=>nav("display")],["Controllers",()=>nav("controllers")],["Saves and backups",()=>nav("saves")],["Storage by console",()=>nav("storage")],"-",["Emulators",()=>nav("emulators")],["Engines (get or update emulators)",()=>nav("engines")],["Steam and PC games",()=>pcManager()]]],
+ ["Configure",[["Display and video",()=>nav("display")],["Where and how games open",()=>nav("display","whereopen")],["Controllers",()=>nav("controllers")],["Saves and backups",()=>nav("saves")],["Storage by console",()=>nav("storage")],"-",["Emulators",()=>nav("emulators")],["Engines (get or update emulators)",()=>nav("engines")],["Steam and PC games",()=>pcManager()]]],
  ["Online",[...liveMenu(),["Servers: start, share, connect",()=>nav("servers")],["Server info and network test",()=>nav("servers","srvinfo")],["Rooms: host or join",()=>nav("servers","rooms")],...(S.friendsOn?[["Friends",()=>{S.friendTab="friends";nav("friends")}],["Inbox and messages",()=>{S.friendTab="inbox";nav("friends")}],["Friend requests",()=>{S.friendTab="requests";nav("friends")}],["Blocked players",()=>{S.friendTab="blocked";nav("friends")}]]:[["Friends (set up under Settings > Friends)",()=>nav("settings","friends")]])]],
  ["Tools",[["Update everything",updateEverything],["Doctor's office (Setup)",()=>nav("setup")],["Engines",()=>nav("engines")],["Preview the overlay",()=>act(()=>api("overlay_open",{preview:true}))],["Dolphin memory probe",()=>nav("probe")],["Emulators",()=>nav("emulators")],["Scan this computer",()=>{nav("engines");setTimeout(()=>runScan().then(v=>{if(v)go()}),250)}],["Credits",()=>nav("credits")]]],
  ["Help",[["How it works",()=>nav("help")],["How save files work",()=>nav("help","saves")],["Privacy",()=>nav("privacy")],["Uninstall Legacy Player...",()=>retireClinic()]]]]}
@@ -922,10 +940,10 @@ function buildMenubar(){const bar=$("#menubar");
 function whoMenu(){
  const box=h("div",{class:"menu right"});const codeRow=h("div",{class:"small",style:"padding:6px 12px;display:none"});
  const showCode=async(code)=>{codeRow.style.display="block";codeRow.replaceChildren(h("span",{class:"code small"},code)," ",h("button",{type:"button",class:"btn small",onclick:e=>{e.stopPropagation();copyText(code)}},"Copy"))};
- const fast=async()=>{codeRow.style.display="block";codeRow.textContent="Starting...";
+ const fast=async()=>{if(S.fastBusy)return;S.fastBusy=true;setTimeout(()=>{S.fastBusy=false},20000);codeRow.style.display="block";codeRow.textContent="Starting your server… (this can take a few seconds)";
   const a=await api("server_activity").catch(()=>({online:false}));
-  if(!a.online||!a.shared){const r=await act(()=>api("server_control",{action:a.online?"restart":"start",share:true}));if(!r){codeRow.style.display="none";return}setTimeout(askFirewall,400)}
-  const c=await api("server_code",{refresh:false}).catch(()=>null);
+  if(!a.online||!a.shared){const r=await act(()=>api("server_control",{action:a.online?"restart":"start",share:true}));if(!r){codeRow.style.display="none";S.fastBusy=false;return}setTimeout(askFirewall,400)}
+  const c=await api("server_code",{refresh:false}).catch(()=>null);S.fastBusy=false;
   if(c&&c.code)showCode(c.code);else codeRow.textContent=(c&&c.error)||"The server started, but there is no code yet."};
  box.append(h("button",{type:"button",class:"who",id:"who",title:"Your profile and quick actions",onclick:e=>{e.stopPropagation();const was=box.classList.contains("open");closeMenus();if(!was)box.classList.add("open")}}),
   h("div",{class:"dd",role:"menu",onclick:e=>e.stopPropagation()},
@@ -935,9 +953,14 @@ function whoMenu(){
    h("button",{type:"button",role:"menuitem",onclick:()=>{closeMenus();quitApp()}},"Exit Legacy Player")));
  return box}
 document.addEventListener("click",closeMenus);document.addEventListener("keydown",e=>{if(e.key==="Escape")closeMenus()});
-async function checkUpdates(){const r=await act(()=>api("check_update"));if(!r)return;
- if(!r.ok){toast(r.message,"warn");return}
- if(!r.newer){toast(r.message);return}
+async function checkUpdates(){let r=await act(()=>api("check_update"));if(!r)return;
+ if(r.ok===false||r.state==="problem"){toast(r.message,"warn");return}
+ if(r.state==="checking"){toast("Checking for updates…");
+  for(let i=0;i<200&&r.state==="checking";i++){await new Promise(x=>setTimeout(x,800));r=await api("app_update",{action:"status"}).catch(()=>({state:"problem",message:"Could not check for updates."}))}}
+ if(r.state==="problem"){toast(r.message,"warn");return}
+ if(r.state==="ready"){restartCountdown(r.latest||"");return}
+ if(r.state==="downloading"){appUpdate();return}
+ if(!r.newer){toast(r.message||"You have the latest version.");return}
  if(await ask(r.message+(r.restart_only?"":" Update now? Legacy Player downloads it, checks it, then restarts on the new version. Your games, saves and settings stay as they are."),r.restart_only?"Restart now":"Update and restart"))appUpdate()}
 /* download (or pull) the new version with progress, then restart on it after a short countdown */
 async function appUpdate(){
@@ -949,11 +972,12 @@ async function appUpdate(){
  for(let i=0;i<1800&&ov.isConnected&&(v.state==="downloading"||v.state==="checking");i++){
   const pct=v.total?Math.min(100,Math.round(100*(v.done||0)/v.total)):0;
   say(h("p",{class:"small"},v.message||"Downloading…"),v.total?h("div",{class:"bar"},h("i",{style:"width:"+pct+"%"})):h("div",{class:"bar live"},h("i",{})),
-   v.total?h("p",{class:"small muted"},(Math.round((v.done||0)/1e5)/10)+" of "+(Math.round(v.total/1e5)/10)+" MB"):null);
+   v.total?h("p",{class:"small muted"},(Math.round((v.done||0)/1e5)/10)+" of "+(Math.round(v.total/1e5)/10)+" MB"):null,
+   h("div",{class:"row",style:"justify-content:flex-end"},h("button",{class:"btn","data-cancel":"1",onclick:()=>{close();toast("The download carries on in the background. Account > Check for updates offers the restart when it is ready.")}},"Hide")));
   await new Promise(r=>setTimeout(r,700));v=await api("app_update",{action:"status"}).catch(()=>v)}
  if(!ov.isConnected)return;
  if(v.state==="ready"){close();restartCountdown(v.latest||"")}
- else say(h("p",{class:v.state==="problem"?"small bad":"small"},v.message||"Nothing to update."),h("div",{class:"row",style:"justify-content:flex-end"},h("button",{class:"btn primary",onclick:close},"OK")))}
+ else say(h("p",{class:v.state==="problem"?"small bad":"small"},v.message||"Nothing to update."),h("div",{class:"row",style:"justify-content:flex-end"},h("button",{class:"btn primary","data-cancel":"1",onclick:close},"OK")))}
 /* the new version is ready: restart in a few seconds unless the player says not now */
 function restartCountdown(version){
  const busy=S.room||(S.waits&&S.waits.length);let left=8,timer=null;
@@ -963,8 +987,8 @@ function restartCountdown(version){
    h("button",{class:"btn primary",onclick:()=>go_()},"Restart now"))));
  const tick=()=>{msg.textContent="Legacy Player restarts on the new version in "+left+" second"+(left===1?"":"s")+".";if(left--<=0)go_()};
  async function go_(){clearInterval(timer);ov.remove();
-  const r=await act(()=>api("app_update",{action:"restart",confirm:true}));if(!r)return;
-  S.saidBye=true;document.title="Legacy Player is restarting";
+  let r=null;try{r=await api("app_update",{action:"restart",confirm:true})}catch(e){if(e.lost)r={restarting:true};else{toast(e.message,"err");return}}
+  S.saidBye=true;hideLost();document.title="Legacy Player — restarting";
   document.body.append(h("div",{class:"bye",role:"status","aria-live":"polite"},martin(150),h("h2",{},"Restarting…"),h("p",{class:"muted"},"Legacy Player is closing and opens again on version "+version+" in a few seconds. You can close this page.")));
   setTimeout(()=>{try{window.close()}catch(e){}},4000)}
  document.body.append(ov);tick();timer=setInterval(tick,1000)}
@@ -1318,7 +1342,7 @@ async function quitApp(){const busy=S.room||(S.waits&&S.waits.length)||S.running
   if(srv&&await ask("Your server is running for friends. Stop it too? (Press Cancel to leave it running on its own.)","Stop my server"))try{await api("server_control",{action:"stop"})}catch(e){}
   try{await api("quit")}catch(e){}farewell()}}
 /* Martin says goodbye like a lucky cat (maneki-neko): one paw beckoning, a gold coin, a red collar with a bell */
-function farewell(){if(S.saidBye)return;S.saidBye=true;document.title="Legacy Player closed";
+function farewell(){if(S.saidBye)return;S.saidBye=true;document.title="Legacy Player — closed";
  const paw=pixelsC([".DD.","DWWD","DWWD","DWWD","DWWD",".DD."],44,"lpaw",{D:"#8a8fa3",W:"#ffffff"});
  const coin=pixelsC([".YYYY.","YOOOOY","YOYYOY","YOYYOY","YOOOOY",".YYYY."],34,"lcoin",{Y:"#f5c542",O:"#c98f10"});
  const box=h("div",{class:"lcat"},martin(150),h("div",{class:"lcollar"},h("span",{class:"lbell"})),paw,coin);
@@ -1387,7 +1411,7 @@ async function viewHome(m){
  const dr=await api("doctor");
  m.append(h("div",{class:"hero"},martin(150),h("div",{class:"grow"},
    h("h1",{},"Welcome back, "+d.alias),
-   h("p",{},d.games_total?d.games_total+" games, "+d.consoles_ready+" of "+d.consoles_total+" consoles ready to play.":"Point me at your games folder and I'll line everything up."),
+   h("p",{},d.games_total?d.games_total+(d.games_total===1?" game, ":" games, ")+d.consoles_ready+" of "+d.consoles_total+" console"+(d.consoles_total===1?"":"s")+" ready to play.":"Point me at your games folder and I'll line everything up."),
    h("div",{class:"row",style:"margin-top:12px"},...cta),h("div",{class:"row",style:"margin-top:8px"},code,go1),
    h("div",{class:"pstat"},
     h("span",{class:"badge "+(S.online||S.room?"good":"")},S.room?"● in a room: "+S.room.game:(S.online?"● server online":"○ server offline")),
@@ -1721,7 +1745,8 @@ async function rescan(){const r=await act(()=>api("rescan"));if(r){toast("Found 
 
 async function openGame(id){
  const g=await act(()=>api("game",{id}));if(!g)return;
- const close=()=>{scrim.remove();dr.remove()};
+ const esc=e=>{if(e.key==="Escape"&&!document.querySelector(".modal")&&dr.isConnected){e.preventDefault();close()}};
+ const close=()=>{scrim.remove();dr.remove();document.removeEventListener("keydown",esc)};document.addEventListener("keydown",esc);
  const scrim=h("div",{class:"scrim",onclick:close});
  const launchBtn=h("button",{class:"btn good",disabled:!g.launch.ready,onclick:async()=>{
    if(S.settings&&S.settings.confirm_launch&&!await ask("Open "+g.title+" in "+g.launch.emulator+"?"))return;
@@ -1986,7 +2011,9 @@ async function viewServers(m){
  drawInfo();
  const dur=sec=>sec<90?Math.round(sec)+" s":sec<5400?Math.round(sec/60)+" min":(sec/3600).toFixed(1)+" h";
  let codeShown=null;
- const fastStart=async share=>{const r=await act(()=>api("server_control",{action:share&&S.srvOnline?"restart":"start",share}));if(r){if(share)setTimeout(askFirewall,400);toast(r.message);codeShown=null;await drawLive()}};
+ const fastStart=async(share,ev)=>{if(S.srvBusy)return;S.srvBusy=true;const btn=ev&&ev.currentTarget;if(btn){btn.disabled=true;btn.textContent="Starting…"}
+  toast("Starting your server… (this can take a few seconds)");
+  const r=await act(()=>api("server_control",{action:share&&S.srvOnline?"restart":"start",share}));S.srvBusy=false;if(btn&&btn.isConnected)btn.disabled=false;if(r){if(share)setTimeout(askFirewall,400);toast(r.message);codeShown=null;await drawLive()}};
  const toggleCode=async()=>{if(codeShown){codeShown=null;return drawLive()}
   const c=await act(()=>api("server_code",{refresh:false}));if(!c)return;if(!c.code){toast(c.error||"Open your server to friends first.","warn");return}codeShown=c.code;drawLive()};
  const freshCode=async()=>{if(!await ask("Make a fresh server code? The old code stops working for new people. Everyone already connected stays connected.","Make a fresh code"))return;
@@ -2003,8 +2030,8 @@ async function viewServers(m){
    h("p",{class:"small"},con+(a.online?". "+a.players+" "+(a.players===1?"player":"players")+" in "+a.rooms+" "+(a.rooms===1?"room":"rooms")+(a.waiting?", "+a.waiting+" waiting in line":"")+", up for "+dur(a.uptime_seconds)+".":".")),
    h("p",{class:"small muted"},rm?"In room: "+rm.game+" with "+who+".":a.online?"Nobody is in a room yet.":"Nobody can connect until it is started."),
    h("div",{class:"row",style:"gap:8px"},
-    !a.online?h("button",{class:"btn small primary",onclick:()=>fastStart(true)},"Start server for friends"):null,
-    a.online&&!a.shared?h("button",{class:"btn small",onclick:()=>fastStart(true)},"Open it to friends"):null,
+    !a.online?h("button",{class:"btn small primary",onclick:e=>fastStart(true,e)},"Start server for friends"):null,
+    a.online&&!a.shared?h("button",{class:"btn small",onclick:e=>fastStart(true,e)},"Open it to friends"):null,
     a.online&&a.shared?h("button",{class:"btn small",onclick:toggleCode},codeShown?"Hide server code":"Show server code"):null,
     a.online&&a.shared&&codeShown?h("span",{class:"code small"},codeShown):null,
     a.online&&a.shared&&codeShown?h("button",{class:"btn small",onclick:()=>copyText(codeShown)},"Copy"):null,
@@ -2162,7 +2189,7 @@ async function viewControllers(m){
   const key=padKey(p),prof=S.P.profiles[key];const owner=Object.keys(S.P.players).find(n=>S.P.players[n]===key);
   const slot=h("select",{"aria-label":"Player",onchange:async e=>{const v=+e.target.value;
     if(owner&&+owner!==v)await act(()=>api("pad_assign",{player:+owner,id:null}));
-    if(v)S.P=await act(()=>api("pad_assign",{player:v,id:p.id,name:padPrettyName(p.id),standard:p.mapping==="standard"}),"Assigned to player "+v)||S.P;go()}},
+    if(v)S.P=await act(()=>api("pad_assign",{player:v,id:p.id,name:padPrettyName(p.id),standard:p.mapping==="standard",index:p.index}),"Assigned to player "+v)||S.P;go()}},
     h("option",{value:0},"Not assigned"),...[1,2,3,4].map(n=>h("option",{value:n,selected:owner===String(n)},"Player "+n)));
   return h("div",{class:"card","data-pad":p.index},
    h("div",{class:"row"},h("strong",{},padPrettyName(p.id)),h("span",{class:"badge"},p.mapping==="standard"?"standard layout":"custom layout"),prof&&Object.keys(prof.bindings).length?h("span",{class:"badge"},"mapped"):""),
@@ -2512,12 +2539,15 @@ async function reportProblem(){
 function reportClientError(message,where,stack){try{api("report_client_error",{message:String(message||"").slice(0,400),page:S.tab,where:where||"",stack:String(stack||"").slice(0,1500)}).catch(()=>{})}catch(e){}}
 window.addEventListener("error",e=>reportClientError(e.message,"window",e.error&&e.error.stack));
 window.addEventListener("unhandledrejection",e=>{const r=e.reason;reportClientError(r&&r.message||r,"promise",r&&r.stack)});
-if(!OVERLAY)setInterval(()=>{api("ping").then(r=>{if(r&&r.quitting)farewell();else if(r&&r.report_prompt)showReport(r.report_prompt)}).catch(()=>{})},3000);
+if(!OVERLAY)setInterval(()=>{if(S.saidBye)return;api("ping").then(r=>{if(r&&r.quitting)farewell();else if(r&&r.report_prompt)showReport(r.report_prompt);
+ if(r&&r.settings_problem&&!S.settingsWarned){S.settingsWarned=true;toast(r.settings_problem,"warn",15000)}}).catch(()=>{})},3000);
 /* The window title is what Windows shows when you hover the taskbar button, so keep it informative. */
-async function refreshTitle(){try{const d=await api("status");const bits=["Legacy Player"];
+const TAB_TITLES={home:"Home",library:"Library",console:"Console mode",setup:"Setup",servers:"Servers",friends:"Friends",settings:"Settings",privacy:"Privacy",preferences:"Preferences",profile:"Profile",engines:"Engines",controllers:"Controllers",saves:"Saves",emulators:"Emulators",storage:"Storage",help:"Help",credits:"Credits",display:"Display and video",probe:"Memory probe",welcome:"Welcome"};
+async function refreshTitle(){if(S.saidBye)return;try{const d=await api("status");const bits=["Legacy Player"];
  if(d.game)bits.push("Playing "+d.game);
  if(d.room){const r=d.room;bits.push((r.role==="host"?"Hosting ":"In room: ")+r.game+" · "+r.players+(r.max?"/"+r.max:"")+" players"+(r.ping_ms!=null?" · "+Math.round(r.ping_ms)+" ms":""))}
  d.waits.forEach(w=>bits.push("In line for "+w.game+(w.position?" (#"+w.position+")":"")));
+ if(bits.length===1)bits.push(TAB_TITLES[S.tab]||"Home");        // every window title starts "Legacy Player — ": that is how the app finds its window
  document.title=bits.filter(Boolean).join(" — ")}catch(e){}}
 /* Windows 11: tint the title bar to the theme so it blends into the app (like Steam or Discord). Quietly does nothing elsewhere. */
 function tintWindow(force){try{const cs=getComputedStyle(document.documentElement),bg=cs.getPropertyValue("--bg").trim(),fg=cs.getPropertyValue("--text").trim(),key=bg+fg,now=Date.now();
@@ -3126,7 +3156,7 @@ async function viewDisplay(m){
   return h("label",{class:"vtile"},vIcon(k,30),h("div",{class:"vt"},h("b",{},VIDEO_TITLE[k]||d.fields[k].label),h("span",{class:"small muted"},VIDEO_PLAIN[k]||d.fields[k].help)),h("span",{class:"switch"},sw,h("i",{})))}));
 
  const dp=await api("display_prefs",{});
- const whereCard=h("div",{class:"card wopen"},h("h3",{class:"sect",style:"margin-top:0"},"Where games open"),
+ const whereCard=h("div",{class:"card wopen",id:"whereopen"},h("h3",{class:"sect",style:"margin-top:0"},"Where games open"),
   h("div",{class:"small muted"},"Games open in front of Legacy Player. Choose full screen or a window for each emulator, or let it ask each time."),
   dp.monitors.length>1?h("label",{class:"small",style:"display:block;margin:8px 0"},"Screen: ",h("select",{"aria-label":"Screen for games",onchange:async e=>{const r=await act(()=>api("display_prefs",{monitor:e.target.value}));if(r)toast("Games will open on "+(e.target.value?"that screen":"the automatic screen"))}},h("option",{value:""},"Automatic"),...dp.monitors.map(x=>h("option",{value:String(x.index),selected:String(x.index)===String(dp.monitor)},x.label)))):h("div",{class:"small muted",style:"margin:6px 0"},dp.monitors.length?"One screen detected.":"Screens are detected on Windows."),
   ...dp.emulators.map(e=>h("div",{class:"row",style:"gap:8px;align-items:center;margin:4px 0"},h("b",{style:"min-width:140px"},e.name),
@@ -3219,15 +3249,19 @@ function reportPlayer(who,after){return new Promise(res=>{let cat="";const close
   h("div",{class:"row",style:"justify-content:flex-end;gap:8px;margin-top:12px"},h("button",{class:"btn",onclick:()=>close(null)},"Cancel"),send)));
  document.body.append(ov)})}
 /* ---------- friends: join one, or run one on this computer with one click ---------- */
+function friendsTurnedOn(){S.friendsOn=true;try{renderNav();buildMenubar()}catch(e){}}
 function friendsStart(m){
  const link=h("input",{type:"text",placeholder:"https://…  (the friends link someone gave you)",style:"flex:1;min-width:220px","aria-label":"Friends link",onkeydown:e=>{if(e.key==="Enter")joinBtn.click()}});
  const joinBtn=h("button",{class:"btn primary",onclick:async()=>{const v=link.value.trim();if(!/^https:\/\//i.test(v)){toast("Paste the whole friends link; it starts with https://","warn");return}
-   const r=await act(()=>api("settings",{key:"friends_server",value:v}));if(!r)return;S.settings=r.values;
-   const hi=await act(()=>api("friends",{action:"hello"}));if(hi)toast("You're in. Your friend code is "+hi.me.code);go()}},"Join");
+   joinBtn.disabled=true;const before=(S.settings&&S.settings.friends_server)||"";
+   try{const r=await api("settings",{key:"friends_server",value:v});S.settings=r.values;
+    const hi=await api("friends",{action:"hello"});friendsTurnedOn();toast("You're in. Your friend code is "+hi.me.code);go()}
+   catch(e){const back=await api("settings",{key:"friends_server",value:before}).catch(()=>null);if(back)S.settings=back.values;    // a link that does not work is not kept
+    joinBtn.disabled=false;toast("That link did not work: "+e.message+" Check it with whoever gave it to you.","err",12000)}}},"Join");
  const run=async()=>{if(!await ask("Run a friends service on this computer? Legacy Player starts it now and again whenever it starts, opens its port on your router if the router allows it, and you become its moderator. It keeps the names, friend lists and messages of the people who use it on this computer, and your friends link contains this computer's address. You can stop it any time.","Run it"))return;
    const card=m.querySelector(".dualcards>.card:last-child"),before=[...card.childNodes];
    card.replaceChildren(h("h3",{style:"margin-top:0"},"Starting your friends service…"),h("div",{class:"bar live",style:"margin:10px 0"},h("i",{})),h("p",{class:"small muted"},"The first time it makes its own certificate, which can take up to a minute on a slow computer."));
-   const r=await act(()=>api("friends_host",{action:"start"}));if(!r){card.replaceChildren(...before);return}S.friendTab="service";toast("Your friends service is running. Share your friends link with your friends.");go()};
+   const r=await act(()=>api("friends_host",{action:"start"}));if(!r){card.replaceChildren(...before);return}S.friendTab="service";friendsTurnedOn();toast("Your friends service is running. Share your friends link with your friends.");go()};
  m.append(h("h2",{},"Friends"),
   h("div",{class:"why"},"Friend codes, who is online, one-click invites into a room, messages, reporting and blocking. It is optional: Legacy Player works fully without it, and no account is made."),
   h("div",{class:"dualcards"},
@@ -3313,7 +3347,7 @@ function modPanel(){
  const log=()=>D.log.length?h("div",{class:"card"},...D.log.map(l=>h("div",{class:"frow"},h("span",{class:"small muted",style:"min-width:150px"},fmt(l.at)),h("b",{},l.action),h("span",{class:"grow"},l.name+(l.length?" · "+l.length:"")+(l.reason?" · "+l.reason:""))))):h("p",{class:"muted"},"No moderator actions yet.");
  const draw=()=>{if(!D)return;S.modOpen=D.open;
   const t=(id,label)=>h("button",{class:"chip"+(sub===id?" on":""),onclick:()=>{sub=S.modSub=id;draw()}},label);
-  body.replaceChildren(h("div",{class:"row",style:"margin-bottom:12px"},h("span",{class:"badge"},D.open+" open report"+(D.open===1?"":"s")),h("span",{class:"badge"},D.players+" players"),h("span",{class:"badge"},D.muted+" timed out"),h("span",{class:"badge"},D.banned+" banned"),h("span",{class:"badge"},"filter "+(D.filter.on?"on":"off")),h("span",{class:"grow"}),
+  body.replaceChildren(h("div",{class:"row",style:"margin-bottom:12px"},h("span",{class:"badge"},D.open+" open report"+(D.open===1?"":"s")),h("span",{class:"badge"},D.players+" player"+(D.players===1?"":"s")),h("span",{class:"badge"},D.muted+" timed out"),h("span",{class:"badge"},D.banned+" banned"),h("span",{class:"badge"},"filter "+(D.filter.on?"on":"off")),h("span",{class:"grow"}),
     t("reports","Reports"),t("players","Players"),t("filter","Word filter"),t("log","Log"),h("button",{class:"btn small",onclick:load},"Refresh")),
    ({reports,players,filter,log}[sub]||reports)())};
  const load=async()=>{const r=await api("friends_mod",{action:"reports"}).catch(e=>({error:e.message}));if(!box.isConnected)return;
@@ -3390,7 +3424,8 @@ async function viewFriends(m){
   h("p",{class:"small muted"},"Blocked players can't find you with your code, message you, invite you or see you online. They are not told. Unblocking does not make you friends again."),
   inbox.blocked.length?h("div",{},...inbox.blocked.map(b=>h("div",{class:"frow"},h("span",{class:"nm grow"},b.name),h("button",{class:"btn small",onclick:()=>report(b.id,b.name)},"Report"),h("button",{class:"btn small",onclick:()=>call({action:"unblock",player:b.id},b.name+" unblocked")},"Unblock")))):h("p",{class:"small muted"},"Nobody is blocked."));
  const draw=()=>{
-  if(!d.me||!d.me.id){box.replaceChildren(h("div",{class:"why"},"Friend codes, who is online, invites into a room, messages and blocking. Nobody else can see you. No account: this app gets one code."),h("div",{class:"card"},h("p",{},"Say hello to the friends service to get your friend code. It only learns the name you show other players."),h("div",{class:"row"},h("button",{class:"btn primary",onclick:async()=>{const r=await act(()=>api("friends",{action:"hello"}));if(r){d=r;toast("Your friend code is "+r.me.code);refresh()}}},"Say hello and get my code"),h("span",{class:"small muted"},"Service: "+d.server))));return}
+  if(!d.me||!d.me.id){box.replaceChildren(h("div",{class:"why"},"Friend codes, who is online, invites into a room, messages and blocking. Nobody else can see you. No account: this app gets one code."),h("div",{class:"card"},h("p",{},"Say hello to the friends service to get your friend code. It only learns the name you show other players."),h("div",{class:"row"},h("button",{class:"btn primary",onclick:async()=>{const r=await act(()=>api("friends",{action:"hello"}));if(r){d=r;toast("Your friend code is "+r.me.code);refresh()}}},"Say hello and get my code"),h("span",{class:"small muted"},"Service: "+d.server),
+    h("button",{class:"btn",onclick:async()=>{const r=await act(()=>api("settings",{key:"friends_server",value:""}));if(r){S.settings=r.values;S.friendsOn=false;try{renderNav();buildMenubar()}catch(e){}go()}}},"Use a different link"))));return}
   if(problem&&(!inbox||/banned/i.test(problem))){box.replaceChildren(h("div",{class:"card"},h("p",{class:/banned/i.test(problem)?"bad":""},problem),
     h("div",{class:"row"},h("button",{class:"btn",onclick:refresh},"Try again"),h("button",{class:"btn",onclick:()=>nav("settings","friends")},"Friends settings"))));return}
   if(!inbox){box.replaceChildren(h("div",{class:"card"},h("span",{class:"spin"}),"Reaching the friends service…"));return}
@@ -3592,6 +3627,8 @@ async function homeArtTip(){
  const r=await api("mp_state").catch(()=>({room:null}));S.room=r.room;S.waits=r.waits||[];if(S.room||S.waits.length)poll();pingServer();setInterval(pingServer,15000);setInterval(async()=>{const n=await api("notices").catch(()=>null);if(n&&n.notices)n.notices.forEach(x=>{toast(x.text,x.level);if(/server/i.test(x.text))pingServer()})},2000);
  if(S.settings&&!S.settings.setup_done)S.tab="welcome";
  await go();
+ api("app_update",{action:"status"}).then(u=>{const lr=u&&u.last_result;if(!lr)return;
+  if(lr.ok)toast("Legacy Player was updated"+(lr.tag?" to "+lr.tag:"")+".");else toast("The last update did not finish: "+(lr.error||"no reason given")+" You are still on the version you had.","warn",15000)}).catch(()=>{});
  setTimeout(()=>{const b=$("#boot");if(b){b.classList.add("gone");setTimeout(()=>b.remove(),800)}},350);
  setTimeout(()=>autoNetTest(300),1200)})();
 
@@ -3625,7 +3662,7 @@ if(!OVERLAY)(()=>{let was={},hold=0;
   if(e.key==="Escape"){
    if(document.querySelector(".learning"))return;                 // the key-learning box handles its own Esc
    const btns=[...m.querySelectorAll("button")].filter(b=>!b.disabled);
-   const cancel=m.querySelector("[data-cancel]:not([disabled])")||btns.find(b=>/^(cancel|close|not now|no|never mind|done|back|later)\b/i.test((b.textContent||"").trim()));
+   const cancel=m.querySelector("[data-cancel]:not([disabled])")||btns.find(b=>/^(cancel|close|not now|no|never mind|done|back|later|ok|hide)\b/i.test((b.textContent||"").trim()));
    if(cancel){e.preventDefault();e.stopPropagation();cancel.click()}
    return}
   if(e.key==="Tab"){

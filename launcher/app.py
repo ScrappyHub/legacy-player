@@ -2085,6 +2085,13 @@ class LauncherApp:
                 # a pad with no custom mapping still gets a (default) profile so it can be assigned
                 self.catalog.set_mapping("pad_profiles", key, pads.validate_profile(key, {
                     "name": body.get("name") or "Controller", "standard": bool(body.get("standard")), "bindings": {}}))
+            if "index" in body and body.get("index") is not None:      # which physical pad this is, so player N uses that device
+                prof = self.catalog.data["pad_profiles"].get(key)
+                if prof:
+                    try:
+                        self.catalog.set_mapping("pad_profiles", key, pads.with_device_index(prof, body.get("index")))
+                    except ValueError as exc:
+                        raise AppError(str(exc)) from exc
         self.catalog.set_mapping("player_pads", str(player), key or None)
         return self._pads_payload()
 
@@ -3278,7 +3285,10 @@ class LauncherApp:
         if winplace.close_titled(overlaymod.TITLE):
             return {"open": False}
         preview = bool(body.get("preview"))
-        if not self._running_now() and not (preview and native is not None):
+        if preview and native is None:
+            raise AppError("The overlay preview needs the Windows app's overlay panel, which is not available here. "
+                           "Start a game from Legacy Player and press the overlay shortcut to see it.")
+        if not self._running_now() and not preview:
             raise AppError("The overlay is for while a game is running. Start a game from Legacy Player first, or press 'Preview the overlay' in Preferences.")
         if preview and native is not None:
             native.preview = True

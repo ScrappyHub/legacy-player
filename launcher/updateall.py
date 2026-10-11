@@ -124,7 +124,14 @@ class UpdateAll:
         names = ", ".join(engine_catalog.ENGINES[i]["name"] for i in ids)
         if job["state"] == "error":
             return "problem", (job.get("error") or "Some downloads failed.")[:200]
-        return "done", f"Updated {names}."
+        fresh = [i for i in ids if (job.get("results") or {}).get(i, "installed") == "installed"]
+        current = [i for i in ids if i in (job.get("up_to_date") or [])]
+        if not fresh:
+            return "done", f"Already up to date ({names})."
+        msg = "Updated " + ", ".join(engine_catalog.ENGINES[i]["name"] for i in fresh) + "."
+        if current:
+            msg += " Already up to date: " + ", ".join(engine_catalog.ENGINES[i]["name"] for i in current) + "."
+        return "done", msg
 
     def _tailscale(self):
         if not privatelink.find_tailscale():

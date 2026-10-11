@@ -15,7 +15,7 @@ $usage = @'
    git clone https://github.com/Alpallyoop/legacy-player
    cd legacy-player
    .\lp.cmd install             download the newest release, check its SHA-256, install it for you (no administrator)
-   .\lp.cmd install v0.7.43     the same, for one exact version
+   .\lp.cmd install v0.7.44     the same, for one exact version
    .\lp.cmd update              install the newest release over the current one (your saves and settings stay)
    .\lp.cmd run                 start the installed app
    .\lp.cmd version             what is installed, and what is the newest

@@ -174,7 +174,7 @@ def start(args: argparse.Namespace) -> int:
         subprocess.Popen(command, stdout=log, stderr=log, **kwargs)
     for _ in range(50):
         if _is_running(args.state_dir):
-            print(f"Server started (log: {args.state_dir / 'server.log'}).")
+            print("Server started.")
             return 0
         time.sleep(0.2)
     print("Server did not come up; check the log.", file=sys.stderr)

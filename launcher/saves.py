@@ -188,7 +188,7 @@ def backup_all(sources: dict[str, Path], dest_root: Path, label: str = "saves") 
         z.writestr("manifest.json", _json.dumps(manifest))
     if not files:
         target.unlink()
-        raise ValueError("there are no save files yet in any save folder")
+        raise ValueError("There are no save files yet in any save folder, so there is nothing to back up.")
     return {"name": target.name, "files": files, "bytes": target.stat().st_size, "consoles": len(manifest["consoles"])}
 
 

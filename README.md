@@ -27,7 +27,7 @@ or, through git, with the small `lp` command that comes with the repository:
 ```powershell
 git clone https://github.com/Alpallyoop/legacy-player
 cd legacy-player
-.\lp.cmd install        # newest release; or  .\lp.cmd install v0.7.43  for one exact version
+.\lp.cmd install        # newest release; or  .\lp.cmd install v0.7.44  for one exact version
 .\lp.cmd run            # later:  .\lp.cmd update | version | path | uninstall | help
 ```
 
