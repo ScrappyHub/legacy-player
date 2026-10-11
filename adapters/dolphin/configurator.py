@@ -15,6 +15,8 @@ Enabled = True
 Entries = LegacyPlayer:127.0.0.1:{port};
 """
 
+# Must agree with dsu_protocol.pad_data_packet: GameCube Z rides on the R1 analog field, L and R on the L2/R2 trigger
+# fields (Dolphin's DualShockUDPClient reads "L1"/"R1" from the shoulder analog bytes and "L2"/"R2" from the triggers).
 PAD_TEMPLATE = """[GCPad{number}]
 Device = DSUClient/{index}/LegacyPlayer
 Buttons/A = Cross
@@ -31,7 +33,7 @@ C-Stick/Up = `Right Y+`
 C-Stick/Down = `Right Y-`
 C-Stick/Left = `Right X-`
 C-Stick/Right = `Right X+`
-Triggers/L = L1
+Triggers/L = L2
 Triggers/R = R2
 Triggers/L-Analog = L2
 Triggers/R-Analog = R2

@@ -18,16 +18,38 @@ def _safe(name: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]+", "_", name)[:80]
 
 
+# What may follow the game's own name in one of its save files: an optional slot like "_1" (memory cards), then one
+# or more short extensions (".srm", ".state1", ".state.auto", ".ss0"). "Super Mario Bros 3.srm" is not a save of
+# "Super Mario Bros": what follows that name there is " 3.srm".
+_SAVE_TAIL = re.compile(r"(?:_\d{1,2})?(?:\.[a-z0-9_-]{1,12})+")
+
+
+class SaveFileBusy(ValueError):
+    """A save file could not be read or replaced, usually because the emulator still has it open. A ValueError, so
+    callers that turn ValueError into a message for the player show it as one."""
+
+
+def belongs_to(name: str, game_stem: str) -> bool:
+    """True when a file name is one of this game's saves: exactly its name, or its name plus a save suffix."""
+    name, stem = name.lower(), game_stem.lower()
+    if not stem:
+        return True
+    if not name.startswith(stem):
+        return False
+    tail = name[len(stem):]
+    return tail == "" or bool(_SAVE_TAIL.fullmatch(tail))
+
+
 def find_save_files(save_dir: Path, game_stem: str) -> list[Path]:
+    """This game's save files (an empty stem means every save file in the folder)."""
     if not save_dir.is_dir():
         return []
-    stem = game_stem.lower()
     found = []
     for path in save_dir.rglob("*"):
         if len(path.relative_to(save_dir).parts) > 4 or not path.is_file():
             continue
         if path.suffix.lower() in SAVE_EXTENSIONS or ".state" in path.name.lower():
-            if path.stem.lower().startswith(stem) or stem in path.name.lower():
+            if belongs_to(path.name, game_stem):
                 found.append(path)
     return sorted(found)
 
@@ -68,15 +90,67 @@ def restore_backup(data_dir: Path, console: str, compat_id: str, backup: str, sa
     if source.parent != root.resolve() or not source.is_dir():
         raise ValueError("unknown backup")
     current = find_save_files(save_dir, game_stem)
-    safety = create_backup(data_dir, console, compat_id, current, save_dir)["backup"] if current else None
-    restored = 0
-    for file in source.rglob("*"):
-        if file.is_file():
-            destination = save_dir / file.relative_to(source)
+    try:
+        safety = create_backup(data_dir, console, compat_id, current, save_dir)["backup"] if current else None
+    except OSError as exc:
+        raise SaveFileBusy(f"The current saves could not be backed up first ({_why(exc)}), so nothing was restored. "
+                           "Close the emulator and try again.") from exc
+    files = [f for f in sorted(source.rglob("*")) if f.is_file()]
+    save_root = Path(save_dir).resolve()
+    plan = []
+    for file in files:
+        destination = save_dir / file.relative_to(source)
+        if save_root not in destination.resolve().parents:
+            continue                                   # never write outside the save folder
+        plan.append((file, destination, destination.with_name(destination.name + ".lp-part")))
+    # 1. every file is copied next to its place first; if any copy fails, nothing has been touched yet
+    try:
+        for file, destination, part in plan:
             destination.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(file, destination)
-            restored += 1
-    return {"restored": restored, "previous_saves_backed_up_as": safety}
+            shutil.copy2(file, part)
+    except OSError as exc:
+        _remove_parts(plan)
+        raise SaveFileBusy(f"Restoring failed before any save was changed ({_why(exc)}). Close the emulator and try again.") from exc
+    # 2. each one is swapped in whole (os.replace); if one is locked, those already swapped are put back
+    done: list[tuple[Path, bool]] = []
+    try:
+        for file, destination, part in plan:
+            existed = destination.exists()
+            os.replace(part, destination)
+            done.append((destination, existed))
+    except OSError as exc:
+        _remove_parts(plan)
+        _undo_restore(done, backup_dir(data_dir, console, compat_id) / safety if safety else None, save_dir)
+        busy = Path(str(getattr(exc, "filename2", None) or getattr(exc, "filename", None) or "A save file")).name.removesuffix(".lp-part")
+        raise SaveFileBusy(f"{busy} is in use ({_why(exc)}), so the restore was undone. Close the emulator and try again.") from exc
+    return {"restored": len(done), "previous_saves_backed_up_as": safety}
+
+
+def _why(exc: OSError) -> str:
+    return exc.strerror or type(exc).__name__
+
+
+def _remove_parts(plan) -> None:
+    for _, _, part in plan:
+        try:
+            part.unlink()
+        except OSError:
+            pass
+
+
+def _undo_restore(done: list[tuple[Path, bool]], safety: Path | None, save_dir: Path) -> None:
+    """Best effort: put back the files that were already replaced, from the safety backup made just before."""
+    for destination, existed in reversed(done):
+        try:
+            previous = safety / destination.relative_to(save_dir) if safety else None
+            if existed and previous is not None and previous.is_file():
+                part = destination.with_name(destination.name + ".lp-part")
+                shutil.copy2(previous, part)
+                os.replace(part, destination)
+            elif not existed:
+                destination.unlink()
+        except OSError:
+            pass
 
 
 # ---- whole-library backups: one zip with every console's saves, kept wherever the user wants ----

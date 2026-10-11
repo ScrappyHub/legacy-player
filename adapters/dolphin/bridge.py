@@ -65,7 +65,8 @@ async def run_bridge(args) -> None:
     bridge = DolphinDsuBridge(slots)
     transport, protocol = await create_dsu_server(args.dsu_host, args.dsu_port)
     protocol.pads = bridge.pads
-    client = CoordinationClient(args.server_host, args.server_port)
+    # one connection for the whole session (reopened if it drops), not a new one every poll
+    client = CoordinationClient(args.server_host, args.server_port, persistent=True)
     credential = os.environ.get("LEGACY_PLAYER_CREDENTIAL")
     if args.credential_file is not None:
         credential = args.credential_file.read_text(encoding="utf-8").strip()
@@ -91,6 +92,7 @@ async def run_bridge(args) -> None:
                 bridge.apply_bundle(bundle, protocol)
             await asyncio.sleep(args.poll_interval)
     finally:
+        await client.close()
         transport.close()
         await protocol.wait_closed()
 

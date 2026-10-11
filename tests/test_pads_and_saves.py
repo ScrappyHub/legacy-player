@@ -28,10 +28,112 @@ class PadTests(unittest.TestCase):
     def test_retroarch_config_only_for_standard_pads(self):
         std = pads.validate_profile("p", {"standard": True, "bindings": {"0": {"t": "b", "i": 1}}})
         lines, _ = pads.retroarch_pad_config(std, 1)
-        self.assertIn('input_player1_b_btn = "13"', lines)  # slot 0 rebound to the east button (XInput B = bit 13)
+        # slot 0 rebound to the east button: RetroArch's xinput driver numbers B as button 1
+        self.assertIn('input_player1_b_btn = "1"', lines)
         self.assertFalse(any(l.startswith('input_player1_a_btn') for l in lines))  # its button now belongs to control 0
         other = pads.validate_profile("q", {"standard": False, "bindings": {}})
         self.assertEqual(pads.retroarch_pad_config(other, 1)[0], [])
+
+    def test_retroarch_xinput_numbers_match_its_own_autoconfig(self):
+        # RetroArch's XInput autoconfig: a=1 b=0 x=3 y=2 l=4 r=5 start=6 select=7 l3=8 r3=9, d-pad on hat 0
+        lines, notes = pads.retroarch_pad_config(pads.validate_profile("x", {"standard": True}), 2)
+        got = dict(l.split(" = ") for l in lines)
+        want = {"a": "1", "b": "0", "x": "3", "y": "2", "l": "4", "r": "5", "start": "6", "select": "7", "l3": "8", "r3": "9",
+                "up": "h0up", "down": "h0down", "left": "h0left", "right": "h0right"}
+        for role, value in want.items():
+            self.assertEqual(f'"{value}"', got[f"input_player2_{role}_btn"], role)
+        self.assertNotIn("input_player2_l2_btn", got)                 # triggers are axes: left to RetroArch
+        self.assertEqual('"1"', got["input_player2_joypad_index"])    # no stored index: the player's position
+        self.assertEqual([], notes)
+
+    def test_assigned_pad_index_is_used_for_the_device(self):
+        profile = pads.validate_profile("x", {"standard": True, "index": 3})
+        self.assertEqual(3, profile["index"])
+        self.assertIn('input_player1_joypad_index = "3"', pads.retroarch_pad_config(profile, 1)[0])
+        self.assertEqual(2, pads.device_index(pads.with_device_index(profile, 2), 1))
+        self.assertEqual(0, pads.device_index({"standard": True}, 1))
+        for bad in (-1, 16, True, "1"):
+            with self.assertRaises(ValueError):
+                pads.validate_profile("x", {"index": bad})
+        from launcher import dolphinpads
+        lines, _ = dolphinpads.pad_section(1, pads.with_device_index(profile, 2))
+        self.assertIn("Device = XInput/2/Gamepad", lines)
+
+
+class SaveMatchTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.saves_dir = self.root / "saves"
+        self.saves_dir.mkdir()
+
+    def write(self, name, data=b"x"):
+        (self.saves_dir / name).write_bytes(data)
+
+    def test_a_game_only_gets_its_own_saves(self):
+        from launcher import saves
+        for name in ("Super Mario Bros.srm", "Super Mario Bros.state1", "Super Mario Bros.state.auto",
+                     "Super Mario Bros 3.srm", "Super Mario Bros 3.state", "Super Mario Bros. 3.srm",
+                     "Super Mario Bros_1.mcd", "Super Mario Bros (Japan).srm", "New Super Mario Bros.srm"):
+            self.write(name)
+        found = {p.name for p in saves.find_save_files(self.saves_dir, "Super Mario Bros")}
+        self.assertEqual({"Super Mario Bros.srm", "Super Mario Bros.state1", "Super Mario Bros.state.auto",
+                          "Super Mario Bros_1.mcd"}, found)
+        self.assertEqual({"Super Mario Bros 3.srm", "Super Mario Bros 3.state"},
+                         {p.name for p in saves.find_save_files(self.saves_dir, "super mario bros 3")})
+        self.assertEqual(9, len(saves.find_save_files(self.saves_dir, "")))     # empty stem: every save file
+
+    def test_restore_does_not_touch_another_games_saves(self):
+        from launcher import saves
+        data = self.root / "data"
+        self.write("Super Mario Bros.srm", b"one-old")
+        self.write("Super Mario Bros 3.srm", b"three")
+        made = saves.create_backup(data, "nes", "smb", saves.find_save_files(self.saves_dir, "Super Mario Bros"), self.saves_dir)
+        self.assertEqual(1, made["files"])
+        self.write("Super Mario Bros.srm", b"one-new")
+        self.write("Super Mario Bros 3.srm", b"three-progress")
+        out = saves.restore_backup(data, "nes", "smb", made["backup"], self.saves_dir, "Super Mario Bros")
+        self.assertEqual(1, out["restored"])
+        self.assertEqual(b"one-old", (self.saves_dir / "Super Mario Bros.srm").read_bytes())
+        self.assertEqual(b"three-progress", (self.saves_dir / "Super Mario Bros 3.srm").read_bytes())
+        self.assertFalse(any(self.saves_dir.glob("*.lp-part")))
+
+    def test_locked_file_gives_a_clear_error_and_nothing_half_done(self):
+        import os
+        from launcher import saves
+        data = self.root / "data"
+        self.write("Zelda.srm", b"srm-old")
+        self.write("Zelda.state1", b"state-old")
+        made = saves.create_backup(data, "snes", "z", saves.find_save_files(self.saves_dir, "Zelda"), self.saves_dir)
+        self.write("Zelda.srm", b"srm-new")
+        self.write("Zelda.state1", b"state-new")
+        real_replace = os.replace
+
+        def locked(src, dst, *a, **kw):                      # the emulator still holds the state file open
+            if Path(dst).name == "Zelda.state1":
+                raise PermissionError(13, "The process cannot access the file", str(dst))
+            return real_replace(src, dst, *a, **kw)
+        with mock.patch("launcher.saves.os.replace", side_effect=locked):
+            with self.assertRaises(ValueError) as caught:
+                saves.restore_backup(data, "snes", "z", made["backup"], self.saves_dir, "Zelda")
+        self.assertIsInstance(caught.exception, saves.SaveFileBusy)
+        self.assertIn("Close the emulator", str(caught.exception))
+        self.assertEqual(b"srm-new", (self.saves_dir / "Zelda.srm").read_bytes())      # the one already swapped was put back
+        self.assertEqual(b"state-new", (self.saves_dir / "Zelda.state1").read_bytes())
+        self.assertFalse(any(self.saves_dir.glob("*.lp-part")))
+        with mock.patch("launcher.saves.shutil.copy2", side_effect=PermissionError(13, "locked")):
+            with self.assertRaises(saves.SaveFileBusy):
+                saves.restore_backup(data, "snes", "z", made["backup"], self.saves_dir, "Zelda")
+        self.assertEqual(b"srm-new", (self.saves_dir / "Zelda.srm").read_bytes())
+
+    def test_app_restore_turns_a_locked_file_into_a_message(self):
+        app = LauncherApp(self.root / "appdata")
+        game = {"path": str(self.root / "Zelda.sfc"), "console": "snes", "compat_id": "z"}
+        with mock.patch.object(app, "_save_ctx", return_value=(game, mock.Mock(id="snes"), self.saves_dir)), \
+                mock.patch("launcher.saves.restore_backup", side_effect=__import__("launcher.saves", fromlist=["x"]).SaveFileBusy("Close the emulator")):
+            with self.assertRaisesRegex(AppError, "Close the emulator"):
+                app.api_restore({"id": "x", "backup": "y"})
 
 
 class AppTests(unittest.TestCase):

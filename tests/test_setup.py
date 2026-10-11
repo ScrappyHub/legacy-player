@@ -135,6 +135,127 @@ class SetupTests(unittest.TestCase):
             extract_7z(archive, out)
         self.assertTrue(any(out.rglob("retroarch.exe")))
 
+    def test_https_redirect_to_http_on_same_host_is_refused(self):
+        from launcher.setup import _SameHostOnly
+        import urllib.request
+        req = urllib.request.Request("https://buildbot.libretro.com/a.zip")
+        with self.assertRaisesRegex(SetupError, "away from https"):
+            _SameHostOnly("buildbot.libretro.com").redirect_request(req, None, 302, "Found", {}, "http://buildbot.libretro.com/a.zip")
+        ok = _SameHostOnly("buildbot.libretro.com").redirect_request(req, None, 302, "Found", {}, "https://buildbot.libretro.com/b.zip")
+        self.assertEqual("https://buildbot.libretro.com/b.zip", ok.full_url)
+        allowed = _SameHostOnly("127.0.0.1", allow_http=True).redirect_request(
+            urllib.request.Request("http://127.0.0.1/a"), None, 302, "Found", {}, "http://127.0.0.1/b")
+        self.assertEqual("http://127.0.0.1/b", allowed.full_url)
+
+    def _fake_tool(self, listing: str, extract_rc: int = 0, list_rc: int = 0, stderr: str = ""):
+        import subprocess
+        calls = []
+
+        def run(command):
+            calls.append(command)
+            if command[1] == "l":
+                return subprocess.CompletedProcess(command, list_rc, listing, stderr)
+            if command[1] == "x":
+                if extract_rc == 0:
+                    out = Path(command[-1][2:])
+                    (out / "RetroArch-Win64").mkdir(parents=True, exist_ok=True)
+                    (out / "RetroArch-Win64" / "retroarch.exe").write_text("x")
+                return subprocess.CompletedProcess(command, extract_rc, "", stderr)
+            raise AssertionError(command)
+        return calls, run
+
+    SLT = ("Path = a.7z\nType = 7z\n\n----------\n"
+           "Path = RetroArch-Win64\nFolder = +\nAttributes = D\n\n"
+           "Path = RetroArch-Win64/retroarch.exe\nFolder = -\nAttributes = A -rwxr-xr-x\n\n")
+
+    def test_7z_is_listed_and_checked_before_anything_is_extracted(self):
+        for evil in ("Path = ../../evil.dll\nAttributes = A\n\n", "Path = C:\\Windows\\evil.dll\nAttributes = A\n\n",
+                     "Path = /etc/evil\nAttributes = A\n\n", "Path = RetroArch-Win64/link\nAttributes = A lrwxrwxrwx\n\n",
+                     "Path = RetroArch-Win64/link2\nSymbolic Link = /etc\n\n"):
+            calls, run = self._fake_tool(self.SLT + evil)
+            with mock.patch("launcher.setup._seven_zip_tools", return_value=[("7z", "7z")]), \
+                    mock.patch("launcher.setup._run_tool", side_effect=run):
+                with self.assertRaisesRegex(SetupError, "refused"):
+                    extract_7z(self.root / "a.7z", self.root / "out-evil", "RetroArch")
+            self.assertEqual(["l"], [c[1] for c in calls], evil)            # never got as far as extracting
+        calls, run = self._fake_tool(self.SLT)
+        with mock.patch("launcher.setup._seven_zip_tools", return_value=[("7z", "7z")]), \
+                mock.patch("launcher.setup._run_tool", side_effect=run):
+            extract_7z(self.root / "a.7z", self.root / "out-ok", "RetroArch")
+        self.assertTrue((self.root / "out-ok" / "RetroArch-Win64" / "retroarch.exe").is_file())
+
+    def test_7z_tool_failure_reports_its_own_words_and_tar_only_says_7zip_is_needed(self):
+        calls, run = self._fake_tool(self.SLT, extract_rc=2, stderr="ERROR: Data Error : retroarch.exe")
+        with mock.patch("launcher.setup._seven_zip_tools", return_value=[("7z", "7z")]), \
+                mock.patch("launcher.setup._run_tool", side_effect=run):
+            with self.assertRaisesRegex(SetupError, "Data Error"):
+                extract_7z(self.root / "a.7z", self.root / "out1", "RetroArch")
+        import subprocess
+        tar_fails = lambda c: subprocess.CompletedProcess(c, 1, "", "tar: Unrecognized archive format")
+        with mock.patch("launcher.setup._seven_zip_tools", return_value=[("tar", "tar")]), \
+                mock.patch("launcher.setup._run_tool", side_effect=tar_fails):
+            with self.assertRaisesRegex(SetupError, "7-Zip is needed to install RetroArch.*Unrecognized archive format"):
+                extract_7z(self.root / "a.7z", self.root / "out2", "RetroArch")
+        with mock.patch("launcher.setup._seven_zip_tools", return_value=[]):
+            with self.assertRaisesRegex(SetupError, "No tool to unpack"):
+                extract_7z(self.root / "a.7z", self.root / "out3", "PCSX2")
+
+    @unittest.skipUnless(REAL_WHICH("tar"), "needs tar")
+    def test_real_tar_listing_refuses_links_and_escapes(self):
+        import io as _io
+        import tarfile
+        def make(name, members):
+            path = self.root / name
+            with tarfile.open(path, "w") as t:
+                for member, kind in members:
+                    info = tarfile.TarInfo(member)
+                    if kind == "link":
+                        info.type, info.linkname = tarfile.SYMTYPE, "/etc/passwd"
+                        t.addfile(info)
+                    else:
+                        info.size = 1
+                        t.addfile(info, _io.BytesIO(b"x"))
+            return path
+        tools = [("tar", REAL_WHICH("tar"))]
+        with mock.patch("launcher.setup._seven_zip_tools", return_value=tools):
+            for bad in (make("l.tar", [("ok.txt", "f"), ("pw", "link")]), make("e.tar", [("../escape.txt", "f")])):
+                out = self.root / ("out-" + bad.stem)
+                with self.assertRaisesRegex(SetupError, "refused"):
+                    extract_7z(bad, out, "Test")
+                self.assertFalse(any(out.rglob("*")), bad)
+            good = make("g.tar", [("dir/ok.txt", "f")])
+            extract_7z(good, self.root / "out-good", "Test")
+            self.assertTrue((self.root / "out-good" / "dir" / "ok.txt").is_file())
+
+    def test_reinstalling_retroarch_keeps_settings_saves_and_bios(self):
+        root = self.setup.install_root
+        (root / "system").mkdir(parents=True)
+        (root / "system" / "scph5501.bin").write_bytes(b"bios")
+        (root / "saves").mkdir()
+        (root / "saves" / "Game.srm").write_bytes(b"save")
+        (root / "retroarch.cfg").write_text("mine")
+        (root / "cores").mkdir()
+        (root / "cores" / "snes9x_libretro.dll").write_bytes(b"core")           # retroarch.exe itself is gone (quarantined)
+
+        def fake_download(url, dest, **kw):
+            Path(dest).write_text('<a href="1.22.2/">' if url.endswith("/stable/") else "7z")
+
+        def fake_extract(archive, staging, what=""):
+            (staging / "RetroArch-Win64").mkdir(parents=True)
+            (staging / "RetroArch-Win64" / "retroarch.exe").write_text("new")
+            (staging / "RetroArch-Win64" / "retroarch.cfg").write_text("default")
+
+        with mock.patch("launcher.setup.platform_key", return_value="windows"), \
+                mock.patch("launcher.setup.download", side_effect=fake_download), \
+                mock.patch("launcher.setup.extract_7z", side_effect=fake_extract):
+            exe = self.setup._install_retroarch()
+        self.assertEqual("new", Path(exe).read_text())
+        self.assertEqual("mine", (root / "retroarch.cfg").read_text())
+        self.assertEqual(b"bios", (root / "system" / "scph5501.bin").read_bytes())
+        self.assertEqual(b"save", (root / "saves" / "Game.srm").read_bytes())
+        self.assertEqual(b"core", (root / "cores" / "snes9x_libretro.dll").read_bytes())
+        self.assertFalse(root.with_name("retroarch.old").exists())
+
     def test_app_reports_setup_status_without_downloading(self):
         with tempfile.TemporaryDirectory() as d:
             app = LauncherApp(Path(d))

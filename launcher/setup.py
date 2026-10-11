@@ -10,6 +10,7 @@ Safety model
 """
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import subprocess
@@ -28,6 +29,10 @@ FALLBACK_STABLE = "1.22.2"
 MAX_CORE_BYTES = 60 * 1024 * 1024
 MAX_RETROARCH_BYTES = 450 * 1024 * 1024
 MAX_INFO_BYTES = 30 * 1024 * 1024
+# The player's own files in a RetroArch folder. Everything the fresh package does not ship is carried over anyway;
+# for these names the player's copy also wins when the package happens to ship one.
+RETROARCH_KEEP = ("retroarch.cfg", "retroarch-core-options.cfg", "config", "saves", "states", "system", "playlists", "remaps",
+                  "screenshots", "thumbnails", "cheats", "logs", "downloads", "portable.txt")
 
 
 def info_dir_for(exe: str | None, fallback: Path) -> Path:
@@ -83,13 +88,17 @@ def core_filename(stem: str, plat: str | None = None) -> str:
 
 
 class _SameHostOnly(urllib.request.HTTPRedirectHandler):
-    def __init__(self, host: str) -> None:
+    def __init__(self, host: str, allow_http: bool = False) -> None:
         self.host = host
+        self.allow_http = allow_http
 
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         from urllib.parse import urlparse
-        if urlparse(newurl).hostname != self.host:
+        parts = urlparse(newurl)
+        if parts.hostname != self.host:
             raise SetupError("The download was redirected to a different site, so it was refused.")
+        if parts.scheme != "https" and not (self.allow_http and parts.scheme == "http"):
+            raise SetupError("The download was redirected away from https, so it was refused.")
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
@@ -99,7 +108,7 @@ def download(url: str, dest: Path, *, max_bytes: int, allowed_host: str = OFFICI
     parts = urlparse(url)
     if parts.hostname != allowed_host or (parts.scheme != "https" and not (allow_http and parts.scheme == "http")):
         raise SetupError("Downloads are only allowed from the official RetroArch build server over https.")
-    opener = urllib.request.build_opener(_SameHostOnly(allowed_host))
+    opener = urllib.request.build_opener(_SameHostOnly(allowed_host, allow_http))
     request = urllib.request.Request(url, headers={"User-Agent": "LegacyPlayer-Setup"})
     try:
         with opener.open(request, timeout=30) as response, open(dest, "wb") as out:
@@ -138,33 +147,247 @@ def extract_zip_member(archive: Path, member: str, dest_file: Path) -> None:
             shutil.copyfileobj(src, out)
 
 
-def _seven_zip_tools() -> list[list[str]]:
-    candidates = []
+def _seven_zip_tools() -> list[tuple[str, str]]:
+    """(kind, program) for each unpacker found: kind "7z" (7-Zip and its cousins) or "tar" (bsdtar/GNU tar)."""
+    candidates: list[tuple[str, str]] = []
     for name in ("7z", "7za", "7zr"):
-        if shutil.which(name):
-            candidates.append([shutil.which(name), "x", "-y"])
+        found = shutil.which(name)
+        if found and ("7z", found) not in candidates:
+            candidates.append(("7z", found))
     for path in (r"C:\Program Files\7-Zip\7z.exe", r"C:\Program Files (x86)\7-Zip\7z.exe"):
-        if Path(path).is_file():
-            candidates.append([path, "x", "-y"])
+        if Path(path).is_file() and ("7z", path) not in candidates:
+            candidates.append(("7z", path))
     tar = shutil.which("tar")
-    if tar:  # Windows 10+ ships bsdtar, which reads .7z
-        candidates.append([tar, "-xf"])
+    if tar:  # Windows ships bsdtar; recent builds of it read .7z, older Windows 10 ones do not
+        candidates.append(("tar", tar))
     return candidates
 
 
-def extract_7z(archive: Path, dest: Path) -> None:
+def _bad_member_name(name: str) -> bool:
+    """True for an absolute path, a drive-qualified path, or one that climbs out with '..'."""
+    text = name.replace("\\", "/")
+    if text.startswith("/") or re.match(r"^[A-Za-z]:", text):
+        return True
+    return any(part == ".." for part in text.split("/"))
+
+
+def _listing_7z(output: str) -> list[tuple[str, bool]]:
+    """(path, is_link) for each entry in `7z l -slt` output. The block before the '----------' line describes the
+    archive itself and is skipped."""
+    _, sep, body = output.replace("\r\n", "\n").partition("\n----------\n")
+    if not sep:
+        return []
+    entries: list[tuple[str, bool]] = []
+    for block in re.split(r"\n\s*\n", body):
+        fields: dict[str, str] = {}
+        for line in block.splitlines():
+            key, eq, value = line.partition(" = ")
+            if eq:
+                fields[key.strip()] = value.strip()
+        if "Path" not in fields:
+            continue
+        attrs = fields.get("Attributes", "")
+        is_link = bool(fields.get("Symbolic Link") or fields.get("Hard Link") or re.search(r"(^|\s)l[r-][w-][xsStT-]", attrs))
+        entries.append((fields["Path"], is_link))
+    return entries
+
+
+def _listing_tar(names: str, verbose: str) -> list[tuple[str, bool]]:
+    rows = [n for n in names.splitlines() if n.strip()]
+    links = [line[:1] in ("l", "h") for line in verbose.splitlines() if line.strip()]
+    if len(links) != len(rows):          # cannot pair them up: any link mark refuses the whole archive
+        return [(n, any(links)) for n in rows]
+    return list(zip(rows, links))
+
+
+def _check_listing(entries: list[tuple[str, bool]]) -> None:
+    for name, is_link in entries:
+        if _bad_member_name(name):
+            raise SetupError("The archive tried to write outside its folder and was refused.")
+        if is_link:
+            raise SetupError("The archive contains a link to somewhere else, so it was refused.")
+
+
+def _run_tool(command: list[str]) -> subprocess.CompletedProcess:
+    return subprocess.run(command, capture_output=True, text=True, errors="replace", timeout=600,
+                          creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+
+
+def _tool_error(result: subprocess.CompletedProcess) -> str:
+    text = (result.stderr or "").strip() or (result.stdout or "").strip()
+    lines = [l.strip() for l in text.splitlines() if l.strip()]
+    return (" ".join(lines[-3:]) or f"exit code {result.returncode}")[:240]
+
+
+def extract_7z(archive: Path, dest: Path, what: str = "") -> None:
+    """Unpack a .7z safely. The archive is listed first and refused if any entry is absolute, climbs out with '..'
+    or is a link; only then is it extracted. `what` names the program in messages ("RetroArch", "PCSX2")."""
+    what = what or "this program"
     dest.mkdir(parents=True, exist_ok=True)
-    errors = []
-    for tool in _seven_zip_tools():
-        command = tool + ([str(archive), f"-o{dest}"] if tool[-1] == "-y" else [str(archive), "-C", str(dest)])
+    tools = _seven_zip_tools()
+    if not tools:
+        raise SetupError(f"No tool to unpack .7z files was found. Install 7-Zip (7-zip.org), which {what} needs, then press Install again.")
+    problems: list[str] = []
+    for kind, program in tools:
+        label = "7-Zip" if kind == "7z" else "tar"
         try:
-            subprocess.run(command, check=True, capture_output=True, timeout=600, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-            for item in dest.rglob("*"):  # nothing may have landed outside dest
+            if kind == "7z":
+                listed = _run_tool([program, "l", "-slt", str(archive)])
+                if listed.returncode != 0:
+                    problems.append(f"{label} could not read the {what} package: {_tool_error(listed)}")
+                    continue
+                entries = _listing_7z(listed.stdout or "")
+            else:
+                names = _run_tool([program, "-tf", str(archive)])
+                if names.returncode != 0:
+                    problems.append(f"{label} could not read the {what} package: {_tool_error(names)}")
+                    continue
+                verbose = _run_tool([program, "-tvf", str(archive)])
+                entries = _listing_tar(names.stdout or "", (verbose.stdout or "") if verbose.returncode == 0 else "l")
+            if not entries:
+                problems.append(f"{label} found nothing inside the {what} package.")
+                continue
+            _check_listing(entries)                       # before a single byte is written
+            command = ([program, "x", "-y", str(archive), f"-o{dest}"] if kind == "7z"
+                       else [program, "-xf", str(archive), "-C", str(dest)])
+            done = _run_tool(command)
+            if done.returncode != 0:
+                problems.append(f"{label} could not unpack the {what} package: {_tool_error(done)}")
+                continue
+            for item in dest.rglob("*"):                  # belt and braces: nothing escaped, nothing is a link
                 _safe_member(dest, str(item.relative_to(dest)))
+                if item.is_symlink():
+                    raise SetupError("The archive contains a link to somewhere else, so it was refused.")
             return
-        except (subprocess.SubprocessError, OSError) as exc:
-            errors.append(str(exc)[:80])
-    raise SetupError("No tool to unpack .7z files was found. Install 7-Zip (7-zip.org), then press Install again.")
+        except subprocess.TimeoutExpired:
+            problems.append(f"Unpacking the {what} package with {label} took too long and was stopped.")
+        except OSError as exc:
+            problems.append(f"Could not run {label}: {exc}"[:200])
+    detail = "; ".join(problems)[:400]
+    if all(kind == "tar" for kind, _ in tools):
+        raise SetupError(f"7-Zip is needed to install {what}: Windows' built-in tar could not unpack its .7z package (older "
+                         f"Windows 10 versions cannot read .7z). Install 7-Zip from 7-zip.org, then press Install again. ({detail})")
+    raise SetupError(detail or f"The {what} package could not be unpacked.")
+
+
+# ---- replacing an installed program folder without losing what the player keeps in it ----
+
+def _is_dir(p: Path) -> bool:
+    return p.is_dir() and not p.is_symlink()
+
+
+def _exists(p: Path) -> bool:
+    return p.exists() or p.is_symlink()
+
+
+def locked_message(exc: OSError, name: str) -> str | None:
+    """A plain "close it first" message when Windows refused because the program (or a file of it) is open."""
+    if isinstance(exc, PermissionError) or getattr(exc, "winerror", None) in (5, 32, 33):
+        return f"Close {name} first: its folder cannot be changed while it is running. Nothing was changed."
+    return None
+
+
+def has_files(root: Path) -> bool:
+    try:
+        return any(p.is_file() for p in Path(root).rglob("*"))
+    except OSError:
+        return False
+
+
+def _carry_over(old: Path, new: Path, keep: set[str], journal: list, prefer_old: bool = False, top: bool = True) -> None:
+    """Move everything in `old` that `new` lacks into `new`. Where both have a file, the new package's copy stays,
+    except under a `keep` name (top level, lower case), where the player's copy wins and the package's is parked
+    next to it. Every step goes into `journal` so it can be undone."""
+    for entry in sorted(old.iterdir(), key=lambda p: p.name):
+        target = new / entry.name
+        ours = prefer_old or (top and entry.name.lower() in keep)
+        if not _exists(target):
+            os.rename(entry, target)
+            journal.append(("move", entry, target))
+        elif _is_dir(entry) and _is_dir(target):
+            _carry_over(entry, target, keep, journal, ours, top=False)
+        elif ours and not _is_dir(entry) and not _is_dir(target):
+            parked = target.with_name(target.name + ".lp-new")
+            os.replace(target, parked)
+            journal.append(("park", target, parked))
+            os.rename(entry, target)
+            journal.append(("move", entry, target))
+
+
+def _undo(journal: list) -> None:
+    for step in reversed(journal):
+        if step[0] == "move":
+            step[1].parent.mkdir(parents=True, exist_ok=True)
+            os.rename(step[2], step[1])
+        else:
+            os.replace(step[2], step[1])
+
+
+def _drop_parked(journal: list) -> None:
+    for step in journal:
+        if step[0] == "park":
+            try:
+                step[2].unlink()
+            except OSError:
+                pass
+
+
+def recover_aside(dest: Path, keep=(), name: str = "the program") -> None:
+    """`<dest>.old` is left from an update that was cut short. Put it back (when `dest` is missing) or merge what only it
+    has into `dest`; it is removed only after that. Never simply deleted."""
+    dest = Path(dest)
+    aside = dest.with_name(dest.name + ".old")
+    if not _exists(aside):
+        return
+    try:
+        if not _exists(dest):
+            os.rename(aside, dest)
+            return
+        journal: list = []
+        _carry_over(aside, dest, {k.lower() for k in keep}, journal)
+        _drop_parked(journal)
+        shutil.rmtree(aside, ignore_errors=True)
+    except OSError as exc:
+        raise SetupError(locked_message(exc, name) or f"An earlier update of {name} left {aside} behind and it could not be "
+                                                      f"merged back ({exc}). Nothing was changed.") from exc
+
+
+def replace_folder(new_root: Path, dest: Path, keep=(), name: str = "the program") -> None:
+    """Put the freshly unpacked `new_root` where `dest` is and carry over everything from the old `dest` that the new
+    package does not contain (saves, settings, firmware, installed games...). Program files come from the package; for
+    the top-level names in `keep` the player's copy always wins. If anything fails the old folder is put back as it was."""
+    new_root, dest = Path(new_root), Path(dest)
+    if not _is_dir(new_root) or not has_files(new_root):
+        raise SetupError(f"The {name} package unpacked to nothing, so the installed copy was left alone.")
+    recover_aside(dest, keep, name)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    aside = dest.with_name(dest.name + ".old")
+    had_old = _exists(dest)
+    if had_old:
+        try:
+            os.rename(dest, aside)                         # the old install is kept until the new one is in place
+        except OSError as exc:
+            raise SetupError(locked_message(exc, name) or f"Could not move the old {name} aside ({exc}). Nothing was changed.") from exc
+    journal: list = []
+    try:
+        shutil.move(str(new_root), str(dest))
+        if had_old:
+            _carry_over(aside, dest, {k.lower() for k in keep}, journal)
+    except BaseException as exc:
+        try:                                             # put the old one back exactly: an update never leaves nothing
+            _undo(journal)
+            if had_old:
+                if _exists(dest):
+                    shutil.rmtree(dest)
+                os.rename(aside, dest)
+        except OSError:
+            pass                                         # `.old` stays and the next attempt merges it back first
+        if isinstance(exc, OSError):
+            raise SetupError(locked_message(exc, name) or f"Installing {name} failed ({exc}); the copy you had was kept.") from exc
+        raise
+    _drop_parked(journal)
+    if had_old:
+        shutil.rmtree(aside, ignore_errors=True)         # only old program files the package replaced are left in it
 
 
 def latest_stable(listing_html: str | None) -> str:
@@ -296,14 +519,13 @@ class Setup:
                      progress=lambda f: self._set(step="Downloading RetroArch", percent=int(f * 60)))
             self._set(step="Unpacking RetroArch", percent=62)
             staging = Path(tmp) / "unpacked"
-            extract_7z(archive, staging)
+            extract_7z(archive, staging, "RetroArch")
             found = next(staging.rglob("retroarch.exe"), None)
             if not found:
                 raise SetupError("The RetroArch package did not contain retroarch.exe.")
-            if self.install_root.exists():
-                shutil.rmtree(self.install_root)
-            self.install_root.parent.mkdir(parents=True, exist_ok=True)
-            shutil.move(str(found.parent), str(self.install_root))
+            # A folder already here (retroarch.exe may only have been quarantined) keeps its settings, saves, states,
+            # BIOS files and cores: they are carried over into the fresh copy, never deleted.
+            replace_folder(found.parent, self.install_root, RETROARCH_KEEP, "RetroArch")
         exe = str(self.install_root / "retroarch.exe")
         self.set_retroarch_path(exe)
         self._log(f"RetroArch installed in {self.install_root}")
