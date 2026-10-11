@@ -18,6 +18,24 @@ from server.lobby import LobbyService
 from http.server import ThreadingHTTPServer
 
 
+def free_port_pair() -> int:
+    """A port P where P and P + 1 are both free right now (an encrypted match puts RetroArch on P + 1)."""
+    import socket
+    for _ in range(50):
+        with socket.socket() as a:
+            a.bind(("127.0.0.1", 0))
+            port = a.getsockname()[1]
+            if port >= 65535:
+                continue
+            with socket.socket() as b:
+                try:
+                    b.bind(("127.0.0.1", port + 1))
+                except OSError:
+                    continue
+        return port
+    raise RuntimeError("no free pair of ports")
+
+
 def touch(path: Path, data: bytes = b"x"):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(data)
@@ -453,10 +471,11 @@ class MultiplayerFlowTests(unittest.TestCase):
         self.assertTrue(host.api_mp_state({})["room"]["launch"]["ready"])
         with self.assertRaisesRegex(AppError, "not launched yet"):
             guest.api_mp_launch({})
-        host.api_mp_launch({"address": "192.168.1.20", "port": 55440, "relay": False, "expose_address": True})
+        port = free_port_pair()
+        host.api_mp_launch({"address": "192.168.1.20", "port": port, "relay": False, "expose_address": True})
         args = self.wait_args(host_out)
         self.assertIn("--host", args)
-        self.assertEqual("55440", args[args.index("--port") + 1])
+        self.assertEqual(str(port), args[args.index("--port") + 1])
         state = guest.api_mp_state({})["room"]
         self.assertIn("The host has launched. Press Join match.", [e["text"] for e in state["new_events"]])
         guest.api_mp_launch({"expose_address": True})
@@ -480,18 +499,19 @@ class MultiplayerFlowTests(unittest.TestCase):
         host, guest, host_out, guest_out = self._ready_room()
         for app in (host, guest):
             app.catalog.set_setting("allow_direct_connections", True)
-        result = host.api_mp_launch({"address": "127.0.0.1", "port": 55440, "relay": False, "expose_address": True})
+        port = free_port_pair()
+        result = host.api_mp_launch({"address": "127.0.0.1", "port": port, "relay": False, "expose_address": True})
         self.assertTrue(result["encrypted"])
         hargs = self.wait_args(host_out)
-        self.assertEqual("55441", hargs[hargs.index("--port") + 1])  # RetroArch is on the private port
+        self.assertEqual(str(port + 1), hargs[hargs.index("--port") + 1])  # RetroArch is on the private port
         endpoint = guest._call({"operation": "get_endpoint", **guest._auth()})["endpoint"]
-        self.assertEqual(55440, endpoint["port"])
+        self.assertEqual(port, endpoint["port"])
         self.assertEqual(64, len(endpoint["psk"]))
         result = guest.api_mp_launch({"expose_address": True})
         self.assertTrue(result["encrypted"])
         gargs = self.wait_args(guest_out)
         self.assertEqual("127.0.0.1", gargs[gargs.index("--connect") + 1])
-        self.assertNotEqual("55440", gargs[gargs.index("--port") + 1])  # local tunnel port
+        self.assertNotEqual(str(port), gargs[gargs.index("--port") + 1])  # local tunnel port
         self.assertNotIn(endpoint["psk"], json.dumps(self.server.service.export_state()))
         host.api_mp_leave({})
         guest.api_mp_leave({})

@@ -41,7 +41,10 @@ version, and release. For a test, a player can paste the code under Settings > Y
 ## Running it
 - Update: `git pull && docker compose up -d --build`. Back up the `lp-data` volume if you care about the code staying put.
 - Rotate the code (the old one stops working for new players): stop the server, delete `state/access_key.bin` in the volume, start it, and run the `code` command again.
-- Read reports: `docker compose exec reports ls /data/reports`, or copy them out and run `python tools/read_reports.py <folder>`.
+- Read reports: set `ADMIN_TOKEN` in `.env`, open `https://<REPORTS_DOMAIN>/admin` and paste the admin token into the form;
+  or `docker compose exec reports ls /data/reports`, or copy them out and run `python tools/read_reports.py <folder>`.
+- A `lp-reports` volume created by an older version of these files may be owned by root, so the receiver (uid 10001)
+  cannot write to it. Fix it once: `docker compose run --rm --user root reports chown -R 10001:10001 /data/reports`.
 - The receiver keeps no log of who sent a report. Caddy's access log is switched off (`log { output discard }`).
 - Never put the server behind a proxy that terminates TLS: players check the server's own certificate fingerprint.
 

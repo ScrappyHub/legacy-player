@@ -1,12 +1,13 @@
 # Legacy Player Documentation Index
 
-**Updated:** 2026-10-07
+**Updated:** 2026-10-10
 
 This page identifies which document answers each project question and prevents older planning artifacts from being mistaken for current proof.
 
 ## Governing order
 
-1. Atlas ecosystem service map, registry, agent policy, and shared invariants.
+1. Constellation ecosystem service map, registry, agent policy, and shared invariants (`../Constellation/...`; see
+   `docs/proposals/2026-10-10-governance-name.md` for the older "Atlas" name that some documents still use).
 2. `docs/canonical/ECOSYSTEM_INTEGRATION.md` and `project.contract.json`.
 3. Approved repository canonical documents, when added through governance.
 4. Working project specification and accepted architecture decisions.
@@ -34,12 +35,19 @@ When documents conflict, the higher item governs. Implementation is evidence of 
 
 - `README.md` — what the app does today and how to install it.
 - `docs/RELEASE.md` — build, publish and install a release (GitHub workflow, `install.ps1`, local packaging).
-- `docs/HOSTING_PUBLIC_SERVER.md` — run a shared server and the problem-report receiver.
+- `docs/CODE_SIGNING_POLICY.md` — how releases are signed (Azure Artifact Signing or a .pfx), and the main-only, tested-before-release rule.
+- `docs/AZURE_SIGNING.md` — setting up Azure Artifact Signing for the release workflow (no stored key).
+- `docs/HOSTING_PUBLIC_SERVER.md` — run a shared server, the problem-report receiver and the friends service.
+- `docs/PRIVATE_LINK.md` — Private link: Dolphin online play over Tailscale (encrypted, no router set-up).
+- `PRIVACY.md`, `SECURITY.md`, `THIRD_PARTY.md` — what leaves the computer and when, reporting a vulnerability, third-party notices.
+- `deploy/README.md` — the ready-to-run server kit (Docker, Caddy, systemd).
 - `docs/MULTIPLAYER_TEST_PLAN.md` — the cross-network test, step by step.
 - `docs/WINDOWS_CHECKLIST.md` — what to check by hand on a real Windows computer.
 - `docs/LIBRARY_AND_LAUNCHER_v1.md`, `docs/NETPLAY_BY_CONSOLE.md` — launcher design and per-console netplay status.
 - `docs/proposals/2026-10-07-audit-and-fixes.md` — October 2026 audit, fixes and follow-ups (problem reports, router opening,
   player counts, shared-server fallback).
+- `docs/proposals/2026-10-10-governance-name.md` — the ecosystem is named Constellation in the canonical files; older
+  documents say Atlas.
 
 ## Existing component documents
 

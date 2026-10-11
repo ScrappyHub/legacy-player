@@ -15,7 +15,8 @@ python -m server.cli start --host 0.0.0.0 --port 8765 --tls-cert cert.pem --tls-
 firewall / cloud security group.
 
 ## 2. Make its server code
-On that machine, in the app: Servers > Make my server code. It looks like `LP-XXXX-XXXX-XXXX-XXXX-XXXX-XX`.
+On that machine, in the app: Servers > Make my server code. It looks like `LP-0108-1G8J-AD18-3N2A-AAMD-YWSA-NX49-19F4-9D`
+(nine groups after `LP`). A server reached by a host name or an IPv6 address gets a longer code that starts with `LP2-`.
 
 ## 3. Tell the app about it
 Put the code in `PUBLIC_SERVER_CODE` in `launcher/version.py` and rebuild. For a test, any player can instead paste it
@@ -29,8 +30,9 @@ Put it behind https (a reverse proxy such as Caddy), then set `REPORT_URL` in `l
 Read what arrived: `python tools/read_reports.py reports`, or open the admin console.
 
 ### The admin console
-Start the receiver with `--admin-token <another secret>` (or `LP_ADMIN_TOKEN`) and open
-`https://<your address>/admin?token=<that secret>` in a browser. It lists everything that came in: crashes and failures
+Start the receiver with `--admin-token <another secret>` (or `LP_ADMIN_TOKEN`), open `https://<your address>/admin` in a
+browser and paste the admin token into the form there (it is not put in the address, so it does not end up in browser
+history or proxy logs). It lists everything that came in: crashes and failures
 the app caught, and the reports players write themselves from Home > "See an issue or a problem?" (those carry a
 category and the player's own words). Filter by kind, category and status, read each report in full, and mark it
 new / looking / fixed / won't fix with a note. Triage lives in `<dir>/triage.json`; the reports are never changed. The

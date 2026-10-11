@@ -27,9 +27,13 @@ or, through git, with the small `lp` command that comes with the repository:
 ```powershell
 git clone https://github.com/Alpallyoop/legacy-player
 cd legacy-player
-.\lp install            # newest release; or  .\lp install v0.7.43  for one exact version
-.\lp run                # later:  .\lp update   .\lp version   .\lp path   .\lp uninstall   .\lp help
+.\lp.cmd install        # newest release; or  .\lp.cmd install v0.7.43  for one exact version
+.\lp.cmd run            # later:  .\lp.cmd update | version | path | uninstall | help
 ```
+
+In PowerShell type `.\lp.cmd`: a plain `.\lp` runs `lp.ps1`, which Windows' default execution policy (Restricted) refuses
+to run. `lp.cmd` starts it with `-ExecutionPolicy Bypass` for you. In Command Prompt plain `lp install` works. Without
+`lp.cmd`: `powershell -ExecutionPolicy Bypass -File .\lp.ps1 install`.
 
 Both download the release from [Releases](https://github.com/Alpallyoop/legacy-player/releases), check its SHA-256, install to
 `%LOCALAPPDATA%\Programs\LegacyPlayer`, add a Start menu shortcut and open the app. Or download the files yourself: each
@@ -59,7 +63,9 @@ SHA-256 hashes and carries a GitHub build attestation. See `docs/RELEASE.md`.
   (reports, time-outs, bans, word filter). No commands (`docs/HOSTING_PUBLIC_SERVER.md`).
 - **Updates:** Account > Update everything (or Check for updates) downloads the new Legacy Player, checks it, and
   restarts on it. A copy run from a git folder pulls and restarts instead.
-- **See a problem?** on the Home page sends a categorised report (scrubbed) to the maintainers' admin console.
+- **See an issue or a problem?** on the Home page writes a categorised report (scrubbed first). It is sent only when a
+  report address is set (Settings > Privacy > Send reports to). Released builds have none built in, so until one is set the
+  report stays on your computer (Settings > Problem reports).
 - **Games open where you want:** in front of Legacy Player, full screen or windowed, on the screen you pick (asked once per emulator,
   changeable under Display and video > Where games open).
 - **In-game overlay:** press Ctrl+Shift+L, or hold Back + Start on an Xbox-style controller, for a small window over any game with
@@ -83,7 +89,7 @@ SHA-256 hashes and carries a GitHub build attestation. See `docs/RELEASE.md`.
 ## Honest status
 
 What is verified: the launcher, library, saves, settings, server, rooms and relay code are covered by automated tests
-(about 300) and a headless-browser click-through of every page.
+(more than 500) and a headless-browser click-through of every page.
 
 What is not yet verified on real hardware: the Windows pieces (tray menu, Recycle Bin move, Dolphin pad names, firewall
 rule, memory probe), opening a real router, a real shared server, and actual online play between two networks. Netplay
